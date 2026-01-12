@@ -1,105 +1,97 @@
 const ZKLib = require("zklib-js");
-const {db} = require("../db/connectDB");
+const { db } = require("../db/connectDB");
 
-
+/* SAFE DATE NORMALIZATION */
 function normalizePunchTime(recordTime) {
-  /**
-   * Input:
-   * Fri Jul 18 2025 19:05:36 GMT+0530 (India Standard Time)
-   *
-   * Output:
-   * 2025-07-18 19:05:36
-   */
-
   if (!recordTime) return null;
 
-  const parts = recordTime.split(" ");
-  if (parts.length < 5) return null;
+  // If already Date object
+  if (recordTime instanceof Date) {
+    return recordTime.toISOString().replace("T", " ").substring(0, 19);
+  }
 
-  const day = parts[2];
-  const monthStr = parts[1];
-  const year = parts[3];
-  const time = parts[4]; // HH:MM:SS
+  // If string
+  const date = new Date(recordTime);
+  if (isNaN(date)) return null;
 
-  const monthMap = {
-    Jan: "01", Feb: "02", Mar: "03", Apr: "04",
-    May: "05", Jun: "06", Jul: "07", Aug: "08",
-    Sep: "09", Oct: "10", Nov: "11", Dec: "12"
-  };
-
-  const month = monthMap[monthStr];
-  if (!month) return null;
-
-  return `${year}-${month}-${day} ${time}`;
+  return date.toISOString().replace("T", " ").substring(0, 19);
 }
 
-
+/* DEVICE ATTENDANCE SYNC */
 async function getDeviceAttendance() {
   const zk = new ZKLib("192.168.0.10", 4370, 10000, 4000);
 
   try {
-    console.log("Connecting to device...");
+    console.log("[DEVICE] Connecting...");
     await zk.createSocket();
-    await zk.enableDevice();
+    await zk.disableDevice();
 
-    console.log("Fetching attendance logs...");
+    console.log("[DEVICE] Fetching attendance logs...");
     const logs = await zk.getAttendances();
 
     if (!logs?.data?.length) {
-      console.log("No attendance logs found");
+      console.log("[DEVICE] No attendance logs found");
       return [];
     }
 
+    /* Fetch all valid employees once */
+    const { rows: users } = await db.query(`
+      SELECT emp_id FROM users
+    `);
+
+    const validEmpSet = new Set(users.map(u => String(u.emp_id)));
+
+    const values = [];
     for (const log of logs.data) {
       const punchTime = normalizePunchTime(log.recordTime);
       if (!punchTime) continue;
 
-      // TEMP: deviceUserId == emp_id
-      const { rows } = await db.query(
-        `SELECT emp_id FROM users WHERE emp_id = $1`,
-        [String(log.deviceUserId)]
-      );
+      const empId = String(log.deviceUserId);
+      if (!validEmpSet.has(empId)) continue;
 
-      if (!rows.length) {
-        // console.warn(`Unknown device user: ${log.deviceUserId}`);
-        continue;
-      }
-
-      const empId = rows[0].emp_id;
-
-      await db.query(
-        `
-        INSERT INTO attendance_logs
-          (emp_id, punch_time, device_ip, device_sn)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (emp_id, punch_time) DO NOTHING
-        `,
-        [
-          empId,
-          punchTime,
-          log.ip || null,
-          "EUF7251400009"
-        ]
-      );
+      values.push([
+        empId,
+        punchTime,
+        log.ip || null,
+        "EUF7251400009"
+      ]);
     }
 
-    console.log(` Synced ${logs.data.length} logs`);
-    return logs.data;
+    if (!values.length) {
+      console.log("[DEVICE] No valid logs to insert");
+      return [];
+    }
+
+    /* BULK INSERT */
+    const insertQuery = `
+      INSERT INTO attendance_logs
+        (emp_id, punch_time, device_ip, device_sn)
+      VALUES ${values
+        .map(
+          (_, i) =>
+            `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`
+        )
+        .join(",")}
+      ON CONFLICT (emp_id, punch_time) DO NOTHING
+    `;
+
+    await db.query(insertQuery, values.flat());
+
+    console.log(`[DEVICE] Synced ${values.length} logs`);
+    return values;
 
   } catch (err) {
-    console.error(" Attendance sync error FULL:", err);
+    console.error("[DEVICE] Attendance sync error:", err);
     throw err;
   } finally {
     try {
+      await zk.enableDevice();
       await zk.disconnect();
-      console.log("Device disconnected");
+      console.log("[DEVICE] Disconnected");
     } catch {
-      console.warn("Device disconnect failed");
+      console.warn("[DEVICE] Disconnect failed");
     }
   }
 }
 
-
-module.exports = {
-  getDeviceAttendance
-};
+module.exports = { getDeviceAttendance };
