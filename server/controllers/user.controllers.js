@@ -62,6 +62,8 @@ const loginController = async (req, res) => {
   try {
     let { email, password } = req.body;
 
+    // console.log(email,password);
+
     
     if (!email || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -69,7 +71,7 @@ const loginController = async (req, res) => {
 
     
     email = email.trim().toLowerCase();
-    password = String(password).trim();
+    password = String(password).trim()
 
   
     const result = await db.query(
@@ -85,14 +87,16 @@ const loginController = async (req, res) => {
 
     const user = result.rows[0];
 
+
+    // console.log("user",user);
     
     const isMatch = await bcrypt.compare(password, user.password);
-
+    // console.log("isMatch",isMatch);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
-    
+
     const token = jwt.sign(
       {
         id: user.id,
