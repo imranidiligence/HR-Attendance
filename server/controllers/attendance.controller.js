@@ -88,7 +88,7 @@ exports.generateDailyAttendance = async (req, res) => {
       SELECT
         u.id,
         u.name,
-        u.device_user_id,
+        u.emp_id,
         CASE
           WHEN d.punch_in IS NOT NULL AND d.punch_out IS NOT NULL THEN 'Present'
           WHEN d.punch_in IS NOT NULL AND d.punch_out IS NULL THEN 'Working'
@@ -298,14 +298,10 @@ exports.getMyTodayAttendance = async (req, res) => {
   try {
     const empId = req.user.emp_id;
 
-
+    /* ---------------- TODAY ---------------- */
     const todayResult = await db.query(
       `
-      SELECT
-        punch_in,
-        punch_out,
-        total_hours,
-        status
+      SELECT punch_in, punch_out, total_hours, status
       FROM daily_attendance
       WHERE emp_id = $1
         AND attendance_date =
@@ -315,18 +311,15 @@ exports.getMyTodayAttendance = async (req, res) => {
       [empId]
     );
 
-    const today = todayResult.rows[0] || null;
+    const today = todayResult.rows[0];
 
-    /* ---------- Convert INTERVAL → HH:MM ---------- */
     let todayHours = "00:00";
 
-    if (today?.total_hours) {
-      const secRes = await db.query(
-        `SELECT EXTRACT(EPOCH FROM $1::interval) AS seconds`,
-        [today.total_hours]
-      );
+    if (today?.status === "Present" && today.total_hours) {
+      const secs =
+        today.total_hours.hours * 3600 +
+        today.total_hours.minutes * 60;
 
-      const secs = Number(secRes.rows[0].seconds);
       const hrs = Math.floor(secs / 3600);
       const mins = Math.floor((secs % 3600) / 60);
 
@@ -336,48 +329,59 @@ exports.getMyTodayAttendance = async (req, res) => {
       )}`;
     }
 
-    /* -------------------------------------------------
-       WEEKLY HOURS (MONDAY → TODAY, IST)
-       Present → total_hours
-       Working → NOW - punch_in
-    --------------------------------------------------*/
+    if (today?.status === "Working" && today.punch_in) {
+      const now = new Date();
+      const punchIn = new Date(today.punch_in);
+
+      const diffSecs = Math.max(
+        0,
+        Math.floor((now - punchIn) / 1000)
+      );
+
+      const hrs = Math.floor(diffSecs / 3600);
+      const mins = Math.floor((diffSecs % 3600) / 60);
+
+      todayHours = `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
+        2,
+        "0"
+      )}`;
+    }
+
+    /* ---------------- WEEKLY ---------------- */
     const weeklyResult = await db.query(
       `
-      WITH daily AS (
-        SELECT
-          emp_id,
-          (punch_time AT TIME ZONE 'Asia/Kolkata')::DATE AS attendance_date,
-          MIN(punch_time AT TIME ZONE 'Asia/Kolkata') AS punch_in,
-          MAX(punch_time AT TIME ZONE 'Asia/Kolkata') AS punch_out
-        FROM attendance_logs
-        WHERE emp_id = $1
-          AND (punch_time AT TIME ZONE 'Asia/Kolkata')::DATE >=
-              DATE_TRUNC(
-                'week',
-                (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')
-              )::DATE
-        GROUP BY emp_id, attendance_date
-      )
       SELECT
         COALESCE(
-          SUM(EXTRACT(EPOCH FROM (punch_out - punch_in))),
+          SUM(
+            CASE
+              WHEN status = 'Present' THEN
+                EXTRACT(EPOCH FROM total_hours)
+              WHEN status = 'Working' THEN
+                EXTRACT(
+                  EPOCH FROM
+                  ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata') - punch_in)
+                )
+              ELSE 0
+            END
+          ),
           0
         ) AS total_seconds
-      FROM daily
-      WHERE punch_in IS NOT NULL
-        AND punch_out IS NOT NULL
+      FROM daily_attendance
+      WHERE emp_id = $1
+        AND attendance_date >=
+          DATE_TRUNC(
+            'week',
+            (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')
+          )::DATE
       `,
       [empId]
     );
-    
 
     const weeklySeconds = Number(weeklyResult.rows[0].total_seconds);
     const weeklyHrs = Math.floor(weeklySeconds / 3600);
     const weeklyMins = Math.floor((weeklySeconds % 3600) / 60);
 
-    /* -------------------------------------------------
-       RESPONSE
-    --------------------------------------------------*/
+    /* ---------------- RESPONSE ---------------- */
     res.json({
       today: {
         punch_in: today?.punch_in ?? null,
@@ -398,6 +402,7 @@ exports.getMyTodayAttendance = async (req, res) => {
 };
 
 
+
 // /*  Employee – All  attendance */ 
 exports.getMyAttendance = async (req, res) => {
   try {
@@ -406,90 +411,111 @@ exports.getMyAttendance = async (req, res) => {
     const { rows } = await db.query(
       `
       WITH dates AS (
+        -- All dates from start of last month to today
         SELECT generate_series(
-          (CURRENT_DATE AT TIME ZONE 'Asia/Kolkata') - INTERVAL '29 days',
-          (CURRENT_DATE AT TIME ZONE 'Asia/Kolkata'),
-          INTERVAL '1 day'
-        )::DATE AS attendance_date
+          date_trunc('month', current_date - interval '1 month')::date,
+          current_date,
+          interval '1 day'
+        )::date AS attendance_date
       ),
 
-      daily_punches AS (
+      logs AS (
+        -- First and last punches from attendance_logs per day
         SELECT
-          al.emp_id,
-          (al.punch_time AT TIME ZONE 'Asia/Kolkata')::DATE AS attendance_date,
-          COUNT(*) AS punch_count,
-          MIN(al.punch_time AT TIME ZONE 'Asia/Kolkata') AS punch_in,
-          MAX(al.punch_time AT TIME ZONE 'Asia/Kolkata') AS punch_out
-        FROM attendance_logs al
-        WHERE al.emp_id = $1
-        GROUP BY al.emp_id, attendance_date
+          emp_id,
+          (punch_time AT TIME ZONE 'Asia/Kolkata')::date AS attendance_date,
+          MIN(punch_time) AS first_punch,
+          MAX(punch_time) AS last_punch
+        FROM attendance_logs
+        WHERE emp_id = $1
+        GROUP BY emp_id, (punch_time AT TIME ZONE 'Asia/Kolkata')::date
       )
 
       SELECT
-        u.emp_id,
+        $1 AS emp_id,
         u.name AS employee_name,
-        TO_CHAR(d.attendance_date, 'YYYY-MM-DD') AS attendance_date,
+        d.attendance_date,
 
-        dp.punch_in,
-        dp.punch_out,
-
-        --  total worked seconds (SAFE)
+        -- Punch in: daily_attendance first, else logs first punch, else 10:30
         CASE
-          WHEN dp.punch_in IS NOT NULL
-           AND dp.punch_out IS NOT NULL
-           AND dp.punch_out > dp.punch_in
-          THEN EXTRACT(EPOCH FROM (dp.punch_out - dp.punch_in))
-          ELSE 0
+          WHEN da.punch_in IS NOT NULL AND da.punch_in::time >= '10:30:00' THEN da.punch_in
+          WHEN l.first_punch IS NOT NULL AND (l.first_punch AT TIME ZONE 'Asia/Kolkata')::time >= '10:30:00'
+            THEN l.first_punch
+          ELSE (d.attendance_date::text || ' 10:30:00')::timestamptz
+        END AS punch_in,
+
+        -- Punch out: daily_attendance punch_out, else logs last punch
+        COALESCE(da.punch_out, l.last_punch) AS punch_out,
+
+        -- total_seconds: difference between punch_in and punch_out
+        CASE
+          WHEN
+            (CASE
+              WHEN da.punch_in IS NOT NULL AND da.punch_in::time >= '10:30:00' THEN da.punch_in
+              WHEN l.first_punch IS NOT NULL AND (l.first_punch AT TIME ZONE 'Asia/Kolkata')::time >= '10:30:00'
+                THEN l.first_punch
+              ELSE (d.attendance_date::text || ' 10:30:00')::timestamptz
+            END) IS NOT NULL
+            AND COALESCE(da.punch_out, l.last_punch) IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (COALESCE(da.punch_out, l.last_punch) -
+                                    (CASE
+                                      WHEN da.punch_in IS NOT NULL AND da.punch_in::time >= '10:30:00' THEN da.punch_in
+                                      WHEN l.first_punch IS NOT NULL AND (l.first_punch AT TIME ZONE 'Asia/Kolkata')::time >= '10:30:00'
+                                        THEN l.first_punch
+                                      ELSE (d.attendance_date::text || ' 10:30:00')::timestamptz
+                                    END)))
+          ELSE NULL
         END AS total_seconds,
 
-        CASE
-          WHEN dp.punch_in IS NULL THEN 'Absent'
-          WHEN dp.punch_out IS NULL THEN 'Working'
-          WHEN dp.punch_in = dp.punch_out THEN 'Working'
-          ELSE 'Present'
-        END AS status
+        da.expected_hours,
+        COALESCE(da.status,
+                 CASE
+                   WHEN l.first_punch IS NULL THEN 'Absent'
+                   ELSE 'Working'
+                 END) AS status
 
-      FROM users u
-      CROSS JOIN dates d
-      LEFT JOIN daily_punches dp
-        ON dp.emp_id = u.emp_id
-       AND dp.attendance_date = d.attendance_date
-
-      WHERE u.emp_id = $1
-      ORDER BY d.attendance_date DESC
+      FROM dates d
+      LEFT JOIN daily_attendance da
+        ON da.emp_id = $1
+       AND (da.attendance_date AT TIME ZONE 'Asia/Kolkata')::date = d.attendance_date
+      LEFT JOIN logs l
+        ON l.emp_id = $1
+       AND l.attendance_date = d.attendance_date
+      JOIN users u ON u.emp_id = $1
+      ORDER BY d.attendance_date DESC;
       `,
       [empId]
     );
 
-    /* ---------- seconds → HH:MM (CARRY SAFE) ---------- */
-    const formattedRows = rows.map(r => {
-      const totalSeconds = Number(r.total_seconds || 0);
-
-      // convert to total minutes first
-      let totalMinutes = Math.floor(totalSeconds / 60);
-
-      let hours = Math.floor(totalMinutes / 60);
-      let minutes = totalMinutes % 60;
-
-      // safety carry (never exceed 59)
-      if (minutes >= 60) {
-        hours += Math.floor(minutes / 60);
-        minutes = minutes % 60;
+    // Convert seconds → { hours, minutes } for frontend
+    const formatted = rows.map(r => {
+      let total_hours = {};
+      if (r.total_seconds != null) {
+        const secs = Number(r.total_seconds);
+        total_hours = {
+          hours: Math.floor(secs / 3600),
+          minutes: Math.floor((secs % 3600) / 60)
+        };
       }
 
       return {
         ...r,
-        total_hours: `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`,
+        total_hours
       };
     });
 
-    res.status(200).json(formattedRows);
-
+    res.status(200).json(formatted);
   } catch (err) {
-    console.error(" getMyAttendance error:", err);
+    console.error("getMyAttendance error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+
+
+
+
 
 
 exports.getMyHolidays = async (req, res) => {

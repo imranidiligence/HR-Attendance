@@ -14,7 +14,7 @@ cron.schedule(
     try {
       console.log("[CRON] Device attendance sync started");
       await getDeviceAttendance();
-      await syncAttendance();
+      // await syncAttendance();
       console.log(" [CRON] Device attendance sync completed");
     } catch (err) {
       console.error(" [CRON] Device sync error:", err.message);
@@ -35,7 +35,6 @@ cron.schedule(
     try {
       console.log(" [CRON] Daily attendance generation started");
       await generateDailyAttendance();
-      await getDeviceAttendance();
       // await syncAttendance();
       console.log(" [CRON] Daily attendance generated");
     } catch (err) {
