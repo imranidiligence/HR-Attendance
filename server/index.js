@@ -5,6 +5,7 @@ const {Client} = require("pg");
 const {connectDB,db} = require("./db/connectDB");
 const userRoutes = require("./routes/user.routes");
 const employRoutes = require("./routes/employ.routes");
+const profileRoutes = require("./routes/profile.routes");
 const attendanceRoutes = require("./routes/attendance.routes")
 const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
@@ -18,18 +19,30 @@ const PORT = process.env.PORT || 5500;
 
 
 app.use(express.json());
-app.use(cors());
 
+app.use(cors({
+    origin: "http://localhost:5173",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }));
+  
+
+// Auth Routes
 app.use("/api/auth",userRoutes);
 // app.use("/employee-dashboard",employRoutes);
+
+// Employee Routes
 app.use("/api/employee/attendance", employRoutes);
 
+// Employee Profile Routes
+
+app.use("/api/employee/profile",profileRoutes);
+
+// Admin Routes
 app.use("/api/admin/attendance", attendanceRoutes);
 // app.use("/admin-dashboard",adminRoutes)
 
-// cron.schedule("* * * * *", () => {
-//     console.log("Runs every minute");
-//   });
+
 
 app.listen(PORT,()=>{
 

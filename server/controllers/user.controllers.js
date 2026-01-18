@@ -104,13 +104,16 @@ const loginController = async (req, res) => {
         emp_id: user.emp_id
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "1h" } // token 1 ghante ke liye valid
     );
-
-  
+    
+    // Decode token to get exact expiry timestamp (optional)
+    const decoded = jwt.decode(token); // decoded.exp gives expiry in seconds
+    
     res.status(200).json({
       message: "Login successful",
       token,
+      expiresAt: decoded.exp * 1000, // expiry in milliseconds
       user: {
         id: user.id,
         name: user.name,
@@ -119,6 +122,7 @@ const loginController = async (req, res) => {
         emp_id: user.emp_id
       }
     });
+    
 
   } catch (error) {
     console.error("Login Error:", error);

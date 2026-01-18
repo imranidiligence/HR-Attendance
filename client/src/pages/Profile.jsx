@@ -367,17 +367,7 @@ const Profile = () => {
           <>
             {draftEducation.map((edu, i) => (
               <FormCard key={i} title={`Education ${i + 1}`}>
-                {/* Remove (except first) */}
-                {isEditing && i !== 0 && (
-                  <div className="flex justify-end mb-2">
-                    <button
-                      onClick={() => removeItem(setDraftEducation)(i)}
-                      className="text-red-600 text-sm"
-                    >
-                      🗑️ Remove
-                    </button>
-                  </div>
-                )}
+               
 
                 {Object.keys(emptyEducation).map((key) => (
                   <Input
@@ -405,6 +395,17 @@ const Profile = () => {
             )}
           </>
         )}
+         {/* Remove (except first) */}
+                {/* {isEditing && i !== 0 && (
+                  <div className="flex justify-end mb-2">
+                    <button
+                      onClick={() => removeItem(setDraftEducation)(i)}
+                      className="text-red-600 text-sm"
+                    >
+                      🗑️ Remove
+                    </button>
+                  </div>
+                )} */}
       </div>
 
       {/* EXPERIENCE */}

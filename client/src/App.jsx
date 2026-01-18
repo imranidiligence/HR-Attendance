@@ -1,12 +1,12 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "react-hot-toast";
+import { Toaster, toast } from "react-hot-toast";
 
 import Adminlayout from "./layout/Adminlayout";
 import Employlayout from "./layout/Employlayout";
-
+import Attendance from "./pages/Attendence";
 import Overview from "./pages/Overview";
 import ChangePassword from "./pages/ChangePassword";
-import Attendence from "./pages/Attendence";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import Holidays from "./pages/Holidays";
@@ -15,22 +15,50 @@ import Employleaves from "./pages/Employleaves";
 import Adminleaves from "./pages/Adminleaves";
 
 import Login from "./components/Login";
-// import Register from "./components/Register";
 import Employelist from "./components/Employelist";
 import NotFound from "./pages/NotFound";
+import AddEmploy from "./components/AddEmploy";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import AdminRoute from "./routes/AdminRoute";
-import AddEmploy from "./components/AddEmploy";
 
 function App() {
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
+
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key === "token") {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          toast.error("Session expired. Please login again.");
+          setUser(null); // update state
+          window.location.replace("/login");
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  // Optional: sync user state with localStorage changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const storedUser = JSON.parse(localStorage.getItem("user") || "null");
+      setUser(storedUser);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <Router>
       <Toaster />
       <Routes>
-
         {/* ROOT REDIRECT */}
         <Route
           path="/"
@@ -49,13 +77,12 @@ function App() {
 
         {/* PUBLIC */}
         <Route path="/login" element={<Login />} />
-        {/* <Route path="/register" element={<Register />} /> */}
 
         {/* ADMIN */}
         <Route element={<AdminRoute allowedRole="admin" />}>
           <Route path="/admin" element={<Adminlayout />}>
             <Route index element={<Overview />} />
-            <Route path="attendance" element={<Attendence />} />
+            <Route path="attendance" element={<Attendance/>} /> 
             <Route path="employees" element={<Employelist />} />
             <Route path="add-emp" element={<AddEmploy />} />
             <Route path="leaves" element={<Adminleaves />} />
@@ -69,7 +96,7 @@ function App() {
         <Route element={<ProtectedRoute allowedRole="employee" />}>
           <Route path="/employee" element={<Employlayout />}>
             <Route index element={<Overview />} />
-            <Route path="attendance" element={<Attendence />} />
+            <Route path="attendance" element={<Attendance />} /> 
             <Route path="holidays" element={<Holidays />} />
             <Route path="change-password" element={<ChangePassword />} />
             <Route path="profile" element={<Profile />} />
@@ -80,7 +107,6 @@ function App() {
 
         {/* FALLBACK */}
         <Route path="*" element={<NotFound />} />
-
       </Routes>
     </Router>
   );

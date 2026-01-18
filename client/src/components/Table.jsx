@@ -57,6 +57,8 @@ const Table = () => {
   const { adminAttendance = [], employeeAttendance = [], loading, filters } =
     useContext(EmployContext);
 
+
+    // console.log("employeeAttendance",employeeAttendance);
   const [filterLoading, setFilterLoading] = useState(false);
 
   // Get user info

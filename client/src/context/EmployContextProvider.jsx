@@ -78,58 +78,68 @@ const EmployProvider = ({ children }) => {
   );
 
 //  Employee dashboard
-  const fetchEmployeeDashboard = async () => {
-    try {
-      setEmployeeLoading(true);
+const fetchEmployeeDashboard = async () => {
+  try {
+    setEmployeeLoading(true);
 
-      const [historyRes, todayRes] = await Promise.all([
-        axios.get(
-          "http://localhost:5000/api/employee/attendance/history",
-          axiosConfig
-        ),
-        axios.get(
-          "http://localhost:5000/api/employee/attendance/today",
-          axiosConfig
-        ),
-      ]);
+    const [historyRes, todayRes] = await Promise.all([
+      axios.get(
+        "http://localhost:5000/api/employee/attendance/history",
+        axiosConfig
+      ),
+      axios.get(
+        "http://localhost:5000/api/employee/attendance/today",
+        axiosConfig
+      ),
+    ]);
 
-      if (Array.isArray(historyRes.data)) {
-        setEmployeeAttendance(historyRes.data);
+    // NEW: historyRes.data now has { total_documents, attendance }
+    if (historyRes.data && Array.isArray(historyRes.data.attendance)) {
+      setEmployeeAttendance(historyRes.data.attendance);
 
-        if (historyRes.data.length > 0) {
-          const emp = historyRes.data[0];
-          setEmployee({
-            emp_id: emp.emp_id,
-            device_user_id: emp.device_user_id,
-            name: emp.name,
-          });
-        }
+      console.log("Total documents:", historyRes.data.total_documents);
+      console.log("Attendance data:", historyRes.data.attendance);
+
+      if (historyRes.data.attendance.length > 0) {
+        const emp = historyRes.data.attendance[0];
+        setEmployee({
+          emp_id: emp.emp_id,
+          device_user_id: emp.device_user_id, // optional, only if available
+          name: emp.employee_name,            // use employee_name from backend
+        });
       }
-
-      setSingleAttendance(todayRes.data || null);
-    } catch (err) {
-      console.error(err);
+    } else {
       setEmployeeAttendance([]);
-      setSingleAttendance(null);
-    } finally {
-      setEmployeeLoading(false);
-      setInitialized(true);
     }
-  };
+
+    setSingleAttendance(todayRes.data || null);
+  } catch (err) {
+    console.error(err);
+    setEmployeeAttendance([]);
+    setSingleAttendance(null);
+  } finally {
+    setEmployeeLoading(false);
+    setInitialized(true);
+  }
+};
 
 
   // Employees Holidays
 
 
-  const fetchHolidays = async()=>{
-    try{
-      const resp = await axios.get("http://localhost:5000/api/employee/attendance/holiday");
+  const fetchHolidays = async () => {
+    try {
+      const resp = await axios.get(
+        "http://localhost:5000/api/employee/attendance/holiday",
+        axiosConfig
+      );
       setHolidays(resp.data);
-
-    }catch(err){
+    } catch (err) {
       console.error(err);
+      setHolidays([]);
     }
-  }
+  };
+  
   // Admin Dashboard
   const fetchAdminAttendance = async () => {
     try {
@@ -153,19 +163,22 @@ const EmployProvider = ({ children }) => {
   // Fetch On Auth
   useEffect(() => {
     if (!auth.token || !auth.role) return;
-
+  
     setInitialized(false);
-
+  
     if (auth.role === "admin") {
       fetchAdminAttendance();
     }
-
+  
     if (auth.role === "employee") {
-      fetchEmployeeDashboard();
-      fetchHolidays()
+      Promise.all([
+        fetchEmployeeDashboard(),
+        fetchHolidays(),
+      ]);
     }
-
+  
   }, [auth.token, auth.role]);
+  
 
   const loading =
     auth.role === "admin" ? adminLoading : employeeLoading;
@@ -191,6 +204,7 @@ const EmployProvider = ({ children }) => {
         /* Refresh */
         refreshEmployeeDashboard: fetchEmployeeDashboard,
         refreshAdminAttendance: fetchAdminAttendance,
+        
       }}
     >
       {children}

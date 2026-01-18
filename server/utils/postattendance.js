@@ -1,3 +1,6 @@
+
+
+
 function processAttendance(rawLogs) {
     const grouped = {};
   

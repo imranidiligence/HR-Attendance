@@ -200,7 +200,7 @@ const empCardData = singleAttendance
             <div className="flex justify-between">
               <span className="font-medium">Employee ID</span>
               <span className="font-semibold text-gray-800">
-                EMP-{user?.emp_id}
+                {user?.emp_id}
               </span>
             </div>
 
