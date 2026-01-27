@@ -28,6 +28,11 @@ exports.getOrganizationInfo = async(req,res)=>{
               `,
               [organizationName, organizationCode, industryType, address, city, state, country || null, isactive || true]
             );
+
+            await sendEmail(req.user.email, "Profile Updated", "profile_update", {
+              name: data.name
+            });
+        
         
             res.status(201).json({
               message: "Organization created successfully",

@@ -2,6 +2,7 @@ import { NavLink,Outlet } from "react-router-dom";
 import AdminSidebar from "../components/AdminSidebar";
 import Navbar from "../components/Navbar";
 import { useState,useEffect } from "react";
+import axios from "axios";
 
 
 function Adminlayout() {

@@ -39,7 +39,7 @@ const getWeekDayIST = (dateStr) => {
     // Convert to Date object
     const date = new Date(dateStr);
   
-    // Use toLocaleDateString with weekday option and Asia/Kolkata timezone
+    //  Asia/Kolkata timezone
     const weekday = date.toLocaleDateString("en-GB", {
       weekday: "short", // Mon, Tue, Wed
       timeZone: "Asia/Kolkata",
@@ -58,7 +58,7 @@ export const exportToExcel = (data, fileName = "Attendance_Report") => {
     "Sr No": index + 1,
     "Day":getWeekDayIST(row.attendance_date),
     "Employee ID": row.emp_id || "--",
-    "Employee Name": row.employee_name || "--",
+    "Employee Name": row.employee_name|| "--",
     "Date (IST)": formatIST(row.attendance_date, "date"),
     "Punch In (IST)": row.punch_in ? formatIST(row.punch_in, "time") : "--",
     "Punch Out (IST)": row.punch_out ? formatIST(row.punch_out, "time") : "--",

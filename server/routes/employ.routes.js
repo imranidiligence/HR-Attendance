@@ -1,6 +1,9 @@
 const express = require("express");
 const auth = require("../middlewares/authMiddleware");
-const {getMyAttendance,getMyTodayAttendance, getMyHolidays} = require("../controllers/attendance.controller")
+const {getMyAttendance,getMyTodayAttendance, getMyHolidays} = require("../controllers/attendance.controller");
+const {db} = require("../db/connectDB");
+const { isAdmin } = require("../middlewares/roleMiddleware");
+const authMiddleware = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
@@ -48,6 +51,18 @@ router.get("/history",auth,getMyAttendance);
 // Holiday 
 
 router.get("/holiday",auth,getMyHolidays);
+
+// Get All Employees 
+
+router.get("/all-emp", authMiddleware, isAdmin, async (req, res) => {
+  try {
+    const result = await db.query(`SELECT * FROM users`);
+    res.status(200).json(result.rows); // return all employees
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
 
 

@@ -1,6 +1,7 @@
 const ZKLib = require("zklib-js");
 const { db } = require("../db/connectDB");
 const cron = require("node-cron");
+const sendEmail = require("../utils/mailer");
 
 // Normalize device punch time
 function normalizePunchTime(recordTime) {
@@ -68,18 +69,13 @@ async function getDeviceAttendance() {
       const punchTimeStr = normalizePunchTime(log.recordTime);
       if (!punchTimeStr) continue;
 
-      // SAFETY CHECK (THIS FIXES YOUR ERROR)
+      // SAFETY CHECK
       const { rows: userRows } = await db.query(
         `SELECT emp_id FROM users WHERE emp_id = $1`,
         [String(log.deviceUserId)]
       );
 
-      if (!userRows.length) {
-        // console.warn(
-        //   `[SYNC] No employee found for deviceUserId: ${log.deviceUserId}`
-        // );
-        continue; // skip instead of crashing
-      }
+      if (!userRows.length) continue; // skip if no employee
 
       const empId = userRows[0].emp_id;
 
@@ -92,6 +88,31 @@ async function getDeviceAttendance() {
 
       const punchDate = new Date(punchTimeStr);
       if (punchDate > latestPunch) latestPunch = punchDate;
+
+      /* ---------- SEND EMAIL ---------- */
+      try {
+        const { rows: employeeRows } = await db.query(
+          `SELECT name, email FROM users WHERE emp_id = $1`,
+          [empId]
+        );
+
+        if (employeeRows.length) {
+          const employee = employeeRows[0];
+          const time = punchDate.toLocaleTimeString("en-IN", { hour12: false });
+          const action = log.type || "in"; // if your device provides type
+
+          await sendEmail(
+            employee.email,
+            `Punch ${action}`,
+            "punch_in_out",
+            { name: employee.name, action, time }
+          );
+
+          console.log(`✅ Punch ${action} email sent to ${employee.email}`);
+        }
+      } catch (err) {
+        console.error("❌ Error sending punch email:", err);
+      }
     }
 
     /* ---------- UPDATE LAST SYNC ---------- */
@@ -110,12 +131,6 @@ async function getDeviceAttendance() {
       );
     }
 
-    /* ---------- CLEANUP ---------- */
-    await db.query(
-      `DELETE FROM activity_log
-       WHERE punch_time < NOW() - INTERVAL '2 days'`
-    );
-
     console.log("[SYNC] Punch sync completed successfully");
     return newLogs;
 
@@ -131,6 +146,7 @@ async function getDeviceAttendance() {
     }
   }
 }
+
 
 
 // 5-minute cron sync

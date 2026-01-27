@@ -71,6 +71,8 @@ const Table = () => {
     ? adminAttendance
     : employeeAttendance.filter((a) => a.emp_id === user.emp_id);
 
+    // const data = employeeAttendance.filter((a)=> a.emp_id === user.emp_id);
+
   // Apply filters
   const filteredData = useMemo(() => {
     let result = [...data];

@@ -1,162 +1,198 @@
 import React, { useState } from "react";
 import { addEmploy } from "../../services/authServices";
-import {toast} from "react-hot-toast"
+import { toast } from "react-hot-toast";
+
 const AddEmploy = () => {
-  const [formData, setFormData] = useState({
+  const initialFormState = {
     name: "",
     email: "",
     password: "",
     emp_id: "",
-    role: "",
-  });
+    role: "employee",
+    is_active: true,
+    shift_id: 1,
+    dob: "",
+    gender: "",
+    department: "",
+    joining_date: "",
+    maritalstatus: "",
+    nominee: "",
+    aadharnumber: "",
+    bloodgroup: "",
+    nationality: "",
+    address: "",
+    profile_image: null,
+  };
 
+  const [formData, setFormData] = useState(initialFormState);
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked, files } = e.target;
+    
+    // Clear error for specific field
+    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
+
+    if (type === "file") {
+      setFormData((prev) => ({ ...prev, [name]: files[0] }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      }));
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!formData.name.trim()) newErrors.name = "Full Name is required";
+    if (!formData.emp_id.trim()) newErrors.emp_id = "Employee ID is required";
+    if (!formData.department.trim()) newErrors.department = "Department is required";
+    if (!formData.role) newErrors.role = "Role is required";
+    
+    if (!formData.email) {
+      newErrors.email = "Email is required";
+    } else if (!emailRegex.test(formData.email)) {
+      newErrors.email = "Invalid email address";
+    }
+
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      newErrors.password = "Minimum 6 characters required";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleAddEmp = async (e) => {
     e.preventDefault();
 
-    // basic validation
-    if (
-      !formData.name ||
-      !formData.email ||
-      !formData.password ||
-      !formData.emp_id ||
-      !formData.role
-    ) {
-    //   alert("Please fill all fields");
+    if (!validate()) {
+      toast.error("Please fill in all required fields.");
       return;
     }
 
     try {
       setLoading(true);
-      const resp = await addEmploy(formData);
-      console.log("Employee created:", resp.status);
-
-      toast.success("New Employee Created!!")
-
-      // reset form
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        emp_id: "",
-        role: "",
+      
+      const data = new FormData();
+      
+      // Correctly appending data
+      Object.keys(formData).forEach((key) => {
+        if (formData[key] !== null && formData[key] !== undefined) {
+          data.append(key, formData[key]);
+        }
       });
+
+      console.log("Formdata",data)
+      // Verification log (FormData looks empty in standard console.log)
+      console.log("--- Sending Payload ---");
+      for (let [key, value] of data.entries()) {
+        console.log(`${key}:`, value);
+      }
+
+      await addEmploy(data);
+      toast.success("New Employee Record Created Successfully!");
+      
+      setFormData(initialFormState);
+      setErrors({});
+      
     } catch (error) {
-      console.error(error);
-    //   alert("Failed to create employee");
+      console.error("Submission Error:", error);
+      toast.error(error.response?.data?.message || "Failed to sync employee data");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto mt-10">
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100">
-        {/* Header */}
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800">
-            Create Employee
-          </h2>
-         
+    <div className="max-w-5xl mx-auto mt-10 mb-20 px-4 font-sans text-gray-800">
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        
+        {/* ERP Header */}
+        <div className="px-8 py-5 bg-gray-50 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 tracking-tight">Onboard New Employee</h2>
+            <p className="text-sm text-gray-500">Fill in all details to generate employee profile</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-400 uppercase">Status:</span>
+            <input
+              type="checkbox"
+              name="is_active"
+              checked={formData.is_active}
+              onChange={handleChange}
+              className="w-4 h-4 accent-green-600 cursor-pointer"
+            />
+            <span className="text-sm font-medium text-gray-700">Active Account</span>
+          </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleAddEmp} className="p-6 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Full Name */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">
-                Full Name
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                placeholder="John Doe"
-                className="w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+        <form onSubmit={handleAddEmp} className="p-8 space-y-10">
+          
+          {/* Section 1: Authentication */}
+          <section>
+            <h3 className="text-sm font-bold text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <span className="w-8 h-px bg-blue-200"></span> Basic Credentials
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Input label="Full Name *" name="name" value={formData.name} onChange={handleChange} error={errors.name} placeholder="John Doe" />
+              <Input label="Email Address *" name="email" type="email" value={formData.email} onChange={handleChange} error={errors.email} placeholder="john@company.com" />
+              <Input label="System Password *" name="password" type="password" value={formData.password} onChange={handleChange} error={errors.password} placeholder="••••••••" />
+              <Input label="Employee ID *" name="emp_id" value={formData.emp_id} onChange={handleChange} error={errors.emp_id} placeholder="202500028" />
+              <Input label="Department *" name="department" value={formData.department} onChange={handleChange} error={errors.department} placeholder="IT / Engineering" />
+              <Input label="Nationality" name="nationality" value={formData.nationality} onChange={handleChange} placeholder="Indian" />
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-tight">Role *</label>
+                <select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  className={`w-full rounded-lg border px-3 py-2.5 text-sm bg-white focus:ring-4 outline-none transition-all ${
+                    errors.role ? "border-red-500 focus:ring-red-100" : "border-gray-200 focus:ring-blue-100 focus:border-blue-400"
+                  }`}
+                >
+                  <option value="employee">Employee</option>
+                  <option value="admin">Admin</option>
+                </select>
+                {errors.role && <p className="text-[10px] text-red-500 mt-1 font-medium">{errors.role}</p>}
+              </div>
             </div>
+          </section>
 
-            {/* Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">
-                Email Address
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                placeholder="john@company.com"
-                className="w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+          {/* Section 2: Personal Information */}
+          <section>
+            <h3 className="text-sm font-bold text-blue-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <span className="w-8 h-px bg-blue-200"></span> Personal Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Input label="Date of Birth" name="dob" type="date" value={formData.dob} onChange={handleChange} />
+              <Select label="Gender" name="gender" value={formData.gender} onChange={handleChange} options={[{v:"Male", l:"Male"}, {v:"Female", l:"Female"}, {v:"Other", l:"Other"}]} />
+              <Select label="Marital Status" name="maritalstatus" value={formData.maritalstatus} onChange={handleChange} options={[{v:"Single", l:"Single"}, {v:"Married", l:"Married"}]} />
+              <Input label="Blood Group" name="bloodgroup" value={formData.bloodgroup} onChange={handleChange} placeholder="A+" />
+              <Input label="Aadhar/National ID" name="aadharnumber" value={formData.aadharnumber} onChange={handleChange} placeholder="0000 0000 0000" />
+              <Input label="Joining Date" name="joining_date" type="date" value={formData.joining_date} onChange={handleChange} />
+              <div className="md:col-span-2">
+                <Input label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Full residential address" />
+              </div>
             </div>
+          </section>
 
-            {/* Password */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder="••••••••"
-                className="w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            {/* Role */}
-            <div>
-              <label className="block text-sm font-medium text-gray-600 mb-1">
-                Role
-              </label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="w-full rounded-lg border px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-              >
-                <option value="">Select Role</option>
-                <option value="admin">Admin</option>
-                <option value="employee">Employee</option>
-              </select>
-            </div>
-
-            {/* Employee ID */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-600 mb-1">
-                Employee ID
-              </label>
-              <input
-                type="text"
-                name="emp_id"
-                value={formData.emp_id}
-                onChange={handleChange}
-                placeholder="EMP1023"
-                className="w-full rounded-lg border px-3 py-2 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="border-t pt-4 flex justify-end gap-3">
-           
-
+          {/* Action Buttons */}
+          <div className="pt-8 border-t flex justify-end gap-4">
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-60"
+              className="px-10 py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Creating..." : "Create Employee"}
+             Confirm & Register
             </button>
           </div>
         </form>
@@ -164,5 +200,40 @@ const AddEmploy = () => {
     </div>
   );
 };
+
+/* Components maintained exactly as requested */
+const Input = ({ label, name, type = "text", value, onChange, placeholder, error }) => (
+  <div className="flex flex-col">
+    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-tight">{label}</label>
+    <input
+      type={type}
+      name={name}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={`w-full rounded-lg border px-3 py-2.5 text-sm outline-none transition-all ${
+        error ? "border-red-500 focus:ring-red-100" : "border-gray-200 focus:ring-blue-100 focus:border-blue-400"
+      } focus:ring-4`}
+    />
+    {error && <span className="text-[10px] text-red-500 mt-1 font-medium">{error}</span>}
+  </div>
+);
+
+const Select = ({ label, name, value, onChange, options }) => (
+  <div className="flex flex-col">
+    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 tracking-tight">{label}</label>
+    <select
+      name={name}
+      value={value}
+      onChange={onChange}
+      className="w-full rounded-lg border-gray-200 border px-3 py-2.5 text-sm bg-white focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all"
+    >
+      <option value="">Select Option</option>
+      {options.map((opt) => (
+        <option key={opt.v} value={opt.v}>{opt.l}</option>
+      ))}
+    </select>
+  </div>
+);
 
 export default AddEmploy;

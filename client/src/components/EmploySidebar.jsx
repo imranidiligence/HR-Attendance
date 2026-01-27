@@ -6,6 +6,7 @@ import { SlCalender } from "react-icons/sl";
 import { CgProfile } from "react-icons/cg";
 import { House, LockKeyhole, BookAIcon, X } from "lucide-react";
 import { Tooltip } from "@mui/material";
+import logo from "../assets/ids-logo.png"
 
 const EmploySidebar = ({ open, setOpen }) => {
   const navClass = ({ isActive }) =>
@@ -27,12 +28,12 @@ const EmploySidebar = ({ open, setOpen }) => {
       `}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b h-14 mx-auto my-auto ">
         <button
-          // onClick={() => setOpen(!open)}
-          className="text-lg font-semibold flex items-center gap-2"
+          onClick={() => setOpen(!open)}
+          className="text-lg font-semibold flex justify-center items-center gap-2 mt-4"
         >
-          {open ? "Employee Attendance" : <BookAIcon />}
+          {open ? <img src={logo} className="w-[80px] h-[50px] object-fill"/>: <BookAIcon />}
         </button>
 
         {/* Close button (mobile only) */}
@@ -51,7 +52,7 @@ const EmploySidebar = ({ open, setOpen }) => {
         // onClick={() => setOpen(false)}
         >
           <House />
-          {open && <span>Overview</span>}
+          {open && <span className="text-md">My Dashboard</span>}
         </NavLink>
 
         <NavLink to="/employee/attendance" className={navClass}
@@ -73,17 +74,17 @@ const EmploySidebar = ({ open, setOpen }) => {
          
          >
           <MdOutlineHolidayVillage size={20} />
-          {open && <span>Holidays</span>}
+          {open && <span>My Holidays</span>}
         </NavLink>
 
         {/* <NavLink to="/employee/leaves" className={navClass} onClick={() => setOpen(false)}>
           <SlCalender size={20} />
           {open && <span>My Leaves</span>}
         </NavLink> */}
-        <NavLink to="/employee/change-password" className={navClass}>
+        {/* <NavLink to="/employee/change-password" className={navClass}>
           <LockKeyhole />
-          {open && <span>Change Password</span>}
-        </NavLink>
+          {open && <span>My Change Password</span>}
+        </NavLink> */}
 
         <NavLink
           to="/employee/leaves"

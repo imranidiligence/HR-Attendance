@@ -1,9 +1,10 @@
 import { Typography } from "@mui/material";
+import axios from "axios";
 import AttendanceBarChart from "../charts/AttendanceBarChart";
 import Leavecards from "../components/Leavecards";
 import MonthlyHolidays from "../components/Monthlyholidays";
 import Cards from "../components/Cards";
-import profileImg from "../assets/avatar.webp";
+import defaultProfile from "../assets/avatar.webp";
 import AttendanceDoughnutChart from "../charts/Doughnut";
 import { IoPerson, IoExitOutline } from "react-icons/io5";
 import { IoEnterOutline } from "react-icons/io5";
@@ -13,12 +14,16 @@ import { BsFillPersonXFill } from "react-icons/bs";
 import { TbClockX } from "react-icons/tb";
 import { FaUserClock } from "react-icons/fa6";
 import { SlCalender } from "react-icons/sl";
-import { useContext } from "react";
+import { useActionState, useContext, useEffect } from "react";
 import { EmployContext } from "../context/EmployContextProvider";
 import Loader from "../components/Loader";
+import { AuthContext } from "../context/AuthContextProvider";
 
 
 const Overview = () => {
+
+  const {token } = useContext(AuthContext);
+
   const getTime = (dateTime) => {
     if (!dateTime) return "--";
   
@@ -34,18 +39,109 @@ const Overview = () => {
       hour12: false, // change to true if you want AM/PM
     });
   };
+
+  // useEffect(() => {
+  //   const fetchProfileImage = async () => {
+  //     // 1. Define your default image path
+  //     const DEFAULT_IMAGE = defaultProfile;
   
+  //     try {
+  //       const res = await axios.get(
+  //         "http://localhost:5000/api/employee/profile/image",
+  //         {
+  //           headers: { Authorization: `Bearer ${token}` },
+  //         }
+  //       );
+  
+  //       // 2. Check if the property exists and isn't empty
+  //       if (res.data && res.data.profile_image) {
+  //         // Cache busting is smart! Keeps the image fresh after an update
+  //         setProfileImage(`${res.data.profile_image}?t=${new Date().getTime()}`);
+  //       } else {
+  //         setProfileImage(DEFAULT_IMAGE);
+  //       }
+  //     } catch (error) {
+  //       console.error("Error fetching profile image:", error);
+  //       // 3. Fallback to default on error (e.g., 404 Not Found)
+  //       setProfileImage(DEFAULT_IMAGE);
+  //     }
+  //   };
+  
+  //   if (token) {
+  //     fetchProfileImage();
+  //   }
+  // }, [token]); 
+
+  
+    useEffect(() => {
+      const fetchProfileImage = async () => {
+        // 1. Define your default image path
+        const DEFAULT_IMAGE = defaultProfile;
+    
+        try {
+          const res = await axios.get(
+            "http://localhost:5000/api/employee/profile/image",
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+    
+          // 2. Check if the property exists and isn't empty
+          if (res.data && res.data.profile_image) {
+            // Cache busting is smart! Keeps the image fresh after an update
+            setProfileImage(`${res.data.profile_image}?t=${new Date().getTime()}`);
+          } else {
+            setProfileImage(DEFAULT_IMAGE);
+          }
+        } catch (error) {
+          console.error("Error fetching profile image:", error);
+          // 3. Fallback to default on error (e.g., 404 Not Found)
+          setProfileImage(DEFAULT_IMAGE);
+        }
+      };
+    
+      if (token) {
+        fetchProfileImage();
+      }
+    }, [token]); 
+
+
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const emp_id = user?.emp_id;
   const role = user?.role?.toLowerCase()?.trim();
   const isAdmin = role === "admin";
 
 
-  const { singleAttendance,loading } = useContext(EmployContext);
+  const { singleAttendance,loading,profileImage,setProfileImage } = useContext(EmployContext);
 
   // console.log(singleAttendance);
   
+useEffect(() => {
+    const fetchProfileImage = async () => {
+      try {
+        const res = await axios.get(
+          "http://localhost:5000/api/employee/profile/image",
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        // Add a timestamp to the URL to bypass browser cache (cache busting)
+        const imageUrl = res.data.profile_image
+          ? `${res.data.profile_image}?t=${new Date().getTime()}`
+          : defaultProfile;
 
+        setProfileImage(imageUrl);
+      } catch (error) {
+        console.error("Error fetching profile image:", error);
+        setProfileImage(profileImgs);
+      }
+    };
+
+    if (token) {
+      fetchProfileImage();
+    }
+  }, [token,emp_id]); 
 
 
 // take latest attendance (already DESC from backend)
@@ -105,9 +201,10 @@ const empCardData = singleAttendance
   
 
   const leaveData = [
-    { id: 1, title: "Total Leaves Taken", value: 5, icon: <SlCalender />, bgColor: "#32a852" },
-    { id: 2, title: "Leave Requests", value: 2, icon: <SlCalender />, bgColor: "#e8970c" },
-    { id: 3, title: "Leaves Allowed", value: 15, icon: <SlCalender />, bgColor: "#e60707" }
+    { id: 1, title: "Total Leaves Allowed", value: 15, icon: <SlCalender />, bgColor: "#4f46e5" },
+    { id: 2, title: "Total Leaves Taken", value: 5, icon: <SlCalender />, bgColor: "#32a852" },
+    { id: 3, title: "Leave Requests", value: 2, icon: <SlCalender />, bgColor: "#e8970c" }
+    
   ];
 
   const holidayList = [
@@ -126,7 +223,7 @@ const empCardData = singleAttendance
   }
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-5">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-3 sm:p-2">
 
   {/* Header */}
   <div className=" bg-[#222F7D]  rounded-xl py-2 mb-6 shadow-lg">
@@ -178,7 +275,7 @@ const empCardData = singleAttendance
         {/* Avatar */}
         <div className="-mt-14 flex justify-center">
           <img
-            src={profileImg}
+            src={profileImage ? profileImage:profileImgs}
             alt="profile"
             className="w-28 h-28 rounded-full border-4 border-white shadow-lg object-cover"
           />
@@ -241,7 +338,7 @@ const empCardData = singleAttendance
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-red-50 rounded-xl p-5">
             <p className="text-sm text-gray-500">Late Coming</p>
-            <h3 className="text-3xl font-bold text-red-500 mt-1">250</h3>
+            <h3 className="text-3xl font-bold text-red-500 mt-1">2</h3>
           </div>
 
           <div className="bg-orange-50 rounded-xl p-5">
@@ -269,3 +366,5 @@ const empCardData = singleAttendance
 };
 
 export default Overview;
+AnimationPlaybackEvent
+      

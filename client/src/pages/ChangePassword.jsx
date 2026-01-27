@@ -5,6 +5,8 @@ import { toast } from "react-hot-toast";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 const ChangePassword = () => {
+
+  const user = JSON.parse(localStorage.getItem("user"));
   const [empData, setEmpData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -93,7 +95,7 @@ const ChangePassword = () => {
       {/* Sticky Header */}
       <div className="sticky top-0 z-50 bg-[#222F7D] rounded-lg mb-6">
         <Typography className="text-white py-2 text-2xl text-center">
-          Change Password
+         {user?.role === 'admin' ? "Admin Change Password":"Employee Change Password"} 
         </Typography>
       </div>
 

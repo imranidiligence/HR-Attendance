@@ -1,0 +1,305 @@
+/* Main Background Gradient */
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea, #764ba2, #667eea);
+    background-size: 400% 400%;
+    animation: gradientBackground 15s ease infinite;
+  }
+  
+  @keyframes gradientBackground {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  /* Glass Card Effect */
+  .glass-card {
+    backdrop-filter: blur(15px);
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+  }
+  
+  /* Animated Background Section */
+  .animated-bg {
+    background: linear-gradient(270deg, #4facfe, #00f2fe, #667eea, #764ba2);
+    background-size: 400% 400%;
+    animation: gradientMove 8s ease infinite;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  @keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  /* Floating Particles Animation */
+  .particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  
+  .particle {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    animation: float 15s infinite linear;
+  }
+  
+  .particle:nth-child(1) {
+    width: 40px;
+    height: 40px;
+    top: 10%;
+    left: 20%;
+    animation-delay: 0s;
+  }
+  
+  .particle:nth-child(2) {
+    width: 60px;
+    height: 60px;
+    top: 60%;
+    left: 70%;
+    animation-delay: -2s;
+  }
+  
+  .particle:nth-child(3) {
+    width: 30px;
+    height: 30px;
+    top: 30%;
+    left: 80%;
+    animation-delay: -4s;
+  }
+  
+  .particle:nth-child(4) {
+    width: 50px;
+    height: 50px;
+    top: 80%;
+    left: 30%;
+    animation-delay: -6s;
+  }
+  
+  .particle:nth-child(5) {
+    width: 25px;
+    height: 25px;
+    top: 40%;
+    left: 10%;
+    animation-delay: -8s;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+      opacity: 0.8;
+    }
+    33% {
+      transform: translateY(-30px) rotate(120deg);
+      opacity: 1;
+    }
+    66% {
+      transform: translateY(20px) rotate(240deg);
+      opacity: 0.6;
+    }
+  }
+  
+  /* Moving Images/Shapes */
+  .floating-shapes {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  
+  .shape {
+    position: absolute;
+    opacity: 0.1;
+  }
+  
+  .shape-1 {
+    width: 200px;
+    height: 200px;
+    background: linear-gradient(45deg, #667eea, #00f2fe);
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    top: -50px;
+    right: -50px;
+    animation: rotate 25s linear infinite;
+  }
+  
+  .shape-2 {
+    width: 150px;
+    height: 150px;
+    background: linear-gradient(45deg, #764ba2, #4facfe);
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    bottom: -30px;
+    left: -30px;
+    animation: rotateReverse 20s linear infinite;
+  }
+  
+  @keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  @keyframes rotateReverse {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
+  
+  /* Form Styling */
+  .form-container {
+    background: white;
+    position: relative;
+    z-index: 2;
+  }
+  
+  .form-control {
+    border: 1px solid #e0e0e0;
+    padding: 12px 20px;
+    transition: all 0.3s ease;
+  }
+  
+  .form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+  }
+  
+  /* Password Toggle */
+  .toggle-password {
+    position: absolute;
+    top: 42px;
+    right: 20px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    z-index: 10;
+    transition: transform 0.2s ease;
+  }
+  
+  .toggle-password:hover {
+    transform: scale(1.2);
+  }
+  
+  /* Button Animation */
+  .animated-btn {
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .animated-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+  }
+  
+  .animated-btn:active {
+    transform: translateY(-1px);
+  }
+  
+  .animated-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+  
+  /* Loading Animation */
+  .spinner-border {
+    vertical-align: middle;
+  }
+  
+  /* Floating Label Animation */
+  .form-label {
+    transition: all 0.3s ease;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  
+  .form-control:focus + .form-label {
+    color: #667eea;
+  }
+  
+  /* Checkbox Customization */
+  .form-check-input:checked {
+    background-color: #667eea;
+    border-color: #667eea;
+  }
+  
+  .form-check-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+  }
+  
+  /* Link Styling */
+  .forgot-link {
+    color: #667eea;
+    transition: all 0.3s ease;
+    position: relative;
+    display: inline-block;
+  }
+  
+  .forgot-link:hover {
+    color: #764ba2;
+    transform: translateY(-1px);
+  }
+  
+  .forgot-link::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 1px;
+    bottom: -2px;
+    left: 0;
+    background-color: #764ba2;
+    transition: width 0.3s ease;
+  }
+  
+  .forgot-link:hover::after {
+    width: 100%;
+  }
+  
+  /* Content Animation */
+  .content-animation {
+    animation: fadeInUp 1s ease-out;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Responsive Adjustments */
+  @media (max-width: 992px) {
+    .glass-card {
+      margin: 20px;
+    }
+    
+    .shape-1, .shape-2 {
+      width: 150px;
+      height: 150px;
+    }
+  }
+  
+  @media (max-width: 576px) {
+    .form-container {
+      padding: 30px 25px !important;
+    }
+    
+    .toggle-password {
+      top: 38px;
+      right: 15px;
+    }
+  }

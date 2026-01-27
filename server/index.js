@@ -1,13 +1,17 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path")
 const ZKLib = require("zklib-js");
 const {Client} = require("pg");
 const {connectDB,db} = require("./db/connectDB");
 const userRoutes = require("./routes/user.routes");
 const employRoutes = require("./routes/employ.routes");
 const profileRoutes = require("./routes/profile.routes");
-const attendanceRoutes = require("./routes/attendance.routes")
-const adminRoutes = require("./routes/admin.routes");
+const attendanceRoutes = require("./routes/attendance.routes");
+const shiftRoutes = require("./routes/shifts.routes");
+const reportingRoutes = require("./routes/reporting.routes");
+const leavesRoutes = require("./routes/leave.routes");
+// const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 require("dotenv").config();
 
@@ -27,6 +31,11 @@ app.use(cors({
   }));
   
 
+
+// Serve uploads folder
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+
 // Auth Routes
 app.use("/api/auth",userRoutes);
 // app.use("/employee-dashboard",employRoutes);
@@ -42,6 +51,15 @@ app.use("/api/employee/profile",profileRoutes);
 app.use("/api/admin/attendance", attendanceRoutes);
 // app.use("/admin-dashboard",adminRoutes)
 
+// Shifts Routs
+app.use("/api/admin/shifts",shiftRoutes);
+
+// Reporting
+app.use("/api",reportingRoutes)
+
+// Leaves
+
+app.use("/api/leaves/types",leavesRoutes);
 
 
 app.listen(PORT,()=>{

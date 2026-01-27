@@ -1,14 +1,26 @@
 import axiosInstance, { scheduleAutoLogout } from "../api/axiosInstance";
 import { jwtDecode } from "jwt-decode";
-
+import axios from "axios";
 import { toast } from "react-hot-toast";
 import api from "../api/axiosInstance";
 
 export const addEmploy = async (data) => {
-  const response = await axiosInstance.post("/admin/attendance/add-employee", data);
+  // Get the token from wherever you store it (localStorage or Context)
+  const token = localStorage.getItem("token"); 
+
+  const response = await axios.post(
+    "http://localhost:5000/api/admin/attendance/add-employee", 
+    data, 
+    {
+      headers: {
+        // THIS IS THE MISSING PIECE
+        "Content-Type":"application/json",
+        Authorization: `Bearer ${token}` 
+      }
+    }
+  );
   return response.data;
 };
-
 
 export const loginUser = async (credentials) => {
   const response = await api.post("/auth/login", credentials);

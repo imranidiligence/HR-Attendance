@@ -1,11 +1,287 @@
 const { db } = require("../db/connectDB");
 const { getDeviceAttendance } = require("../services/zk.service");
-
+// import sendEmail, { sendMail } from "../utils/mailer";
+const bcrypt = require("bcrypt");
 /* Sync machine logs */
 exports.syncAttendance = async (req, res) => {
   await getDeviceAttendance();
   res.json({ message: "Machine logs synced" });
 };
+
+exports.getAdminMyAttendance = async (req, res) => {
+  try {
+    const empId = req.user.emp_id;
+    console.log("empId", empId);
+
+    
+    await db.query(`
+      INSERT INTO daily_attendance (emp_id, attendance_date, punch_in, punch_out, expected_hours)
+      SELECT
+        emp_id,
+        attendance_date,
+        MIN(local_time) FILTER (WHERE local_time::time >= TIME '10:00') AS punch_in,
+        MAX(local_time) AS punch_out,
+        NULL AS expected_hours
+      FROM (
+        SELECT
+          emp_id,
+          punch_time AT TIME ZONE 'Asia/Kolkata' AS local_time,
+          CASE
+            WHEN (punch_time AT TIME ZONE 'Asia/Kolkata')::time < TIME '04:00'
+            THEN (punch_time AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day'
+            ELSE (punch_time AT TIME ZONE 'Asia/Kolkata')::date
+          END AS attendance_date
+        FROM activity_log
+        WHERE emp_id = $1
+          AND (punch_time AT TIME ZONE 'Asia/Kolkata')::date >= CURRENT_DATE - INTERVAL '2 day'
+      ) t
+      GROUP BY emp_id, attendance_date
+      ON CONFLICT (emp_id, attendance_date) DO NOTHING;
+    `, [empId]);
+
+    
+    const { rows } = await db.query(`
+      WITH dates AS (
+        SELECT generate_series(
+          date_trunc('month', CURRENT_DATE)::date,
+          CURRENT_DATE,
+          INTERVAL '1 day'
+        )::date AS attendance_date
+      ),
+      activity_data AS (
+        SELECT
+          emp_id,
+          attendance_date,
+          MIN(local_time) FILTER (WHERE local_time::time >= TIME '10:00') AS punch_in,
+          MAX(local_time) AS punch_out
+        FROM (
+          SELECT
+            emp_id,
+            punch_time AT TIME ZONE 'Asia/Kolkata' AS local_time,
+            CASE
+              WHEN (punch_time AT TIME ZONE 'Asia/Kolkata')::time < TIME '04:00'
+              THEN (punch_time AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day'
+              ELSE (punch_time AT TIME ZONE 'Asia/Kolkata')::date
+            END AS attendance_date
+          FROM activity_log
+          WHERE emp_id = $1
+        ) t
+        GROUP BY emp_id, attendance_date
+      ),
+      daily_attendance_data AS (
+        SELECT *
+        FROM daily_attendance
+        WHERE emp_id = $1
+      ),
+      attendance_log_data AS (
+        SELECT
+          emp_id,
+          attendance_date,
+          MIN(local_time) AS punch_in,
+          MAX(local_time) AS punch_out
+        FROM (
+          SELECT
+            emp_id,
+            punch_time AT TIME ZONE 'Asia/Kolkata' AS local_time,
+            CASE
+              WHEN (punch_time AT TIME ZONE 'Asia/Kolkata')::time < TIME '04:00'
+              THEN (punch_time AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '1 day'
+              ELSE (punch_time AT TIME ZONE 'Asia/Kolkata')::date
+            END AS attendance_date
+          FROM attendance_logs
+          WHERE emp_id = $1
+        ) x
+        GROUP BY emp_id, attendance_date
+      )
+      SELECT
+        $1 AS emp_id,
+        u.name AS employee_name,
+        to_char(d.attendance_date, 'YYYY-MM-DD') AS attendance_date,
+        COALESCE(ad.punch_in, da.punch_in, al.punch_in) AS punch_in,
+        COALESCE(ad.punch_out, da.punch_out, al.punch_out) AS punch_out,
+        CASE
+          WHEN COALESCE(ad.punch_in, da.punch_in, al.punch_in) IS NOT NULL
+           AND COALESCE(ad.punch_out, da.punch_out, al.punch_out) IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (
+            COALESCE(ad.punch_out, da.punch_out, al.punch_out)
+            - COALESCE(ad.punch_in, da.punch_in, al.punch_in)
+          ))
+          ELSE NULL
+        END AS total_seconds,
+        da.expected_hours,
+        CASE
+          WHEN COALESCE(ad.punch_in, da.punch_in, al.punch_in) IS NULL THEN 'Absent'
+          WHEN COALESCE(ad.punch_out, da.punch_out, al.punch_out) IS NULL THEN 'Working'
+          ELSE 'Present'
+        END AS status
+      FROM dates d
+      LEFT JOIN activity_data ad
+        ON ad.emp_id = $1 AND ad.attendance_date = d.attendance_date
+      LEFT JOIN daily_attendance_data da
+        ON da.emp_id = $1 AND da.attendance_date = d.attendance_date
+      LEFT JOIN attendance_log_data al
+        ON al.emp_id = $1 AND al.attendance_date = d.attendance_date
+      JOIN users u ON u.emp_id = $1
+      ORDER BY d.attendance_date DESC;
+    `, [empId]);
+
+ 
+    const formatted = rows.map(r => {
+      let total_hours = null;
+      if (r.total_seconds !== null) {
+        const secs = Number(r.total_seconds);
+        total_hours = {
+          hours: Math.floor(secs / 3600),
+          minutes: Math.floor((secs % 3600) / 60)
+        };
+      }
+      return { ...r, total_hours };
+    });
+
+    
+    const employeeList = formatted.map(r => ({
+      name: r.employee_name,
+      date: r.attendance_date,
+      punch_in: r.punch_in,
+      punch_out: r.punch_out,
+      status: r.status,
+      total_hours: r.total_hours
+    }));
+
+    const time = new Date().toLocaleString("en-IN", { hour12: false });
+
+    
+    const adminEmail = "admin@example.com"; // replace with real admin email
+    await sendEmail(adminEmail, "All Employees Present", "admin_all_present", {
+      time,
+      employee_list: employeeList
+    });
+
+  
+    res.status(200).json({
+      total_documents: formatted.length,
+      attendance: formatted
+    });
+
+  } catch (err) {
+    console.error("❌ getAdminMyAttendance error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+
+exports.addEmployController = async (req, res) => {
+
+  const client = await db.connect();
+
+  // console.log(req.body)
+  try {
+    const {
+      name,
+      email,
+      password,
+      emp_id,
+      role,
+      shift_id,
+      dob,
+      gender,
+      department,
+      joining_date,
+      maritalstatus,
+      nominee,
+      aadharnumber,
+      bloodgroup,
+      nationality,
+      address,
+      is_active,
+    } = req.body;
+
+    // 1. Validation
+    if (!name || !email || !password || !emp_id || !department) {
+      return res.status(400).json({ message: "All essential fields required" });
+    }
+
+    // 2. Start Transaction
+    await client.query("BEGIN");
+
+    // 3. Hash Password
+    const hashedPassword = await bcrypt.hash(String(password), 10);
+    const profile_image = req.file ? `/uploads/${req.file.filename}` : null;
+
+    // 4. Insert into 'users' table
+    const userResult = await client.query(
+      `
+      INSERT INTO users 
+        (name, email, password, role, emp_id, is_active, shift_id, profile_image)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id
+      `,
+      [
+        name,
+        email.toLowerCase().trim(),
+        hashedPassword,
+        role || "employee",
+        emp_id,
+        is_active === undefined ? true : is_active,
+        shift_id || 1,
+        profile_image,
+      ]
+    );
+
+    const newUserId = userResult.rows[0].id;
+
+    // 5. Insert into 'personal' table
+    await client.query(
+      `
+      INSERT INTO personal 
+        (emp_id, dob, gender, department, joining_date, maritalstatus, nominee, aadharnumber, bloodgroup, nationality, address)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `,
+      [
+        emp_id,
+        dob || null,
+        gender,
+        department,
+        joining_date || null,
+        maritalstatus,
+        nominee,
+        aadharnumber,
+        bloodgroup,
+        nationality,
+        address,
+      ]
+    );
+
+    // 6. Commit Transaction
+    await client.query("COMMIT");
+    
+
+    // await sendEmail(email, "Welcome to the Company", "employee_creation", { name, emp_id, email });
+
+
+    res.status(201).json({
+      message: "Employee created successfully",
+      user: { id: newUserId, emp_id, name, email },
+    });
+    
+  } catch (error) {
+    // 7. Rollback in case of error (avoids partial data)
+    await client.query("ROLLBACK");
+    console.error("Transaction Error:", error);
+    
+    // Handle unique constraint errors (e.g., duplicate email or emp_id)
+    if (error.code === '23505') {
+        return res.status(400).json({ message: "Email or Employee ID already exists" });
+    }
+    
+    res.status(500).json({ message: "Internal Server Error" });
+  // } finally {
+    // Release client back to the pool
+    client.release();
+  }
+};
+
+
 
 function toIST(date) {
   return new Date(date).toLocaleString("en-IN", {
@@ -595,12 +871,12 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 function intervalToHHMM(total_hours) {
   if (!total_hours) return "00:00";
 
-  // Case 1️⃣ already string "HH:MM"
+  // Case  already string "HH:MM"
   if (typeof total_hours === "string") {
     return total_hours;
   }
 
-  // Case 2️⃣ PostgreSQL INTERVAL object
+  // Case  PostgreSQL INTERVAL object
   const h = total_hours.hours || 0;
   const m = total_hours.minutes || 0;
   const s = total_hours.seconds || 0;
@@ -638,9 +914,7 @@ exports.getMyTodayAttendance = async (req, res) => {
       todayHours = intervalToHHMM(today.total_hours);
     }
 
-    /* -------------------------------------------------
-        FALLBACK → LIVE activity_log
-    --------------------------------------------------*/
+    
     if (!today) {
       const liveResult = await db.query(
         `
@@ -681,9 +955,7 @@ exports.getMyTodayAttendance = async (req, res) => {
     }
 
 
-    /* -------------------------------------------------
-    WEEKLY HOURS (MONDAY → YESTERDAY ONLY)
---------------------------------------------------*/
+    
     const weeklyResult = await db.query(
       `
   WITH week_bounds AS (
@@ -723,9 +995,7 @@ exports.getMyTodayAttendance = async (req, res) => {
     const weeklyMins = Math.floor((weeklySeconds % 3600) / 60);
 
 
-    /* -------------------------------------------------
-       RESPONSE
-    --------------------------------------------------*/
+    
     res.json({
       today: {
         punch_in: today?.punch_in ?? null,
@@ -763,7 +1033,7 @@ exports.getMyAttendance = async (req, res) => {
   try {
     const empId = req.user.emp_id;
 
-    // 1️⃣ Store last 2 days from activity_log into daily_attendance if not already present
+    // Store last 2 days from activity_log into daily_attendance if not already present
     await db.query(`
       INSERT INTO daily_attendance (emp_id, attendance_date, punch_in, punch_out, expected_hours)
       SELECT
@@ -789,7 +1059,7 @@ exports.getMyAttendance = async (req, res) => {
       ON CONFLICT (emp_id, attendance_date) DO NOTHING; -- avoid duplicates
     `, [empId]);
 
-    // 2️⃣ Fetch attendance for current month
+    //  Fetch attendance for current month
     const { rows } = await db.query(`
       WITH dates AS (
         SELECT generate_series(
@@ -1069,16 +1339,6 @@ exports.getMyAttendance = async (req, res) => {
 //     res.status(500).json({ message: "Server error" });
 //   }
 // };
-
-
-
-
-
-
-
-
-
-
 
 
 

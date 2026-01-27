@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 
+.react-datepicker__input-container input::placeholder {
+  color: black !important;
+  opacity: 1; /* Ensures color is vivid in all browsers */
+}
+
+
+.react-datepicker__input-container input {
+  font-weight: 500;
+}
 @keyframes spin988 {
     0% {
       transform: scale(1) rotate(0deg);
@@ -32,3 +41,596 @@
     scrollbar-width: none;
   }
   
+
+
+  /* Main Background Gradient */
+.bg-gradient {
+    background: linear-gradient(135deg, #667eea, #764ba2, #667eea);
+    background-size: 400% 400%;
+    animation: gradientBackground 15s ease infinite;
+  }
+  
+  @keyframes gradientBackground {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  /* Glass Card Effect */
+  .glass-card {
+    backdrop-filter: blur(15px);
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+  }
+  
+  /* Animated Background Section */
+  .animated-bg {
+    background: linear-gradient(270deg, #4facfe, #00f2fe, #667eea, #764ba2);
+    background-size: 400% 400%;
+    animation: gradientMove 8s ease infinite;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  @keyframes gradientMove {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  /* Floating Particles Animation */
+  .particles {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  
+  .particle {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 50%;
+    animation: float 15s infinite linear;
+  }
+  
+  .particle:nth-child(1) {
+    width: 40px;
+    height: 40px;
+    top: 10%;
+    left: 20%;
+    animation-delay: 0s;
+  }
+  
+  .particle:nth-child(2) {
+    width: 60px;
+    height: 60px;
+    top: 60%;
+    left: 70%;
+    animation-delay: -2s;
+  }
+  
+  .particle:nth-child(3) {
+    width: 30px;
+    height: 30px;
+    top: 30%;
+    left: 80%;
+    animation-delay: -4s;
+  }
+  
+  .particle:nth-child(4) {
+    width: 50px;
+    height: 50px;
+    top: 80%;
+    left: 30%;
+    animation-delay: -6s;
+  }
+  
+  .particle:nth-child(5) {
+    width: 25px;
+    height: 25px;
+    top: 40%;
+    left: 10%;
+    animation-delay: -8s;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0) rotate(0deg);
+      opacity: 0.8;
+    }
+    33% {
+      transform: translateY(-30px) rotate(120deg);
+      opacity: 1;
+    }
+    66% {
+      transform: translateY(20px) rotate(240deg);
+      opacity: 0.6;
+    }
+  }
+  
+  /* Moving Images/Shapes */
+  .floating-shapes {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1;
+  }
+  
+  .shape {
+    position: absolute;
+    opacity: 0.1;
+  }
+  
+  .shape-1 {
+    width: 200px;
+    height: 200px;
+    background: linear-gradient(45deg, #667eea, #00f2fe);
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    top: -50px;
+    right: -50px;
+    animation: rotate 25s linear infinite;
+  }
+  
+  .shape-2 {
+    width: 150px;
+    height: 150px;
+    background: linear-gradient(45deg, #764ba2, #4facfe);
+    border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+    bottom: -30px;
+    left: -30px;
+    animation: rotateReverse 20s linear infinite;
+  }
+  
+  @keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+  
+  @keyframes rotateReverse {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(-360deg); }
+  }
+  
+  /* Form Styling */
+  .form-container {
+    background: white;
+    position: relative;
+    z-index: 2;
+  }
+  
+  .form-control {
+    border: 1px solid #e0e0e0;
+    padding: 12px 20px;
+    transition: all 0.3s ease;
+  }
+  
+  .form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+  }
+  
+  /* Password Toggle */
+  .toggle-password {
+    position: absolute;
+    top: 42px;
+    right: 20px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    z-index: 10;
+    transition: transform 0.2s ease;
+  }
+  
+  .toggle-password:hover {
+    transform: scale(1.2);
+  }
+  
+  /* Button Animation */
+  .animated-btn {
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border: none;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .animated-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+  }
+  
+  .animated-btn:active {
+    transform: translateY(-1px);
+  }
+  
+  .animated-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+  
+  /* Loading Animation */
+  .spinner-border {
+    vertical-align: middle;
+  }
+  
+  /* Floating Label Animation */
+  .form-label {
+    transition: all 0.3s ease;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  
+  .form-control:focus + .form-label {
+    color: #667eea;
+  }
+  
+  /* Checkbox Customization */
+  .form-check-input:checked {
+    background-color: #667eea;
+    border-color: #667eea;
+  }
+  
+  .form-check-input:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+  }
+  
+  /* Link Styling */
+  .forgot-link {
+    color: #667eea;
+    transition: all 0.3s ease;
+    position: relative;
+    display: inline-block;
+  }
+  
+  .forgot-link:hover {
+    color: #764ba2;
+    transform: translateY(-1px);
+  }
+  
+  .forgot-link::after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 1px;
+    bottom: -2px;
+    left: 0;
+    background-color: #764ba2;
+    transition: width 0.3s ease;
+  }
+  
+  .forgot-link:hover::after {
+    width: 100%;
+  }
+  
+  /* Content Animation */
+  .content-animation {
+    animation: fadeInUp 1s ease-out;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Responsive Adjustments */
+  @media (max-width: 992px) {
+    .glass-card {
+      margin: 20px;
+    }
+    
+    .shape-1, .shape-2 {
+      width: 150px;
+      height: 150px;
+    }
+  }
+  
+  @media (max-width: 576px) {
+    .form-container {
+      padding: 30px 25px !important;
+    }
+    
+    .toggle-password {
+      top: 38px;
+      right: 15px;
+    }
+  }
+
+  /* Steps  */
+
+  
+
+
+/* Holiday Calendar Styles */
+.holiday-calendar-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  min-height: 100vh;
+}
+
+.calendar-header {
+  text-align: center;
+  margin-bottom: 3rem;
+  padding: 2rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.calendar-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.calendar-subtitle {
+  color: #6c757d;
+  font-size: 1.1rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Month Sections */
+.month-section {
+  margin-bottom: 3rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.month-title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #2c3e50;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 3px solid #eef4ff;
+  position: relative;
+}
+
+.month-title:after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 80px;
+  height: 3px;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  border-radius: 3px;
+}
+
+/* Holiday Card Enhanced */
+.holiday-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 1.8rem;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+  border-top: 5px solid;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.holiday-card:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.holiday-card:hover {
+  transform: translateY(-10px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.holiday-card:hover:before {
+  opacity: 1;
+}
+
+/* Card Types */
+.holiday-card.public { border-top-color: #28a745; }
+.holiday-card.national { border-top-color: #dc3545; }
+.holiday-card.religious { border-top-color: #6f42c1; }
+.holiday-card.regional { border-top-color: #fd7e14; }
+
+/* Date Badge */
+.holiday-date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 1.4rem;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 8px 20px rgba(0, 123, 255, 0.3);
+  position: relative;
+  z-index: 1;
+}
+
+.holiday-date:after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  background: linear-gradient(135deg, rgba(0, 123, 255, 0.2), rgba(5, 86, 179, 0.2));
+  border-radius: 50%;
+  z-index: -1;
+}
+
+/* Holiday Name */
+.holiday-name {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 0.8rem;
+  line-height: 1.3;
+}
+
+/* Holiday Type */
+.holiday-type {
+  display: inline-block;
+  padding: 0.4rem 1.2rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 20px;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.holiday-type.public { background: #d4edda; color: #155724; }
+.holiday-type.national { background: #f8d7da; color: #721c24; }
+.holiday-type.religious { background: #e2d9f3; color: #3d2c6b; }
+.holiday-type.regional { background: #ffe5d0; color: #8c5103; }
+
+/* Description */
+.holiday-description {
+  font-size: 1rem;
+  color: #555;
+  line-height: 1.7;
+  margin-bottom: 1rem;
+  flex-grow: 1;
+}
+
+/* Additional Info */
+.holiday-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.info-item i {
+  font-size: 1rem;
+  color: #007bff;
+}
+
+/* Popular Badge */
+.popular-badge {
+  background: #fff3cd;
+  color: #856404;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid #ffeaa7;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+}
+
+.empty-state-icon {
+  font-size: 4rem;
+  color: #6c757d;
+  margin-bottom: 1.5rem;
+}
+
+/* Responsive Design */
+@media (max-width: 991px) {
+  .calendar-title {
+      font-size: 2rem;
+  }
+  
+  .month-section {
+      padding: 1rem;
+  }
+  
+  .holiday-card {
+      padding: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .holiday-calendar-container {
+      padding: 2rem 0.5rem;
+  }
+  
+  .calendar-header {
+      padding: 1.5rem;
+  }
+  
+  .calendar-title {
+      font-size: 1.8rem;
+  }
+  
+  .holiday-date {
+      width: 50px;
+      height: 50px;
+      font-size: 1.2rem;
+  }
+  
+  .holiday-name {
+      font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .month-title {
+      font-size: 1.5rem;
+  }
+  
+  .holiday-card {
+      padding: 1.2rem;
+  }
+  
+  .holiday-info {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+  }
+  
+  .search-filter-container .row > div {
+      margin-bottom: 1rem;
+  }
+}

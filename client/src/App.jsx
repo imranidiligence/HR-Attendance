@@ -21,6 +21,9 @@ import AddEmploy from "./components/AddEmploy";
 
 import ProtectedRoute from "./routes/ProtectedRoute";
 import AdminRoute from "./routes/AdminRoute";
+import AdminAttendancePage from "./pages/AdminAttendancePage";
+import EmployeeDetails from "./components/EmployDetails";
+import ReportingAdmin from "./pages/ReportingAdmin";
 
 function App() {
   const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
@@ -86,8 +89,12 @@ function App() {
             <Route path="employees" element={<Employelist />} />
             <Route path="add-emp" element={<AddEmploy />} />
             <Route path="leaves" element={<Adminleaves />} />
+            <Route path="admin-attendance" element={<AdminAttendancePage/>}/>
             <Route path="change-password" element={<ChangePassword />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="employee-details/:emp_id" element={<EmployeeDetails />} />
+            <Route path="reporting" element={<ReportingAdmin/> }/>
+            <Route path="profile" element={<Profile />} />
             <Route path="help" element={<Help />} />
           </Route>
         </Route>
