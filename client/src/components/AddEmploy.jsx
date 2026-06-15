@@ -17,12 +17,13 @@ const AddEmployee = () => {
   const [profileImage, setProfileImage] = useState("");
   const [reporting, setReporting] = useState([]);
   const [empId, setEmpId] = useState("");
-  const [newEmpId,setNewEmpId] = useState("");
-  
-// const [empId, setEmpId] = useState(null);
+  const [newEmpId, setNewEmpId] = useState("");
+
+  // const [empId, setEmpId] = useState(null);
   //  Controlled Personal State
   const [personalData, setPersonalData] = useState({
-    name: "",
+    first_name: "",
+    last_name: "",  
     email: "",
     password: "",
     emp_id: "",
@@ -97,10 +98,12 @@ const AddEmployee = () => {
           {/* LEFT CARD */}
           <div className="bg-white rounded-xl shadow p-6">
             <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
-              
               {/* PROFILE IMAGE */}
               <div className="relative w-32 h-32">
-                <label htmlFor="profileUpload" className="cursor-pointer block w-full h-full">
+                <label
+                  htmlFor="profileUpload"
+                  className="cursor-pointer block w-full h-full"
+                >
                   <img
                     src={profileImage || defaultProfile}
                     alt="Profile"
@@ -140,7 +143,7 @@ const AddEmployee = () => {
                       setPersonalData((prev) => ({
                         ...prev,
                         // emp_id: e.target.value,
-                        newEmpId:e.target.value
+                        newEmpId: e.target.value,
                       }));
                     }}
                     className="border rounded px-3 py-2 ml-2 text-sm bg-gray-100 focus:ring-2 focus:ring-[#222F7D]"
@@ -177,32 +180,28 @@ const AddEmployee = () => {
       <CreateEmployeeBasic onCreated={(id) => setEmpId(id)} />
     ) : (
     )} */}
-    <MainProfile
-            // organizationData={organizationData}
-            // personalData={personalData}
-            // educationData={educationData}
-            // experienceData={experienceData}
-            // contactData={contactsData}
-            // nomineeData={nomineeData}
-            // bankData={bankData}
-            // userRole={user?.role}
-            // isEditing={isEditing}
-            // setIsEditing={setIsEditing}
-            // onSave={handleDataRefresh} // Passing refresh function
-            empId={empId}
-            // isAddingNew={isAddingNew}
-            // setIsAddingNew={setIsAddingNew}
-          />
-
-    
+        <MainProfile
+          // organizationData={organizationData}
+          // personalData={personalData}
+          // educationData={educationData}
+          // experienceData={experienceData}
+          // contactData={contactsData}
+          // nomineeData={nomineeData}
+          // bankData={bankData}
+          // userRole={user?.role}
+          // isEditing={isEditing}
+          // setIsEditing={setIsEditing}
+          // onSave={handleDataRefresh} // Passing refresh function
+          empId={empId}
+          // isAddingNew={isAddingNew}
+          // setIsAddingNew={setIsAddingNew}
+        />
       </div>
     </div>
   );
 };
 
 export default AddEmployee;
-
-
 
 // import React, { useState } from "react";
 // import { toast } from "react-hot-toast";
@@ -255,7 +254,7 @@ export default AddEmployee;
 
 //   const handleChange = (e) => {
 //     const { name, value, type, checked, files } = e.target;
-    
+
 //     // Clear error for specific field
 //     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
 
@@ -277,7 +276,7 @@ export default AddEmployee;
 //     if (!formData.emp_id.trim()) newErrors.emp_id = "Employee ID is required";
 //     if (!formData.department.trim()) newErrors.department = "Department is required";
 //     if (!formData.role) newErrors.role = "Role is required";
-    
+
 //     if (!formData.email) {
 //       newErrors.email = "Email is required";
 //     } else if (!emailRegex.test(formData.email)) {
@@ -304,9 +303,9 @@ export default AddEmployee;
 
 //     try {
 //       setLoading(true);
-      
+
 //       const data = new FormData();
-      
+
 //       // Correctly appending data
 //       Object.keys(formData).forEach((key) => {
 //         if (formData[key] !== null && formData[key] !== undefined) {
@@ -323,10 +322,10 @@ export default AddEmployee;
 
 //       await addEmploy(data);
 //       toast.success("New Employee Record Created Successfully!");
-      
+
 //       setFormData(initialFormState);
 //       setErrors({});
-      
+
 //     } catch (error) {
 //       console.error("Submission Error:", error);
 //       toast.error(error.response?.data?.message || "Failed to sync employee data");
@@ -346,7 +345,7 @@ export default AddEmployee;
 //               </Typography>
 //             </div>
 //     {/* <div className="bg-white rounded-none sm:rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-      
+
 //       {/* ERP Header */}
 //       {/* <div className="px-6 py-5 bg-gray-50 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
 //         <div>
@@ -367,7 +366,7 @@ export default AddEmployee;
 //       </div> */}
 
 //       {/* <form onSubmit={handleAddEmp} className="p-6 sm:p-8 space-y-10">
-        
+
 //         {/* Section 1: Authentication */}
 //         {/* <section>
 //           <h3 className="text-xs sm:text-sm font-bold text-blue-600 uppercase tracking-widest mb-6 flex items-center gap-2">
@@ -418,20 +417,20 @@ export default AddEmployee;
 //               <Input label="Address" name="address" value={formData.address} onChange={handleChange} placeholder="Full residential address" />
 //             </div>
 //           </div> */}
-//         {/* </section> */} 
+//         {/* </section> */}
 
 //         {/* Action Buttons */}
 //         {/* <div className="pt-8 border-t flex flex-col sm:flex-row justify-end gap-4"> */}
 //           {/* <button
 //             type="submit"
 //             disabled={loading}
-//             className="w-full sm:w-auto px-10 py-4 sm:py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-nowrap" 
+//             className="w-full sm:w-auto px-10 py-4 sm:py-3 rounded-xl bg-blue-600 text-white font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed text-nowrap"
 //           >
 //           Register
 //           </button>
 //         </div> */}
-//       {/* </form> */} 
-//     {/* </div> */} 
+//       {/* </form> */}
+//     {/* </div> */}
 
 //       <div className="mx-auto mt-2">
 //         <div className="bg-white rounded-xl shadow-sm overflow-hidden">

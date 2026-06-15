@@ -9,10 +9,9 @@ import { toast } from "react-hot-toast";
 import { addPersonal, getPersonal, updatePersonal } from "../../../api/profile";
 import { EmployContext } from "../../context/EmployContextProvider";
 
-const PersonalTab = ({ personalData, isEditing, setIsEditing, onSave,empId }) => {
+const AddPersonalTab = ({ personalData, isEditing, setIsEditing, onSave,empId }) => {
   const [draft, setDraft] = useState({ ...emptyPersonal });
   const [errors, setErrors] = useState({});
-
  const {setPersonalAddress} =  useContext(EmployContext)
   useEffect(() => {
     if (personalData && Object.keys(personalData).length > 0) {
@@ -375,4 +374,4 @@ const formatDOB = (dateStr) => {
   );
 };
 
-export default PersonalTab;
+export default AddPersonalTab;
