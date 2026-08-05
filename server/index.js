@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const dotenv = require("dotenv"); 
 // const path = require("path")
 // const dotenv = require("dotenv")
 const ZKLib = require("zklib-js");
@@ -18,11 +19,10 @@ const cronRoutes = require("./routes/cron.routes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
-const dotenv = require("dotenv"); 
 const path = require("path");
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") }); 
-
+console.log("CLIENT_URL =", process.env.CLIENT_URL);
 const app = express();
 
 

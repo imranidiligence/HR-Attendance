@@ -299,10 +299,10 @@ Total Hours: (${totalhrs ?? "--"})`}
                 </div>
 
                 <div className="flex items-center justify-center lg:justify-end gap-3">
-                  <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 border border-red-200 hover:border-red-300 transition-all">
+                  {/* <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 border border-red-200 hover:border-red-300 transition-all">
                     <BiSolidFilePdf size={18} className="text-red-500" />
                     <span className="text-xs font-medium text-gray-700 hidden sm:inline">PDF</span>
-                  </button>
+                  </button> */}
                   <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 hover:border-green-300 transition-all" onClick={() => exportMonthlyAttendance(filteredEmployees)}>
                     <FaFileExcel size={18} className="text-green-600" />
                     <span className="text-xs font-medium text-gray-700 hidden sm:inline">Excel</span>

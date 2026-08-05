@@ -3,18 +3,34 @@ import { Bar } from "react-chartjs-2";
 import { EmployContext } from "../context/EmployContextProvider";
 import "../components/Charts";
 
-const AttendanceBarChart = () => {
+const AttendanceBarChart = ({ cardData = [] }) => {
   const { adminAttendance = [], loading } = useContext(EmployContext);
 
-  // 🔹 Derive counts from adminAttendance
+  // 🔹 Derive counts from adminAttendance - Filter for active users only
   const stats = useMemo(() => {
-    const total = adminAttendance.length;
+    // If cardData is provided, use it (already filtered)
+    if (cardData && cardData.length > 0) {
+      const total = cardData.find(item => item.title === "Total Employees")?.total || 0;
+      const present = cardData.find(item => item.title === "Present Today")?.total || 0;
+      const absent = cardData.find(item => item.title === "Absent Today")?.total || 0;
+      
+      return [
+        { title: "Total Employee", total, bgColor: "#4331cc" },
+        { title: "Present", total: present, bgColor: "#27F598" },
+        { title: "Absent", total: absent, bgColor: "#ff4d4f" },
+      ];
+    }
 
-    const present = adminAttendance.filter(
+    // Fallback: Filter adminAttendance for active users
+    const activeEmployees = adminAttendance.filter(
+      (emp) => emp.is_active === true
+    );
+
+    const total = activeEmployees.length;
+    const present = activeEmployees.filter(
       i => i.status === "Present" || i.status === "Working"
     ).length;
-
-    const absent = adminAttendance.filter(
+    const absent = activeEmployees.filter(
       i => i.status === "Absent"
     ).length;
 
@@ -23,7 +39,7 @@ const AttendanceBarChart = () => {
       { title: "Present", total: present, bgColor: "#27F598" },
       { title: "Absent", total: absent, bgColor: "#ff4d4f" },
     ];
-  }, [adminAttendance]);
+  }, [adminAttendance, cardData]);
 
   if (loading) {
     return (

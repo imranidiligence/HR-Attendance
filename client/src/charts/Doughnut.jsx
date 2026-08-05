@@ -19,19 +19,35 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
   if (loading) return null;
 
   /* ================= ADMIN ================= */
+  // Use cardData if provided, otherwise fall back to filtered adminAttendance
   const adminStats = useMemo(() => {
-    const total = adminAttendance.length || 1;
-    const present = adminAttendance.filter(
+    // If cardData is provided and has data, use it (this will have filtered active users)
+    if (cardData && cardData.length > 0) {
+      // Extract totals from cardData
+      const total = cardData.find(item => item.title === "Total Employees")?.total || 0;
+      const present = cardData.find(item => item.title === "Present Today")?.total || 0;
+      const absent = cardData.find(item => item.title === "Absent Today")?.total || 0;
+      
+      return { total, present, absent };
+    }
+    
+    // Fallback: filter adminAttendance for active users
+    const activeEmployees = adminAttendance.filter(
+      (emp) => emp.is_active === true
+    );
+    
+    const total = activeEmployees.length || 1;
+    const present = activeEmployees.filter(
       (e) => e.status === "Present" || e.status === "Working"
     ).length;
     const absent = total - present;
 
     return { total, present, absent };
-  }, [adminAttendance]);
+  }, [adminAttendance, cardData]);
 
-  const adminPercentage = Math.round(
-    (adminStats.present / adminStats.total) * 100
-  );
+  const adminPercentage = adminStats.total > 0 
+    ? Math.round((adminStats.present / adminStats.total) * 100)
+    : 0;
 
   const adminChartData = {
     labels: ["Present", "Absent"],
