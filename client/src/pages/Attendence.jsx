@@ -1,6 +1,5 @@
-
 import { Typography, Box } from "@mui/material";
-import React, { useContext, useEffect, useMemo } from "react";
+import React, { useContext, useEffect, useMemo, useCallback } from "react";
 import Table from "../components/Table";
 import { EmployContext } from "../context/EmployContextProvider";
 import Loader from "../components/Loader";
@@ -31,14 +30,21 @@ const Attendance = () => {
     employeeAttendance = [],
     loading,
     pagination,
+    adminPagination,
     refreshEmployeeDashboard,
+    fetchAdminAttendance,
+    handleAdminPageChange,
+    refreshAdminAttendance,
   } = useContext(EmployContext);
+console.log("AdminPagination:", adminPagination);
+  // Detect which view we're in
+  const isEmployee = location.pathname.startsWith("/employee");
+  const isMyDashboard = location.pathname.startsWith(
+    "/admin/my-dashboard/attendance",
+  );
+  const isDailyAttendance = location.pathname.startsWith("/admin/attendance");
 
-  // Detect if viewing my-dashboard (employee view)
-  const isEmployee = location.pathname.startsWith("/employee")
-  const isMyDashboard = location.pathname.startsWith("/admin/my-dashboard/attendance");
-
-  // console.log("isMyDashboard",isMyDashboard);
+  const showPagination = isEmployee || isMyDashboard || isDailyAttendance;
   const isAdminWithEmp = isAdmin && isMyDashboard;
 
   const date = new Date();
@@ -46,20 +52,36 @@ const Attendance = () => {
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const year = date.getFullYear();
 
-  // Fetch data on filter or role change
+  // Fetch data on filter or role change - with proper dependencies
   useEffect(() => {
-    if (isAdmin) refreshEmployeeDashboard(1);
-  }, [filters, isAdmin]);
+    if (isAdmin) {
+      if (isDailyAttendance) {
+        // For admin daily attendance, fetch today's attendance
+        refreshAdminAttendance();
+      } else {
+        // For admin my-dashboard, fetch employee's history
+        refreshEmployeeDashboard(1);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.startDate, filters.endDate, filters.search, isAdmin, isDailyAttendance]);
 
-  const isDaily = location.pathname.endsWith("/attendance");
-
-  const handlePageChange = (event, value) => {
-    refreshEmployeeDashboard(value);
+  // Handle page change based on view - memoized to prevent recreation
+  const handlePageChange = useCallback((event, value) => {
+    if (isAdmin && isDailyAttendance) {
+      if (handleAdminPageChange) {
+        handleAdminPageChange(value);
+      } else if (fetchAdminAttendance) {
+        fetchAdminAttendance(value);
+      }
+    } else {
+      refreshEmployeeDashboard(value);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  }, [isAdmin, isDailyAttendance, handleAdminPageChange, fetchAdminAttendance, refreshEmployeeDashboard]);
 
-  // Table Headers
-  const adminTableHeader = [
+  // Table Headers - memoized to prevent recreation
+  const adminTableHeader = useMemo(() => [
     "Sr.No",
     "Emp ID",
     "Employee Name",
@@ -69,8 +91,9 @@ const Attendance = () => {
     "Status",
     "Expected Hours",
     "Actual Working Hours",
-  ];
-  const employeeTableHeader = [
+  ], []);
+
+  const employeeTableHeader = useMemo(() => [
     "Sr.No",
     "Emp ID",
     "Employee Name",
@@ -80,15 +103,63 @@ const Attendance = () => {
     "Punch Out",
     "Actual Working Hours",
     "Expected Hours",
-  ];
+  ], []);
 
-  // Prepare raw data
-  const rawData = isAdmin && !isAdminWithEmp ? adminAttendance : employeeAttendance;
+  // Prepare raw data and pagination based on view - memoized
+  const { rawData, currentPagination } = useMemo(() => {
+    let rawData = [];
+    let currentPagination = null;
 
+    if (isAdmin && isDailyAttendance) {
+      rawData = adminAttendance;
+      currentPagination = adminPagination || {
+        currentPage: 1,
+        totalPages: Math.ceil(adminAttendance.length / 10),
+        totalItems: adminAttendance.length,
+        limit: 10,
+      };
+    } else if (isAdmin && isMyDashboard) {
+      rawData = employeeAttendance;
+      currentPagination = pagination;
+    } else if (isEmployee) {
+      rawData = employeeAttendance;
+      currentPagination = pagination;
+    } else {
+      rawData = employeeAttendance;
+      currentPagination = pagination;
+    }
+
+    return { rawData, currentPagination };
+  }, [isAdmin, isDailyAttendance, isMyDashboard, isEmployee, adminAttendance, adminPagination, employeeAttendance, pagination]);
+
+  // Memoize table data
   const tableData = useMemo(() => {
+    // For admin daily attendance, we need to show today's employees only
+    if (isAdmin && isDailyAttendance) {
+      return rawData.map((item, index) => ({
+        srNo: index + 1,
+        empId: item.emp_id || item.device_user_id,
+        name: item.name || item.employee_name,
+        date: new Date().toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        }),
+        punchIn: item.punch_in || "--",
+        punchOut: item.punch_out || "--",
+        workingHours: formatHours(item.total_hours),
+        expectedHours: formatHours(item.expected_hours),
+        status: item.status || "--",
+      }));
+    }
+
+    // For employee views with pagination
     return rawData.map((item, index) => {
-      const srNo = ((pagination?.currentPage - 1) * (pagination?.limit || 10)) + index + 1;
-      const commonData = {
+      const currentPage = currentPagination?.currentPage || 1;
+      const pageLimit = currentPagination?.limit || 15;
+      const srNo = (currentPage - 1) * pageLimit + index + 1;
+
+      return {
         srNo,
         empId: item.device_user_id || item.emp_id,
         name: item.name || item.employee_name,
@@ -99,21 +170,22 @@ const Attendance = () => {
         expectedHours: formatHours(item.expected_hours),
         status: item.status || "--",
       };
-
-      return commonData;
     });
-  }, [rawData, pagination]);
+  }, [rawData, currentPagination, isAdmin, isDailyAttendance]);
 
   return (
     <div className="min-h-max bg-gradient-to-br blur-0 bg-white px-3 pb-6">
       {/* HEADER */}
       <div
-        className={`sticky z-20 top-0 bg-[#222F7D] rounded-xl py-2 mb-1 shadow-lg flex justify-between items-center px-6 ${location.pathname.startsWith("/employee/attendance") ? "mt-[17px]" : "mt-[8px]"
-          }`}
+        className={`sticky z-20 top-0 bg-[#222F7D] rounded-xl py-2 mb-1 shadow-lg flex justify-between items-center px-6 ${
+          location.pathname.startsWith("/employee/attendance")
+            ? "mt-[17px]"
+            : "mt-[8px]"
+        }`}
       >
         <div className="w-8 text-nowrap text-white justify-start">{`Date: ${day}-${month}-${year}`}</div>
-        <Typography className="text-white font-bold" sx={{ fontSize: '1rem' }}>
-          {isMyDashboard  || isEmployee ? "Attendance" : "Daily Attendance"}
+        <Typography className="text-white font-bold" sx={{ fontSize: "1rem" }}>
+          {isMyDashboard || isEmployee ? "Attendance" : "Daily Attendance"}
         </Typography>
         <div></div>
       </div>
@@ -127,18 +199,23 @@ const Attendance = () => {
           <Filters />
 
           <Table
-            headers={isAdmin && !isAdminWithEmp ? adminTableHeader : employeeTableHeader}
+            headers={
+              isAdmin && !isAdminWithEmp
+                ? adminTableHeader
+                : employeeTableHeader
+            }
             data={tableData}
             isAdminWithEmp={isAdminWithEmp}
           />
 
-          {!isDaily && pagination?.totalPages > 1 && (
+          {/* Show pagination when there are multiple pages */}
+          {showPagination && currentPagination?.totalPages > 1 && (
             <Box className="mt-6 flex justify-center pb-4">
               <Pagination
-                totalPages={pagination.totalPages}
-                page={pagination.currentPage}
-                totalRecords={pagination.totalItems}
-                limit={pagination.limit}
+                totalPages={currentPagination.totalPages}
+                page={currentPagination.currentPage}
+                totalRecords={currentPagination.totalItems}
+                limit={currentPagination.limit}
                 onChange={handlePageChange}
               />
             </Box>

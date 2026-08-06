@@ -77,7 +77,7 @@ const Profile = () => {
 
       if (results[0].status === "fulfilled") {
 
-        console.log("results organization", results[0].value.data);
+        // console.log("results organization", results[0].value.data);
 
         setOrganizationData(results[0].value.data.personalDetails || {});
       }
@@ -145,7 +145,7 @@ const Profile = () => {
   }, [fetchProfileData, fetchProfileImage, fetchReporting, refreshTrigger, finalEmpId, token]);
 
   useEffect(() => {
-    console.log("profileImage", profileImage);
+    // console.log("profileImage", profileImage);
 
   }, [profileImage]);
 

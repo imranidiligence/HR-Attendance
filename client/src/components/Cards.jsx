@@ -32,7 +32,7 @@ const Cards = () => {
     if (role === "admin") {
       refreshAdminAttendance();
     } else {
-      refreshEmployeeDashboard();
+      refreshEmployeeDashboard(1);
     }
   }, [auth?.token, role]);
 

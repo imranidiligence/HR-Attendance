@@ -45,9 +45,9 @@ const DocumentTab = ({
 
   useEffect(()=>{
 
-    console.log("isEditing",isEditing)
-    console.log("setIsAddingNew",setIsAddingNew)
-    console.log(" setEditingIndex(null);",  setEditingIndex(null))
+    // console.log("isEditing",isEditing)
+    // console.log("setIsAddingNew",setIsAddingNew)
+    // console.log(" setEditingIndex(null);",  setEditingIndex(null))
   },[setIsAddingNew,isEditing])
   /* ================= FETCH DOCUMENTS ================= */
 
@@ -58,7 +58,7 @@ const DocumentTab = ({
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        console.log("Res Documents", res);
+        // console.log("Res Documents", res);
         const BASE_URL = api.defaults.baseURL.split("/api")[0];
 
         const formatted =
@@ -71,7 +71,7 @@ const DocumentTab = ({
             fileName: doc.file_path.split("/").pop(),
           })) || [];
 
-        console.log("formatted", formatted);
+        // console.log("formatted", formatted);
         setDocuments(formatted);
       } catch (err) {
         console.error(err);
@@ -148,12 +148,12 @@ const handleEdit = (doc, index) => {
       fd.append("documentType", draft.documentType);
       fd.append("documentNumber", draft.documentNumber);
 
-      console.log("draft Document", draft);
+      // console.log("draft Document", draft);
       if (draft.file) {
         fd.append("file", draft.file);
       }
 
-      console.log("formData", fd)
+      // console.log("formData", fd)
       await api.post(`/employee/profile/bank/doc/${empId}`, fd, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -226,7 +226,7 @@ const handleEdit = (doc, index) => {
   };
 
   useEffect(()=>{
-    console.log("fileRef",fileRef.file)
+    // console.log("fileRef",fileRef.file)
 
   },[fileRef])
 

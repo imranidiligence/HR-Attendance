@@ -38,7 +38,7 @@ const EmployeeDetails = () => {
   const { setAdminAttendance,personalAddress } = useContext(EmployContext);
 
   useEffect(()=>{
-    console.log("personalAddress",personalAddress)
+    // console.log("personalAddress",personalAddress)
   },[personalAddress])
   // --- State Management ---
   const [isEditing, setIsEditing] = useState(false);
@@ -114,12 +114,12 @@ const EmployeeDetails = () => {
       if(nRes.status === "fulfilled")
         setNominee(nRes.value.data?.nominee ||[]);
 
-      console.log("bRes",bRes);
+      // console.log("bRes",bRes);
       if (bRes.status === "fulfilled")
         setBank(bRes.value.data?.bankDetails || []);
 
 
-      console.log("dRes",dRes);
+      // console.log("dRes",dRes);
 
       if (dRes?.status === "fulfilled") {
         const docObj = {};
@@ -129,7 +129,7 @@ const EmployeeDetails = () => {
         setDocuments(docObj);
       }
     } catch (err) {
-      console.log("error employData",err);
+      // console.log("error employData",err);
       toast.error("Error fetching employee data");
     } finally {
       setLoading(false);
@@ -138,7 +138,7 @@ const EmployeeDetails = () => {
 
   useEffect(()=>{
 
-    console.log("setNominee",nominee);
+    // console.log("setNominee",nominee);
 
   },[])
 
@@ -215,13 +215,13 @@ const EmployeeDetails = () => {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      console.log("profile Res",res);
+      // console.log("profile Res",res);
 
       setRefreshTrigger((prev) => prev + 1);
       toast.success("Profile Image Updated");
     } catch (error) {
 
-      console.log(error);
+      // console.log(error);
       toast.error("Failed to upload image");
     }
   };

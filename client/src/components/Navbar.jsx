@@ -30,7 +30,7 @@ const Navbar = ({ open, setOpen }) => {
   const openMenu = Boolean(anchorEl);
 
   useEffect(() => {
-    console.log("profileImage", profileImage);
+    // console.log("profileImage", profileImage);
   }, [profileImage])
   // 1. Time logic
   useEffect(() => {

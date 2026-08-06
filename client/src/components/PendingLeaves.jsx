@@ -16,7 +16,7 @@ export default function PendingLeavesTable({handlePendingLeaves}) {
       try {
         const resp = await axios.get(`http://localhost:5000/api/leaves/types/pending-approvals/${emp_Id}`);
 
-        console.log("Leave Pending",resp.data)
+        // console.log("Leave Pending",resp.data)
         setPendingLeave(resp.data);
         handlePendingLeaves(resp.data);
 
@@ -51,7 +51,7 @@ const updatedList = pendingLeave.filter(l => l.approval_id !== id);
         remarks: "Approved by Admin"
       });
         
-        console.log(resp)
+        // console.log(resp)
     } catch (error) {
         console.log(error)
     }
@@ -59,7 +59,7 @@ const updatedList = pendingLeave.filter(l => l.approval_id !== id);
   }
 
   useEffect(()=>{
-    console.log("pendingLeave",pendingLeave)
+    // console.log("pendingLeave",pendingLeave)
   },[pendingLeave]);
 
 
@@ -77,7 +77,7 @@ const handleReject = async(id)=>{
         remarks: "Rejected by Admin"
       });
         
-        console.log(resp)
+        // console.log(resp)
     } catch (error) {
         console.log(error)
     }

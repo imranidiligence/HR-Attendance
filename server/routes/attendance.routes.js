@@ -13,7 +13,7 @@ router.get("/sync", controller.syncAttendance);
 
 
 // Today All Employ Attendance
-router.get("/today", controller.getTodayOrganizationAttendance);
+router.get("/today", auth, isAdmin, controller.getTodayOrganizationAttendance);
 
 
 
@@ -29,7 +29,8 @@ router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)
 router.get("/activity-log", auth, isAdmin, controller.getActivityLog);
 
 router.get("/activity-log/exports", auth, isAdmin, controller.exportActivityLog);
-
+// New API for all employees
+router.get("/today/all", auth, isAdmin, controller.getTodayOrganizationAttendanceAll);
 
 
 // Express route example

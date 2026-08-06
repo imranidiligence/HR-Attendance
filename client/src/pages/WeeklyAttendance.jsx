@@ -82,7 +82,7 @@ const WeeklyAttendance = () => {
 }, [flattenedData, filters.weekSearch]);
 
   useEffect(() => {
-    console.log("filteredEmployees Weekly", filteredEmployees);
+    // console.log("filteredEmployees Weekly", filteredEmployees);
 
   }, [filters, filteredEmployees]);
   // Helper functions
@@ -108,7 +108,7 @@ const WeeklyAttendance = () => {
 
   useEffect(()=>{
 
-    console.log("filteredEmployees",filteredEmployees)
+    // console.log("filteredEmployees",filteredEmployees)
   },[filteredEmployees])
   const headers = ["Sr No", "Day", "Emp ID", "Employee", "Date", "Status", "Punch In", "Punch Out", "Working Hours", "Expected Hours"];
 

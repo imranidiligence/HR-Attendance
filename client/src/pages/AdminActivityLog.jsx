@@ -21,7 +21,7 @@ const AdminActivityLog = () => {
   const { setActiveLogs, formatDate, filters } = useContext(EmployContext);
 
   useEffect(() => {
-    console.log("filters", filters);
+    // console.log("filters", filters);
   }, [filters]);
   const fetchLogs = useCallback(async () => {
     try {
@@ -50,7 +50,7 @@ const AdminActivityLog = () => {
       });
 
       const logs = res.data.data || [];
-      console.log("Fetched res:", res.data);
+      // console.log("Fetched res:", res.data);
       setData(logs);
       setActiveLogs(logs);
       setPagination(res.data.pagination || { currentPage: 1, totalPages: 1 });

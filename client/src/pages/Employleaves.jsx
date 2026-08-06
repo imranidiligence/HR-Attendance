@@ -37,7 +37,7 @@ const Employleaves = () => {
       const res = await api.get(`/leaves/types/balance/${empId}`);
       const data = res.data;
       
-      console.log("Data Summay for cards",data.summary);
+      // console.log("Data Summay for cards",data.summary);
       
       const mappedCards = [
         {
@@ -94,7 +94,7 @@ const Employleaves = () => {
       );
 
 
-      console.log("Pending Approvals:", res.data);
+      // console.log("Pending Approvals:", res.data);
 
       res.data.forEach((leave) => leave.approver_emp_id === empId && setIsManager(true));
       setLeaveTableData(res.data);

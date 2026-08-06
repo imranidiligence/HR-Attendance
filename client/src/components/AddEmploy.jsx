@@ -75,7 +75,6 @@ const AddEmployee = () => {
 
       const resp = await addEmploy(formData);
 
-      console.log("resp Add Emp",resp);
       setEmployeeBasic(resp.user);
 
       setEmpId(resp.user.emp_id);

@@ -59,12 +59,12 @@ const useSocket = (empId, refreshFn) => {
     });
 
     socket.on("connect", () => {
-      console.log(" Connected:", socket.id);
+      // console.log(" Connected:", socket.id);
     });
 
     //  NEW LEAVE REQUEST
     socket.on("NEW_LEAVE_REQUEST", (data) => {
-      console.log(" New Leave:", data);
+      // console.log(" New Leave:", data);
 
       toast.success(data.message);
 
