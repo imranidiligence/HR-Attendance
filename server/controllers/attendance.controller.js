@@ -686,24 +686,31 @@ exports.processAndSendAttendanceReport = async (
   }
 };
 
-// In attendance.controller.js
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 15;
     const offset = (page - 1) * limit;
+    // Default to showing only active users
     const showInactive = req.query.showInactive === "true" || false;
 
-    // Get total count of ALL employees (active + inactive if requested)
-    let countQuery = `SELECT COUNT(*) as total FROM users WHERE role = 'employee' OR role = 'admin'`;
+    // Get total count of ACTIVE employees AND admins
+    let countQuery = `
+      SELECT COUNT(*) as total 
+      FROM users 
+      WHERE role IN ('employee', 'admin')
+    `;
+
+    // Only show inactive if explicitly requested
     if (!showInactive) {
       countQuery += ` AND is_active = true`;
     }
+
     const countResult = await db.query(countQuery);
     const totalItems = parseInt(countResult.rows[0].total);
 
-    // Get paginated attendance data
+    // Get paginated attendance data for EMPLOYEES AND ADMINS
     let query = `
       WITH attendance_summary AS (
         SELECT
@@ -735,6 +742,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       SELECT
         u.emp_id,
         u.name,
+        u.role,
         u.is_active,
         COALESCE(a.attendance_date, CURRENT_DATE) AS attendance_date,
         a.first_punch AS punch_in,
@@ -749,7 +757,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         COALESCE(a.total_hours, INTERVAL '0 hours') AS total_hours
       FROM users u
       LEFT JOIN attendance_summary a ON u.emp_id = a.emp_id
-      WHERE u.role = 'employee' OR u.role = 'admin'
+      WHERE u.role IN ('employee', 'admin')  -- Include both employees and admins
     `;
 
     // Add is_active filter if not showing inactive
@@ -757,7 +765,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       query += ` AND u.is_active = true`;
     }
 
-    query += ` ORDER BY u.is_active DESC, u.name LIMIT $1 OFFSET $2`;
+    query += ` ORDER BY u.role DESC, u.is_active DESC, u.name LIMIT $1 OFFSET $2`;
 
     const { rows } = await db.query(query, [limit, offset]);
 
@@ -1280,19 +1288,22 @@ exports.getActivityLog = async (req, res) => {
 };
 
 // New controller
+// New controller for all users including inactive
 exports.getTodayOrganizationAttendanceAll = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
+    const limit = parseInt(req.query.limit) || 15;
     const offset = (page - 1) * limit;
 
-    // Get total count of ALL employees
+    // Get total count of ALL employees and admins
     const countResult = await db.query(`
-      SELECT COUNT(*) as total FROM users WHERE role IN ('employee', 'admin')
+      SELECT COUNT(*) as total 
+      FROM users 
+      WHERE role IN ('employee', 'admin')
     `);
     const totalItems = parseInt(countResult.rows[0].total);
 
-    // Get ALL employees with attendance
+    // Get ALL users with attendance
     const query = `
       WITH attendance_summary AS (
         SELECT
@@ -1324,6 +1335,7 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
       SELECT
         u.emp_id,
         u.name,
+        u.role,
         u.is_active,
         COALESCE(a.attendance_date, CURRENT_DATE) AS attendance_date,
         a.first_punch AS punch_in,
@@ -1338,36 +1350,40 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         COALESCE(a.total_hours, INTERVAL '0 hours') AS total_hours
       FROM users u
       LEFT JOIN attendance_summary a ON u.emp_id = a.emp_id
-      WHERE u.role = 'employee'
-      ORDER BY u.is_active DESC, u.name
+      WHERE u.role IN ('employee', 'admin')
+      ORDER BY u.role DESC, u.is_active DESC, u.name
       LIMIT $1 OFFSET $2
     `;
 
     const { rows } = await db.query(query, [limit, offset]);
 
-    const formattedRows = rows.map(row => {
+    const formattedRows = rows.map((row) => {
       let totalHours = "00:00";
       if (row.total_hours) {
         const hours = row.total_hours.hours || 0;
         const minutes = row.total_hours.minutes || 0;
-        totalHours = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        totalHours = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
       }
 
       return {
         ...row,
         total_hours: totalHours,
-        punch_in: row.punch_in ? new Date(row.punch_in).toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: 'Asia/Kolkata'
-        }) : '--',
-        punch_out: row.punch_out ? new Date(row.punch_out).toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: 'Asia/Kolkata'
-        }) : '--',
+        punch_in: row.punch_in
+          ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
+        punch_out: row.punch_out
+          ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
       };
     });
 
@@ -1378,8 +1394,8 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         currentPage: page,
         totalItems: totalItems,
         totalPages: Math.ceil(totalItems / limit),
-        limit: limit
-      }
+        limit: limit,
+      },
     });
   } catch (error) {
     console.error("Manual report error:", error);

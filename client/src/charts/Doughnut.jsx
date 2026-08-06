@@ -16,14 +16,10 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
 
   const { adminAttendance = [], loading } = useContext(EmployContext);
 
-  if (loading) return null;
-
   /* ================= ADMIN ================= */
-  // Use cardData if provided, otherwise fall back to filtered adminAttendance
   const adminStats = useMemo(() => {
-    // If cardData is provided and has data, use it (this will have filtered active users)
+    // If cardData is provided and has data, use it
     if (cardData && cardData.length > 0) {
-      // Extract totals from cardData
       const total = cardData.find(item => item.title === "Total Employees")?.total || 0;
       const present = cardData.find(item => item.title === "Present Today")?.total || 0;
       const absent = cardData.find(item => item.title === "Absent Today")?.total || 0;
@@ -45,11 +41,8 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
     return { total, present, absent };
   }, [adminAttendance, cardData]);
 
-  const adminPercentage = adminStats.total > 0 
-    ? Math.round((adminStats.present / adminStats.total) * 100)
-    : 0;
-
-  const adminChartData = {
+  // Memoize admin chart data
+  const adminChartData = useMemo(() => ({
     labels: ["Present", "Absent"],
     datasets: [
       {
@@ -58,41 +51,53 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
         borderWidth: 0,
       },
     ],
-  };
+  }), [adminStats.present, adminStats.absent]);
 
   /* ================= EMPLOYEE ================= */
-  const workedHHMM =
-    employData.find((i) => i.title === "Total Hours")?.value || "00:00";
+  const employeeData = useMemo(() => {
+    const workedHHMM = employData.find((i) => i.title === "Total Hours")?.value || "00:00";
+    const workedHours = hhmmToHours(workedHHMM);
+    const expectedHours = 9.5;
+    const remaining = Math.max(expectedHours - workedHours, 0);
+    const empPercentage = Math.min(
+      Math.round((workedHours / expectedHours) * 100),
+      100
+    );
 
-  const workedHours = hhmmToHours(workedHHMM);
+    return {
+      workedHours,
+      remaining,
+      empPercentage,
+    };
+  }, [employData]);
 
-  const expectedHours = 9.5;
-  const remaining = Math.max(expectedHours - workedHours, 0);
-
-  const empPercentage = Math.min(
-    Math.round((workedHours / expectedHours) * 100),
-    100
-  );
-
-  const empChartData = {
+  // Memoize employee chart data
+  const empChartData = useMemo(() => ({
     labels: ["Worked", "Remaining"],
     datasets: [
       {
-        data: [workedHours, remaining],
+        data: [employeeData.workedHours, employeeData.remaining],
         backgroundColor: ["#4331cc", "#e5e7eb"],
         borderWidth: 0,
       },
     ],
-  };
+  }), [employeeData.workedHours, employeeData.remaining]);
 
-  const options = {
+  // Memoize options
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     cutout: "60%",
     plugins: {
       legend: { position: "bottom" },
     },
-  };
+  }), []);
+
+  if (loading) return null;
+
+  const adminPercentage = adminStats.total > 0 
+    ? Math.round((adminStats.present / adminStats.total) * 100)
+    : 0;
 
   return (
     <div className="flex items-center justify-center w-full h-full">
@@ -122,7 +127,7 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
             options={options}
             plugins={[
               centerTextPlugin(
-                `${empPercentage}%`,
+                `${employeeData.empPercentage}%`,
                 "Worked",
                 "#4331cc",
                 "#555"
@@ -135,4 +140,4 @@ const AttendanceDoughnutChart = ({ cardData = [], employData = [] }) => {
   );
 };
 
-export default AttendanceDoughnutChart;
+export default React.memo(AttendanceDoughnutChart);

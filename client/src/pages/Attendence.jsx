@@ -32,16 +32,14 @@ const Attendance = () => {
     pagination,
     adminPagination,
     refreshEmployeeDashboard,
-    fetchAdminAttendance,
-    handleAdminPageChange,
     refreshAdminAttendance,
+    refreshAdminMyDashboard,
+    handleAdminPageChange,
   } = useContext(EmployContext);
-console.log("AdminPagination:", adminPagination);
+
   // Detect which view we're in
   const isEmployee = location.pathname.startsWith("/employee");
-  const isMyDashboard = location.pathname.startsWith(
-    "/admin/my-dashboard/attendance",
-  );
+  const isMyDashboard = location.pathname.startsWith("/admin/my-dashboard/attendance");
   const isDailyAttendance = location.pathname.startsWith("/admin/attendance");
 
   const showPagination = isEmployee || isMyDashboard || isDailyAttendance;
@@ -52,65 +50,82 @@ console.log("AdminPagination:", adminPagination);
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const year = date.getFullYear();
 
-  // Fetch data on filter or role change - with proper dependencies
+  // Fetch data on filter or role change
   useEffect(() => {
     if (isAdmin) {
       if (isDailyAttendance) {
-        // For admin daily attendance, fetch today's attendance
+        // Admin daily attendance - 10 per page
         refreshAdminAttendance();
+      } else if (isMyDashboard) {
+        // Admin my-dashboard - 15 per page
+        refreshAdminMyDashboard();
       } else {
-        // For admin my-dashboard, fetch employee's history
-        refreshEmployeeDashboard(1);
+        // Default - 15 per page
+        refreshEmployeeDashboard();
       }
+    } else if (isEmployee) {
+      // Employee view - 15 per page
+      refreshEmployeeDashboard();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.startDate, filters.endDate, filters.search, isAdmin, isDailyAttendance]);
+  }, [filters.startDate, filters.endDate, filters.search, isAdmin, isDailyAttendance, isMyDashboard, isEmployee]);
 
-  // Handle page change based on view - memoized to prevent recreation
-  const handlePageChange = useCallback((event, value) => {
-    if (isAdmin && isDailyAttendance) {
-      if (handleAdminPageChange) {
+  // Handle page change based on view
+  const handlePageChange = useCallback(
+    (event, value) => {
+      if (isAdmin && isDailyAttendance) {
+        // Admin daily attendance - 10 per page
         handleAdminPageChange(value);
-      } else if (fetchAdminAttendance) {
-        fetchAdminAttendance(value);
+      } else if (isAdmin && isMyDashboard) {
+        // Admin my-dashboard - 15 per page
+        refreshAdminMyDashboard(value);
+      } else {
+        // Employee view - 15 per page
+        refreshEmployeeDashboard(value);
       }
-    } else {
-      refreshEmployeeDashboard(value);
-    }
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [isAdmin, isDailyAttendance, handleAdminPageChange, fetchAdminAttendance, refreshEmployeeDashboard]);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [isAdmin, isDailyAttendance, isMyDashboard, handleAdminPageChange, refreshAdminMyDashboard, refreshEmployeeDashboard],
+  );
 
-  // Table Headers - memoized to prevent recreation
-  const adminTableHeader = useMemo(() => [
-    "Sr.No",
-    "Emp ID",
-    "Employee Name",
-    "Date",
-    "Punch In",
-    "Punch Out",
-    "Status",
-    "Expected Hours",
-    "Actual Working Hours",
-  ], []);
+  // Table Headers - memoized
+  const adminTableHeader = useMemo(
+    () => [
+      "Sr.No",
+      "Emp ID",
+      "Employee Name",
+      "Date",
+      "Punch In",
+      "Punch Out",
+      "Status",
+      "Expected Hours",
+      "Actual Working Hours",
+    ],
+    [],
+  );
 
-  const employeeTableHeader = useMemo(() => [
-    "Sr.No",
-    "Emp ID",
-    "Employee Name",
-    "Date",
-    "Status",
-    "Punch In",
-    "Punch Out",
-    "Actual Working Hours",
-    "Expected Hours",
-  ], []);
+  const employeeTableHeader = useMemo(
+    () => [
+      "Sr.No",
+      "Emp ID",
+      "Employee Name",
+      "Date",
+      "Status",
+      "Punch In",
+      "Punch Out",
+      "Actual Working Hours",
+      "Expected Hours",
+    ],
+    [],
+  );
 
-  // Prepare raw data and pagination based on view - memoized
+  // Prepare raw data and pagination based on view
   const { rawData, currentPagination } = useMemo(() => {
     let rawData = [];
     let currentPagination = null;
 
     if (isAdmin && isDailyAttendance) {
+      // Admin daily attendance - uses adminAttendance with 10 per page
       rawData = adminAttendance;
       currentPagination = adminPagination || {
         currentPage: 1,
@@ -119,25 +134,37 @@ console.log("AdminPagination:", adminPagination);
         limit: 10,
       };
     } else if (isAdmin && isMyDashboard) {
+      // Admin my-dashboard - uses employeeAttendance with 15 per page
       rawData = employeeAttendance;
       currentPagination = pagination;
     } else if (isEmployee) {
+      // Employee view - uses employeeAttendance with 15 per page
       rawData = employeeAttendance;
       currentPagination = pagination;
     } else {
+      // Fallback
       rawData = employeeAttendance;
       currentPagination = pagination;
     }
 
     return { rawData, currentPagination };
-  }, [isAdmin, isDailyAttendance, isMyDashboard, isEmployee, adminAttendance, adminPagination, employeeAttendance, pagination]);
+  }, [
+    isAdmin,
+    isDailyAttendance,
+    isMyDashboard,
+    isEmployee,
+    adminAttendance,
+    adminPagination,
+    employeeAttendance,
+    pagination,
+  ]);
 
   // Memoize table data
   const tableData = useMemo(() => {
-    // For admin daily attendance, we need to show today's employees only
+    // For admin daily attendance, show today's employees only
     if (isAdmin && isDailyAttendance) {
       return rawData.map((item, index) => ({
-        srNo: index + 1,
+        srNo: (currentPagination?.currentPage - 1) * (currentPagination?.limit || 10) + index + 1,
         empId: item.emp_id || item.device_user_id,
         name: item.name || item.employee_name,
         date: new Date().toLocaleDateString("en-IN", {
@@ -200,9 +227,7 @@ console.log("AdminPagination:", adminPagination);
 
           <Table
             headers={
-              isAdmin && !isAdminWithEmp
-                ? adminTableHeader
-                : employeeTableHeader
+              isAdmin && !isAdminWithEmp ? adminTableHeader : employeeTableHeader
             }
             data={tableData}
             isAdminWithEmp={isAdminWithEmp}

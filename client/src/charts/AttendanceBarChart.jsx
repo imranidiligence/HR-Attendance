@@ -8,7 +8,7 @@ const AttendanceBarChart = ({ cardData = [] }) => {
 
   // 🔹 Derive counts from adminAttendance - Filter for active users only
   const stats = useMemo(() => {
-    // If cardData is provided, use it (already filtered)
+    // If cardData is provided and has data, use it
     if (cardData && cardData.length > 0) {
       const total = cardData.find(item => item.title === "Total Employees")?.total || 0;
       const present = cardData.find(item => item.title === "Present Today")?.total || 0;
@@ -41,23 +41,8 @@ const AttendanceBarChart = ({ cardData = [] }) => {
     ];
   }, [adminAttendance, cardData]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[260px] text-gray-500">
-        Loading chart...
-      </div>
-    );
-  }
-
-  if (!adminAttendance.length) {
-    return (
-      <div className="flex items-center justify-center h-[260px] text-gray-500">
-        No attendance data
-      </div>
-    );
-  }
-
-  const chartData = {
+  // Memoize chart data to prevent unnecessary re-renders
+  const chartData = useMemo(() => ({
     labels: stats.map(i => i.title),
     datasets: [
       {
@@ -68,9 +53,10 @@ const AttendanceBarChart = ({ cardData = [] }) => {
         barThickness: 40,
       },
     ],
-  };
+  }), [stats]);
 
-  const options = {
+  // Memoize options
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -93,7 +79,23 @@ const AttendanceBarChart = ({ cardData = [] }) => {
         },
       },
     },
-  };
+  }), []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[260px] text-gray-500">
+        Loading chart...
+      </div>
+    );
+  }
+
+  if (!adminAttendance.length) {
+    return (
+      <div className="flex items-center justify-center h-[260px] text-gray-500">
+        No attendance data
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-[260px]">
@@ -102,4 +104,4 @@ const AttendanceBarChart = ({ cardData = [] }) => {
   );
 };
 
-export default AttendanceBarChart;
+export default React.memo(AttendanceBarChart);

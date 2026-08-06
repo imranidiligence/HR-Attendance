@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useMemo, useEffect, useCallback, useRef } from "react";
 import { EmployContext } from "../context/EmployContextProvider";
 import PeopleIcon from "@mui/icons-material/People";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -7,7 +7,6 @@ import { IoEnterOutline } from "react-icons/io5";
 import { useLocation } from "react-router-dom";
 import { BsCalendarWeek } from "react-icons/bs";
 import { IoExit } from "react-icons/io5";
-import { useEffect } from "react";
 
 const Cards = () => {
   const location = useLocation();
@@ -20,23 +19,10 @@ const Cards = () => {
     adminAttendance = [],
     singleAttendance,
     loading,
-    auth,
-    refreshEmployeeDashboard,
-    refreshAdminAttendance,
+    
   } = useContext(EmployContext);
-  const role = user?.role?.toLowerCase()?.trim();
-
-  useEffect(() => {
-    if (!auth?.token) return;
-
-    if (role === "admin") {
-      refreshAdminAttendance();
-    } else {
-      refreshEmployeeDashboard(1);
-    }
-  }, [auth?.token, role]);
-
-  /*Admin Cards - Filtered for active users only */
+  
+  /* Admin Cards - Filtered for active users only */
   const adminCards = useMemo(() => {
     if (!Array.isArray(adminAttendance) || adminAttendance.length === 0) {
       return [];
@@ -120,7 +106,7 @@ const Cards = () => {
     ];
   }, [singleAttendance]);
 
-  /*Loading */
+  /* Loading */
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
