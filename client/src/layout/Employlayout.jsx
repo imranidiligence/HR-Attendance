@@ -33,7 +33,7 @@ const Employlayout = () => {
       }
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col min-w-0 ">
+      <div className="flex flex-1 overflow-y-auto overflow-x-hidden flex-col min-w-0 ">
           {
         // isMyDash &&
         !isAdmin &&
