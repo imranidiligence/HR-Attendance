@@ -40,7 +40,7 @@ const Employlayout = () => {
    <Navbar open={sidebarOpen} setOpen={setSidebarOpen} />
       }
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-0">
+        <main className="flex-1  p-3 sm:p-0">
           <Outlet />
         </main>
       </div>
