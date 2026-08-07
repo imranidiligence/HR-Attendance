@@ -1,4 +1,3 @@
-
 import { useState, useContext, useEffect, useMemo } from "react";
 import { HiMiniAdjustmentsHorizontal } from "react-icons/hi2";
 import { ImCancelCircle } from "react-icons/im";
@@ -11,15 +10,19 @@ import { EmployContext } from "../context/EmployContextProvider";
 import api from "../../api/axiosInstance";
 import { exportMonthlyMatrixAttendance } from "../utils/monthlyToExcel";
 import axios from "axios";
+import Pagination from "../components/Pagination"; // Import Pagination component
 
 export default function MonthlyAttendance() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedDepartment, setSelectedDepartment] = useState("All");
   const [employees, setEmployees] = useState([]);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
   const { holidays } = useContext(EmployContext);
-
 
   const holidayDates = useMemo(() => {
     return holidays.map(h => h.holiday_date);
@@ -44,6 +47,7 @@ export default function MonthlyAttendance() {
     } else {
       setSelectedMonth(selectedMonth + 1);
     }
+    setPage(1); // Reset to page 1 when month changes
   };
 
   const previous = () => {
@@ -53,10 +57,18 @@ export default function MonthlyAttendance() {
     } else {
       setSelectedMonth(selectedMonth - 1);
     }
+    setPage(1); // Reset to page 1 when month changes
   };
 
-  const previousYear = () => setSelectedYear(selectedYear - 1);
-  const nextYear = () => setSelectedYear(selectedYear + 1);
+  const previousYear = () => {
+    setSelectedYear(selectedYear - 1);
+    setPage(1); // Reset to page 1 when year changes
+  };
+  
+  const nextYear = () => {
+    setSelectedYear(selectedYear + 1);
+    setPage(1); // Reset to page 1 when year changes
+  };
 
   // Fetch attendance data
   useEffect(() => {
@@ -66,6 +78,7 @@ export default function MonthlyAttendance() {
           params: { month: selectedMonth + 1, year: selectedYear },
         });
         setEmployees(resp.data.attendance || []);
+        setPage(1); // Reset to page 1 when data changes
       } catch (err) {
         console.error(err);
       }
@@ -75,84 +88,96 @@ export default function MonthlyAttendance() {
 
   // Filter employees by department
   const filteredEmployees = useMemo(() => {
-    return selectedDepartment === "All"
+    const filtered = selectedDepartment === "All"
       ? employees
       : employees.filter(emp => emp.department === selectedDepartment);
+    
+    // Filter out inactive employees and emp_id 2020
+    return filtered.filter(emp => emp.is_active === true && emp.emp_id !== "2020");
   }, [employees, selectedDepartment]);
 
-  // useEffect(() => {
-  //   console.log("employees", employees);
-  // }, [employees])
+  // Reset to page 1 when department filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [selectedDepartment]);
+
+  // Calculate pagination
+  const totalRecords = filteredEmployees.length;
+  const totalPages = Math.ceil(totalRecords / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedEmployees = filteredEmployees.slice(startIndex, endIndex);
 
   const exportMonthlyAttendance = (data) => {
     const targetMonthStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}`;
-    exportMonthlyMatrixAttendance(data, targetMonthStr)
-  }
+    exportMonthlyMatrixAttendance(data, targetMonthStr);
+  };
 
   const formatTime = (dateString) => {
-  if (!dateString) return "--";
+    if (!dateString) return "--";
 
-  const date = new Date(dateString);
+    const date = new Date(dateString);
 
-  // handle invalid date
-  if (isNaN(date.getTime())) return "--";
+    // handle invalid date
+    if (isNaN(date.getTime())) return "--";
 
-  return date
-    .toLocaleTimeString("en-IN", {
-      timeZone: "Asia/Kolkata",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    })
-    .replace("AM", "am")
-    .replace("PM", "pm");
-};
+    return date
+      .toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      })
+      .replace("AM", "am")
+      .replace("PM", "pm");
+  };
+
   // Attendance status icons
   const getStatusIcon = (dayData) => {
-
-    // console.log("dayData",dayData);
     const punchIn = dayData?.first_in || "--";
     const punchout = dayData?.last_out || "--";
     const totalhrs = dayData?.hours_worked || "--";
 
-    // console.log("punchIn",punchIn);
-    // console.log("punchout",punchout);
     switch ((dayData?.status || "")) {
-    case "Present":
-    case "Working":
-    return <FaRegCheckCircle
-      className="text-green-500 inline text-lg"
-      title={`Punch In: (${formatTime(punchIn)})
+      case "Present":
+      case "Working":
+        return <FaRegCheckCircle
+          className="text-green-500 inline text-lg"
+          title={`Punch In: (${formatTime(punchIn)})
 Punch Out: (${punchout ? formatTime(punchout) : "--"})
 Total Hours: (${totalhrs ?? "--"})`}
-    />
-      case "Absent": return <ImCancelCircle className="text-red-500 inline text-lg" title="Absent" />;
-    case "Late Come":
-case "Early Go":
-  return (
-    <MdOutlineAccessTime
-      size={22}
-      className="text-orange-500 inline"
-        title={`(Late/Early) Punch In: (${formatTime(punchIn)})
+        />
+      case "Absent": 
+        return <ImCancelCircle className="text-red-500 inline text-lg" title="Absent" />;
+      case "Late Come":
+      case "Early Go":
+        return (
+          <MdOutlineAccessTime
+            size={22}
+            className="text-orange-500 inline"
+            title={`(Late/Early) Punch In: (${formatTime(punchIn)})
 Punch Out: (${punchout ? formatTime(punchout) : "--"})
 Total Hours: (${totalhrs ?? "--"})`}
-    />
-  );
-      case "Holiday": return <CiStar size={22} className="text-yellow-500 inline" title="Holiday" />;
-      case "leave": return <FaRegCalendarAlt className="text-orange-500 inline text-lg" title="Leave" />;
-      case "ondrive": return <MdDriveEta size={18} className="text-blue-500 inline" title="OD" />;
-      
-      case "Punch Miss":return<FaRegCheckCircle className="text-red-500 text-lg"
-        title={`Punch In: (${formatTime(punchIn)})
+          />
+        );
+      case "Holiday": 
+        return <CiStar size={22} className="text-yellow-500 inline" title="Holiday" />;
+      case "leave": 
+        return <FaRegCalendarAlt className="text-orange-500 inline text-lg" title="Leave" />;
+      case "ondrive": 
+        return <MdDriveEta size={18} className="text-blue-500 inline" title="OD" />;
+      case "Punch Miss":
+        return <FaRegCheckCircle className="text-red-500 text-lg"
+          title={`Punch In: (${formatTime(punchIn)})
 Punch Out: (${punchout ? formatTime(punchout) : "--"})
 Total Hours: (${totalhrs ?? "--"})`}
-      /> 
-              
-      
-
-      // <MdOutlineAccessTime className="text-yellow-500" />
+        />
       default: return "-";
     }
+  };
+
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
   };
 
   const today = new Date();
@@ -276,7 +301,7 @@ Total Hours: (${totalhrs ?? "--"})`}
                     <FaRegCheckCircle className="text-green-500" /> <span className="text-xs font-medium text-gray-700">Present</span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 shadow-sm ">
-                  <FaRegCheckCircle className="text-red-500" /> <span className="text-xs font-medium text-gray-700">Punch Miss</span>
+                    <FaRegCheckCircle className="text-red-500" /> <span className="text-xs font-medium text-gray-700">Punch Miss</span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 shadow-sm">
                     <ImCancelCircle className="text-red-500" /> <span className="text-xs font-medium text-gray-700">Absent</span>
@@ -294,15 +319,9 @@ Total Hours: (${totalhrs ?? "--"})`}
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 shadow-sm">
                     <MdDriveEta className="text-blue-500" /> <span className="text-xs font-medium text-gray-700">OD</span>
                   </span>
-                  
-                  
                 </div>
 
                 <div className="flex items-center justify-center lg:justify-end gap-3">
-                  {/* <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 border border-red-200 hover:border-red-300 transition-all">
-                    <BiSolidFilePdf size={18} className="text-red-500" />
-                    <span className="text-xs font-medium text-gray-700 hidden sm:inline">PDF</span>
-                  </button> */}
                   <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 hover:border-green-300 transition-all" onClick={() => exportMonthlyAttendance(filteredEmployees)}>
                     <FaFileExcel size={18} className="text-green-600" />
                     <span className="text-xs font-medium text-gray-700 hidden sm:inline">Excel</span>
@@ -321,7 +340,6 @@ Total Hours: (${totalhrs ?? "--"})`}
                     EMPLOYEE
                   </th>
                   {monthDays.map((day) => {
-
                     const weekDay = weekDays[new Date(selectedYear, selectedMonth, day).getDay()];
                     const isSunday = weekDay === "SUN";
                     return (
@@ -331,96 +349,83 @@ Total Hours: (${totalhrs ?? "--"})`}
                       </th>
                     );
                   })}
-
                 </tr>
               </thead>
 
               <tbody>
-                {filteredEmployees
-                  .filter((emp) => emp.is_active === true)
-                  .map(
-                    (emp) =>
-                      emp.emp_id !== "2020" && (
-                        <tr key={emp.emp_id} className="hover:bg-gray-50 transition">
+                {paginatedEmployees.map((emp) => (
+                  <tr key={emp.emp_id} className="hover:bg-gray-50 transition">
+                    <td className="border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 font-semibold sticky left-0 bg-white z-10 min-w-[200px] sm:min-w-[240px]">
+                      <div className="flex items-center gap-2">
+                        <div className="leading-tight">
+                          <span className="block text-xs sm:text-sm truncate max-w-[120px]">
+                            {emp.name}
+                          </span>
+                          <div className="text-[10px] text-gray-400 truncate max-w-[120px]">
+                            {emp.department}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
 
-                          <td className="border border-gray-200 px-2 sm:px-4 py-2 sm:py-3 font-semibold sticky left-0 bg-white z-10 min-w-[200px] sm:min-w-[240px]">
-                            <div className="flex items-center gap-2">
-                              <div className="leading-tight">
-                                <span className="block text-xs sm:text-sm truncate max-w-[120px]">
-                                  {emp.name}
-                                </span>
-                                <div className="text-[10px] text-gray-400 truncate max-w-[120px]">
-                                  {emp.department}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
+                    {monthDays.map((day) => {
+                      const dateStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-                          {monthDays.map((day) => {
-                            const dateStr = `${selectedYear}-${String(
-                              selectedMonth + 1
-                            ).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                      const today = new Date();
+                      const currentDate = new Date(
+                        today.getFullYear(),
+                        today.getMonth(),
+                        today.getDate()
+                      );
 
-                            const today = new Date();
-                            // year-month-date
-                            const currentDate = new Date(
-                              today.getFullYear(),
-                              today.getMonth(),
-                              today.getDate()
-                            )
+                      const cellDate = new Date(selectedYear, selectedMonth, day);
+                      const isFutureDate = currentDate < cellDate;
+                      const isHoliday = holidayDates.includes(dateStr);
+                      const dayData = emp.attendance?.find((a) => a.date === dateStr);
+                      const weekDayIndex = new Date(selectedYear, selectedMonth, day).getDay();
+                      const isSunday = weekDayIndex === 0;
 
-                            // current Date of cell
-                            const cellDate = new Date(selectedYear, selectedMonth, day);
-
-                            // console.log("cellDate",cellDate)
-
-                            // finding the Future Date
-
-                            const isFutureDate = currentDate < cellDate;
-
-                            const isHoliday = holidayDates.includes(dateStr);
-
-                            const dayData = emp.attendance?.find(
-                              (a) => a.date === dateStr
-                            );
-
-
-                            // console.log("dayData",dayData);
-
-                            const weekDayIndex = new Date(
-                              selectedYear,
-                              selectedMonth,
-                              day
-                            ).getDay();
-
-                            const isSunday = weekDayIndex === 0;
-
-                            return (
-                              <td
-                                key={`${emp.emp_id}-${day}`}
-                                className={`border border-gray-200 px-2 sm:px-4 py-2 text-center
-                    ${isSunday
-                                    ? "bg-orange-50 text-orange-600 font-semibold"
-                                    : ""
-                                  }`}
-                              >
-                                {
-                                  isFutureDate ? ("--") : isHoliday ? (
-                                    <span title="Public Holiday">🎉</span>
-                                  ) : isSunday ? (
-                                    "--"
-                                  ) : (
-                                    getStatusIcon(dayData)
-                                  )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      )
-                  )}
+                      return (
+                        <td
+                          key={`${emp.emp_id}-${day}`}
+                          className={`border border-gray-200 px-2 sm:px-4 py-2 text-center
+                            ${isSunday ? "bg-orange-50 text-orange-600 font-semibold" : ""}`}
+                        >
+                          {isFutureDate ? ("--") : isHoliday ? (
+                            <span title="Public Holiday">🎉</span>
+                          ) : isSunday ? (
+                            "--"
+                          ) : (
+                            getStatusIcon(dayData)
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {paginatedEmployees.length === 0 && (
+                  <tr>
+                    <td colSpan={monthDays.length + 1} className="text-center py-10 text-gray-500">
+                      No employees found
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {totalRecords > 0 && (
+            <div className="mt-4 pb-4">
+              <Pagination
+                totalPages={totalPages}
+                page={page}
+                onChange={handlePageChange}
+                totalRecords={totalRecords}
+                limit={limit}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

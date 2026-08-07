@@ -197,6 +197,7 @@ const handleSave = async () => {
       await addEducations(empId, formData);
       toast.success("New education added", { id: toastId });
     }
+       await fetchEducation(false); 
 
     setDraft(null);
     setEditingIndex(null);

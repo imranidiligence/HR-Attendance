@@ -1,10 +1,11 @@
 import { Typography, Box } from "@mui/material";
-import React, { useContext, useEffect, useMemo, useCallback } from "react";
+import React, { useContext, useEffect, useMemo, useState } from "react";
 import Table from "../components/Table";
 import { EmployContext } from "../context/EmployContextProvider";
 import Loader from "../components/Loader";
 import Filters from "../components/Filters";
 import { useLocation } from "react-router-dom";
+import api from "../../api/axiosInstance";
 import Pagination from "../components/Pagination";
 
 const formatHours = (val) => {
@@ -24,69 +25,93 @@ const Attendance = () => {
   const role = user?.role?.toLowerCase()?.trim();
   const isAdmin = role === "admin";
 
-  const {
-    filters,
-    adminAttendance = [],
-    employeeAttendance = [],
-    loading,
-    pagination,
-    adminPagination,
-    refreshEmployeeDashboard,
-    refreshAdminAttendance,
-    refreshAdminMyDashboard,
-    handleAdminPageChange,
-  } = useContext(EmployContext);
+  // Local state for all data
+  const [attendance, setAttendance] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    limit: 10,
+  });
 
-  // Detect which view we're in
-  const isEmployee = location.pathname.startsWith("/employee");
-  const isMyDashboard = location.pathname.startsWith("/admin/my-dashboard/attendance");
+  // Get filters from context
+  const { filters } = useContext(EmployContext);
+
   const isDailyAttendance = location.pathname.startsWith("/admin/attendance");
+  const isHistoryAttendance = !isDailyAttendance;
 
-  const showPagination = isEmployee || isMyDashboard || isDailyAttendance;
-  const isAdminWithEmp = isAdmin && isMyDashboard;
+  // Fetch data based on path
+  const fetchAttendance = async (page = 1) => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
 
+      let url = "";
+      let limit = 10;
+
+      if (isDailyAttendance) {
+        // Admin Daily Attendance - 10 per page
+        url = `${import.meta.env.VITE_API_URL}/admin/attendance/today?page=${page}&limit=10`;
+      } else {
+        // Employee Attendance History - 15 per page
+        url = `${import.meta.env.VITE_API_URL}/employee/attendance/history?page=${page}&limit=15`;
+        limit = 15;
+
+        if (filters.startDate) {
+          url += `&startDate=${filters.startDate}`;
+        }
+        if (filters.endDate) {
+          url += `&endDate=${filters.endDate}`;
+        }
+      }
+
+      const res = await api.get(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      // Set data based on response structure
+      if (isDailyAttendance) {
+        setAttendance(res.data.employees || []);
+      } else {
+        setAttendance(res.data.attendance || []);
+      }
+
+      // Update pagination
+      if (res.data.pagination) {
+        setPagination({
+          ...res.data.pagination,
+          limit: limit,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching attendance:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle page change
+  const handlePageChange = (_, page) => {
+    fetchAttendance(page);
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  };
+
+  // Fetch on mount and when path or filters change
+  useEffect(() => {
+    fetchAttendance(1);
+  }, [isDailyAttendance, filters.startDate, filters.endDate]);
+
+  // Date header
   const date = new Date();
   const day = date.getDate().toString().padStart(2, "0");
   const month = (date.getMonth() + 1).toString().padStart(2, "0");
   const year = date.getFullYear();
-
-  // Fetch data on filter or role change
-  useEffect(() => {
-    if (isAdmin) {
-      if (isDailyAttendance) {
-        // Admin daily attendance - 10 per page
-        refreshAdminAttendance();
-      } else if (isMyDashboard) {
-        // Admin my-dashboard - 15 per page
-        refreshAdminMyDashboard();
-      } else {
-        // Default - 15 per page
-        refreshEmployeeDashboard();
-      }
-    } else if (isEmployee) {
-      // Employee view - 15 per page
-      refreshEmployeeDashboard();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.startDate, filters.endDate, filters.search, isAdmin, isDailyAttendance, isMyDashboard, isEmployee]);
-
-  // Handle page change based on view
-  const handlePageChange = useCallback(
-    (event, value) => {
-      if (isAdmin && isDailyAttendance) {
-        // Admin daily attendance - 10 per page
-        handleAdminPageChange(value);
-      } else if (isAdmin && isMyDashboard) {
-        // Admin my-dashboard - 15 per page
-        refreshAdminMyDashboard(value);
-      } else {
-        // Employee view - 15 per page
-        refreshEmployeeDashboard(value);
-      }
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    [isAdmin, isDailyAttendance, isMyDashboard, handleAdminPageChange, refreshAdminMyDashboard, refreshEmployeeDashboard],
-  );
 
   // Table Headers - memoized
   const adminTableHeader = useMemo(
@@ -119,86 +144,31 @@ const Attendance = () => {
     [],
   );
 
-  // Prepare raw data and pagination based on view
-  const { rawData, currentPagination } = useMemo(() => {
-    let rawData = [];
-    let currentPagination = null;
+  // Prepare table data
+  const tableData = attendance.map((item, index) => ({
+    srNo: (pagination.currentPage - 1) * pagination.limit + index + 1,
+    empId: item.emp_id || item.device_user_id,
+    name: item.name || item.employee_name,
+    date: item.attendance_date,
+    status: item.status,
+    punchIn: item.punch_in || "--",
+    punchOut: item.punch_out || "--",
+    workingHours: formatHours(item.total_hours),
+    expectedHours: formatHours(item.expected_hours),
+  }));
 
-    if (isAdmin && isDailyAttendance) {
-      // Admin daily attendance - uses adminAttendance with 10 per page
-      rawData = adminAttendance;
-      currentPagination = adminPagination || {
-        currentPage: 1,
-        totalPages: Math.ceil(adminAttendance.length / 10),
-        totalItems: adminAttendance.length,
-        limit: 10,
-      };
-    } else if (isAdmin && isMyDashboard) {
-      // Admin my-dashboard - uses employeeAttendance with 15 per page
-      rawData = employeeAttendance;
-      currentPagination = pagination;
-    } else if (isEmployee) {
-      // Employee view - uses employeeAttendance with 15 per page
-      rawData = employeeAttendance;
-      currentPagination = pagination;
-    } else {
-      // Fallback
-      rawData = employeeAttendance;
-      currentPagination = pagination;
-    }
+  const headers = isDailyAttendance ? adminTableHeader : employeeTableHeader;
 
-    return { rawData, currentPagination };
-  }, [
-    isAdmin,
-    isDailyAttendance,
-    isMyDashboard,
-    isEmployee,
-    adminAttendance,
-    adminPagination,
-    employeeAttendance,
-    pagination,
-  ]);
-
-  // Memoize table data
-  const tableData = useMemo(() => {
-    // For admin daily attendance, show today's employees only
-    if (isAdmin && isDailyAttendance) {
-      return rawData.map((item, index) => ({
-        srNo: (currentPagination?.currentPage - 1) * (currentPagination?.limit || 10) + index + 1,
-        empId: item.emp_id || item.device_user_id,
-        name: item.name || item.employee_name,
-        date: new Date().toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-        punchIn: item.punch_in || "--",
-        punchOut: item.punch_out || "--",
-        workingHours: formatHours(item.total_hours),
-        expectedHours: formatHours(item.expected_hours),
-        status: item.status || "--",
-      }));
-    }
-
-    // For employee views with pagination
-    return rawData.map((item, index) => {
-      const currentPage = currentPagination?.currentPage || 1;
-      const pageLimit = currentPagination?.limit || 15;
-      const srNo = (currentPage - 1) * pageLimit + index + 1;
-
-      return {
-        srNo,
-        empId: item.device_user_id || item.emp_id,
-        name: item.name || item.employee_name,
-        date: item.attendance_date,
-        punchIn: item.punch_in || "--",
-        punchOut: item.punch_out || "--",
-        workingHours: formatHours(item.total_hours),
-        expectedHours: formatHours(item.expected_hours),
-        status: item.status || "--",
-      };
-    });
-  }, [rawData, currentPagination, isAdmin, isDailyAttendance]);
+  // Status color mapping
+  const statusColor = {
+    Present: "bg-green-600 text-white",
+    Working: "bg-blue-600 text-white",
+    Absent: "bg-red-600 text-white",
+    "Late Come": "bg-orange-500 text-white",
+    "Half Day": "bg-orange-500 text-white",
+    "Early Go": "bg-yellow-400 text-black",
+  };
+  console.log("Attendance Data:", attendance);
 
   return (
     <div className="min-h-max bg-gradient-to-br blur-0 bg-white px-3 pb-6">
@@ -212,7 +182,7 @@ const Attendance = () => {
       >
         <div className="w-8 text-nowrap text-white justify-start">{`Date: ${day}-${month}-${year}`}</div>
         <Typography className="text-white font-bold" sx={{ fontSize: "1rem" }}>
-          {isMyDashboard || isEmployee ? "Attendance" : "Daily Attendance"}
+          {isDailyAttendance ? "Daily Attendance" : "Attendance"}
         </Typography>
         <div></div>
       </div>
@@ -225,26 +195,114 @@ const Attendance = () => {
         <div className="-inset-1.5">
           <Filters />
 
-          <Table
-            headers={
-              isAdmin && !isAdminWithEmp ? adminTableHeader : employeeTableHeader
-            }
-            data={tableData}
-            isAdminWithEmp={isAdminWithEmp}
-          />
+          {isDailyAttendance ? (
+            // Admin Daily Attendance Table
+            <div className="max-h-[800px] w-full overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+              <table className="min-w-full text-sm border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border-b px-4 py-3 text-left">Sr No</th>
+                    <th className="border-b px-4 py-3 text-left">Emp ID</th>
+                    <th className="border-b px-4 py-3 text-left">Employee</th>
+                    <th className="border-b px-4 py-3 text-left">Date</th>
+                    <th className="border-b px-4 py-3 text-left">Status</th>
+                    <th className="border-b px-4 py-3 text-left">Punch In</th>
+                    <th className="border-b px-4 py-3 text-left">Punch Out</th>
+                    <th className="border-b px-4 py-3 text-left">
+                      Working Hours
+                    </th>
+                    <th className="border-b px-4 py-3 text-left">
+                      Expected Hours
+                    </th>
+                  </tr>
+                </thead>
 
-          {/* Show pagination when there are multiple pages */}
-          {showPagination && currentPagination?.totalPages > 1 && (
-            <Box className="mt-6 flex justify-center pb-4">
-              <Pagination
-                totalPages={currentPagination.totalPages}
-                page={currentPagination.currentPage}
-                totalRecords={currentPagination.totalItems}
-                limit={currentPagination.limit}
-                onChange={handlePageChange}
-              />
-            </Box>
+                <tbody>
+                  {attendance
+                    .filter(
+                      (row) =>
+                        row.emp_id && row.is_active && row.emp_id !== "2020",
+                    )
+                    .map((row, index) => {
+                      return (
+                        <tr
+                          key={row.emp_id || index}
+                          className={
+                            index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                          }
+                        >
+                          <td className="border-b px-4 py-2">
+                            {(pagination.currentPage - 1) * pagination.limit +
+                              index +
+                              1}
+                          </td>
+
+                          <td className="border-b px-4 py-2">{row.emp_id}</td>
+
+                          <td className="border-b px-4 py-2">{row.name}</td>
+
+                          <td className="border-b px-4 py-2">
+                            {new Date(row.attendance_date).toLocaleDateString(
+                              "en-IN",
+                              {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              },
+                            )}
+                          </td>
+
+                          <td className="border-b px-4 py-2">
+                            <span
+                              className={`inline-block px-2 py-1 rounded text-xs font-semibold w-20 text-center ${
+                                statusColor[row.status] ||
+                                "bg-gray-300 text-gray-800"
+                              }`}
+                            >
+                              {row.status}
+                            </span>
+                          </td>
+
+                          <td className="border-b px-4 py-2">
+                            {row.punch_in || "--"}
+                          </td>
+
+                          <td className="border-b px-4 py-2">
+                            {row.punch_out ||
+                              (row.status === "Working" ? "Working..." : "--")}
+                          </td>
+
+                          <td className="border-b px-4 py-2">
+                            {row.total_hours || "00:00"}
+                          </td>
+
+                          <td className="border-b px-4 py-2">9.3</td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            // Employee History Table
+            <Table
+              attendanceData={attendance}
+              loading={loading}
+              isAdminView={isAdmin && isDailyAttendance}
+              pagination={pagination}
+            />
           )}
+
+          {/* Pagination */}
+          <Box className="mt-6 flex justify-center pb-4">
+            <Pagination
+              totalPages={pagination.totalPages}
+              page={pagination.currentPage}
+              totalRecords={pagination.totalItems}
+              limit={pagination.limit}
+              onChange={handlePageChange}
+            />
+          </Box>
 
           {tableData.length === 0 && !loading && (
             <Typography className="text-center text-gray-500 mt-10">

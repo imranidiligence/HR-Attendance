@@ -143,7 +143,7 @@ const EmployProvider = ({ children }) => {
   // 2. ADMIN DAILY ATTENDANCE - 100 per page (for charts/cards)
   // ============================================
   const fetchAdminAttendance = useCallback(
-    async (page = 1, limit = 100) => {
+    async (page, limit = 100) => {
       if (!auth.token || auth.role !== "admin") return;
       try {
         setAdminLoading(true);
