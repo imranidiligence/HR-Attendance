@@ -242,7 +242,7 @@ const Profile = () => {
                         : avatarImg
                   }
                   alt="Profile"
-                  className="w-full h-full rounded-full border-4 border-[#222F7D] object-cover"
+                  className="w-auto h-auto rounded-full border-4 border-[#222F7D] object-cover"
                 />
                 <input
                   type="file"
