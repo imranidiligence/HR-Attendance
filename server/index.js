@@ -15,6 +15,7 @@ const attendanceRoutes = require("./routes/attendance.routes");
 const shiftRoutes = require("./routes/shifts.routes");
 const reportingRoutes = require("./routes/reporting.routes");
 const leavesRoutes = require("./routes/leave.routes");
+const settingsRoutes = require("./routes/settings.routes");
 const cronRoutes = require("./routes/cron.routes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
@@ -96,6 +97,7 @@ app.use("/api", reportingRoutes);
 // Leaves
 
 app.use("/api/leaves/types", leavesRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // Cron Schedule Route
 
