@@ -15,7 +15,7 @@ const attendanceRoutes = require("./routes/attendance.routes");
 const shiftRoutes = require("./routes/shifts.routes");
 const reportingRoutes = require("./routes/reporting.routes");
 const leavesRoutes = require("./routes/leave.routes");
-const settingsRoutes = require("./routes/routes/settings.routes");
+const settingsRoutes = require("./routes/settings.routes");
 const departmentRoutes = require('./routes/departmentRoutes');
 const designationRoutes = require('./routes/designationRoutes');
 const employeeTypeRoutes = require('./routes/employeeTypeRoutes');
@@ -104,17 +104,17 @@ app.use("/api/admin/shifts", shiftRoutes);
 
 // Reporting
 app.use("/api", reportingRoutes);
-router.use('/api/departments', departmentRoutes);
-router.use('/api/designations', designationRoutes);
-router.use('/api/employee-types', employeeTypeRoutes);
-router.use('/api/contact-types', contactTypeRoutes);
-router.use('/api/nationalities', nationalityRoutes);
-router.use('/api/genders', genderRoutes);
-router.use('/api/marital-statuses', maritalStatusRoutes);
-router.use('/api/document-types', documentTypeRoutes);
-router.use('/api/countries', countryRoutes);
-router.use('/api/states', stateRoutes);
-router.use('/api/cities', cityRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/designations', designationRoutes);
+app.use('/api/employee-types', employeeTypeRoutes);
+app.use('/api/contact-types', contactTypeRoutes);
+app.use('/api/nationalities', nationalityRoutes);
+app.use('/api/genders', genderRoutes);
+app.use('/api/marital-statuses', maritalStatusRoutes);
+app.use('/api/document-types', documentTypeRoutes);
+app.use('/api/countries', countryRoutes);
+app.use('/api/states', stateRoutes);
+app.use('/api/cities', cityRoutes);
 
 // Leaves
 
