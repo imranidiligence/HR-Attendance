@@ -15,7 +15,18 @@ const attendanceRoutes = require("./routes/attendance.routes");
 const shiftRoutes = require("./routes/shifts.routes");
 const reportingRoutes = require("./routes/reporting.routes");
 const leavesRoutes = require("./routes/leave.routes");
-const settingsRoutes = require("./routes/settings.routes");
+const settingsRoutes = require("./routes/routes/settings.routes");
+const departmentRoutes = require('./routes/departmentRoutes');
+const designationRoutes = require('./routes/designationRoutes');
+const employeeTypeRoutes = require('./routes/employeeTypeRoutes');
+const contactTypeRoutes = require('./routes/contactTypeRoutes');
+const nationalityRoutes = require('./routes/nationalityRoutes');
+const genderRoutes = require('./routes/genderRoutes');
+const maritalStatusRoutes = require('./routes/maritalStatusRoutes');
+const documentTypeRoutes = require('./routes/documentTypeRoutes');
+const countryRoutes = require('./routes/countryRoutes');
+const stateRoutes = require('./routes/stateRoutes');
+const cityRoutes = require('./routes/cityRoutes');
 const cronRoutes = require("./routes/cron.routes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
@@ -93,6 +104,17 @@ app.use("/api/admin/shifts", shiftRoutes);
 
 // Reporting
 app.use("/api", reportingRoutes);
+router.use('/api/departments', departmentRoutes);
+router.use('/api/designations', designationRoutes);
+router.use('/api/employee-types', employeeTypeRoutes);
+router.use('/api/contact-types', contactTypeRoutes);
+router.use('/api/nationalities', nationalityRoutes);
+router.use('/api/genders', genderRoutes);
+router.use('/api/marital-statuses', maritalStatusRoutes);
+router.use('/api/document-types', documentTypeRoutes);
+router.use('/api/countries', countryRoutes);
+router.use('/api/states', stateRoutes);
+router.use('/api/cities', cityRoutes);
 
 // Leaves
 
