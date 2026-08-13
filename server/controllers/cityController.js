@@ -15,7 +15,7 @@ const createCity = async (req, res) => {
       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, TRUE)
       RETURNING *
     `;
-    const result = await pool.query(query, [city_name, state_id || null, created_by || null]);
+    const result = await db.query(query, [city_name, state_id || null, created_by || null]);
     return successResponse(res, 201, 'City created successfully', result.rows[0]);
   } catch (error) {
     return handleDbError(res, error, 'Failed to create city');
@@ -29,7 +29,7 @@ const getCityById = async (req, res) => {
       return errorResponse(res, 400, 'Valid city_id is required', null);
     }
 
-    const result = await pool.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
+    const result = await db.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'City not found', null);
     }
@@ -54,7 +54,7 @@ const getAllCities = async (req, res) => {
       query = `SELECT * FROM city_master${whereClause} ORDER BY city_id ASC`;
     }
 
-    const result = await pool.query(query, params);
+    const result = await db.query(query, params);
     return successResponse(res, 200, 'Cities fetched successfully', result.rows);
   } catch (error) {
     return handleDbError(res, error, 'Failed to fetch cities');
@@ -67,7 +67,7 @@ const getPaginatedCities = async (req, res) => {
     const { page, limit, offset } = getPaginationParams(req.query);
     const whereClause = buildIsActiveClause(is_active);
 
-    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM city_master${whereClause}`);
+    const countResult = await db.query(`SELECT COUNT(*)::int AS total FROM city_master${whereClause}`);
     const total_records = countResult.rows[0].total;
     const total_pages = Math.ceil(total_records / limit) || 0;
 
@@ -76,7 +76,7 @@ const getPaginatedCities = async (req, res) => {
       ORDER BY city_id ASC
       LIMIT $1 OFFSET $2
     `;
-    const dataResult = await pool.query(dataQuery, [limit, offset]);
+    const dataResult = await db.query(dataQuery, [limit, offset]);
 
     return paginatedResponse(res, 200, 'Cities fetched successfully', dataResult.rows, {
       page,
@@ -96,7 +96,7 @@ const updateCity = async (req, res) => {
       return errorResponse(res, 400, 'Valid city_id is required', null);
     }
 
-    const existing = await pool.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
+    const existing = await db.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
     if (existing.rows.length === 0) {
       return errorResponse(res, 404, 'City not found', null);
     }
@@ -125,7 +125,7 @@ const updateCity = async (req, res) => {
       id,
     ];
 
-    const result = await pool.query(query, values);
+    const result = await db.query(query, values);
     return successResponse(res, 200, 'City updated successfully', result.rows[0]);
   } catch (error) {
     return handleDbError(res, error, 'Failed to update city');
@@ -139,7 +139,7 @@ const deleteCity = async (req, res) => {
       return errorResponse(res, 400, 'Valid city_id is required', null);
     }
 
-    const existing = await pool.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
+    const existing = await db.query('SELECT * FROM city_master WHERE city_id = $1', [id]);
     if (existing.rows.length === 0) {
       return errorResponse(res, 404, 'City not found', null);
     }
@@ -151,7 +151,7 @@ const deleteCity = async (req, res) => {
       WHERE city_id = $2
       RETURNING *
     `;
-    const result = await pool.query(query, [updated_by || null, id]);
+    const result = await db.query(query, [updated_by || null, id]);
     return successResponse(res, 200, 'City deleted successfully', result.rows[0]);
   } catch (error) {
     return handleDbError(res, error, 'Failed to delete city');
