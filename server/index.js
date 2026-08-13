@@ -25,6 +25,7 @@ const genderRoutes = require('./routes/genderRoutes');
 const maritalStatusRoutes = require('./routes/maritalStatusRoutes');
 const documentTypeRoutes = require('./routes/documentTypeRoutes');
 const countryRoutes = require('./routes/countryRoutes');
+const bloodGroupRoutes = require('./routes/bloodGroupRoutes');
 const stateRoutes = require('./routes/stateRoutes');
 const cityRoutes = require('./routes/cityRoutes');
 const cronRoutes = require("./routes/cron.routes");
@@ -115,6 +116,7 @@ app.use('/api/document-types', documentTypeRoutes);
 app.use('/api/countries', countryRoutes);
 app.use('/api/states', stateRoutes);
 app.use('/api/cities', cityRoutes);
+app.use('/api/blood-groups', bloodGroupRoutes);
 
 // Leaves
 
