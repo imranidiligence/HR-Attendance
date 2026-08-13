@@ -28,6 +28,7 @@ const countryRoutes = require('./routes/countryRoutes');
 const bloodGroupRoutes = require('./routes/bloodGroupRoutes');
 const stateRoutes = require('./routes/stateRoutes');
 const cityRoutes = require('./routes/cityRoutes');
+const branchRoutes = require('./routes/branchRoutes');
 const cronRoutes = require("./routes/cron.routes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
@@ -117,6 +118,7 @@ app.use('/api/countries', countryRoutes);
 app.use('/api/states', stateRoutes);
 app.use('/api/cities', cityRoutes);
 app.use('/api/blood-groups', bloodGroupRoutes);
+app.use('/api/branches', branchRoutes);
 
 // Leaves
 
