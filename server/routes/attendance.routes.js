@@ -19,7 +19,7 @@ router.get("/today", auth, isAdmin, controller.getTodayOrganizationAttendance);
 
 // Add Employ by Admin
 
-router.post("/add-employee", auth, isAdmin, uploadProfileImage.single("profile"), addEmployController)
+router.post("/add-employee", uploadProfileImage.single("profile"), addEmployController)
 
 // Admin Attendance 
 router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)

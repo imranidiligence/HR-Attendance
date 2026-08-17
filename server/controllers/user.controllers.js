@@ -46,13 +46,24 @@ const loginController = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+      const roleResult = await db.query(
+        `
+        SELECT r.role_id, r.role_name
+        FROM user_role ur
+        INNER JOIN role_master r ON r.role_id = ur.role_id
+        WHERE ur.user_id = $1
+        `,
+        [user.id]
+      );
+
+      const roles = roleResult.rows;
 
 
     const token = jwt.sign(
       {
         id: user.id,
         // email:user.email,
-        role: user.role,
+        role: roles, // Array of role names
         emp_id: user.emp_id
       },
       process.env.JWT_SECRET,
@@ -70,7 +81,7 @@ const loginController = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: roles, // Array of role names
         emp_id: user.emp_id,
         profile_image:user.profile_image
       }

@@ -165,46 +165,30 @@ exports.addEmployController = async (req, res) => {
 
   console.log("addEmp", req.body);
 
-  // FrontendData
-  // addEmp {
-  //   name: 'john',
-  //   role: 'employee',
-  //   email: 'john@gmail.com',
-  //   emp_id: '12345',
-  //   profile_image: 'blob:http://localhost:5173/7aa33e42-9c92-4f86-b81b-febcf0485a54',
-  //   password: '123456',
-  //   current_address: 'xyz'
-  // }
-
   try {
     const {
       name,
       email,
       password,
-      emp_id,
-      role,
-      shift_id,
-      dob,
-      gender,
-      department,
-      designation,
-      joining_date,
-      maritalstatus,
-      nominee,
-      aadharnumber,
-      bloodgroup,
-      nationality,
-      employee_type,
-      current_address,
-      reporting_location,
       is_active,
+      roles,
     } = req.body;
 
-    console.log(name, email, password, emp_id);
+    console.log(name, email, password, is_active, roles);
+    console.log("Roles:", roles);
 
     // 1. Validation
-    if (!name || !email || !password || !emp_id) {
-      return res.status(400).json({ message: "All essential fields required" });
+    if (!name || !email || !password || !is_active || !roles) {
+      return res.status(400).json({
+        message: "All essential fields required",
+      });
+    }
+
+    // Validate roles
+    if (roles !== undefined && !Array.isArray(roles)) {
+      return res.status(400).json({
+        message: "Roles must be an array",
+      });
     }
 
     // 2. Start Transaction
@@ -212,93 +196,73 @@ exports.addEmployController = async (req, res) => {
 
     // 3. Hash Password
     const hashedPassword = await bcrypt.hash(String(password), 10);
-    const profile_image = req.file ? `/uploads/${req.file.filename}` : null;
 
-    // 4. Insert into 'users' table
+    const profile_image = req.file
+      ? `/uploads/${req.file.filename}`
+      : null;
+
+    // 4. Insert into users table
     const userResult = await client.query(
       `
       INSERT INTO users 
-        (name, email, password, role, emp_id, is_active, shift_id, profile_image)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (name, email, password, is_active, profile_image)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING id
       `,
       [
         name,
         email.toLowerCase().trim(),
         hashedPassword,
-        role || "employee",
-        emp_id,
         is_active === undefined ? true : is_active,
-        shift_id || 3,
         profile_image,
-      ],
+      ]
     );
 
     const newUserId = userResult.rows[0].id;
 
-    // 5. Insert into 'personal' table
-    await client.query(
-      `
-      INSERT INTO personal 
-        (emp_id, department, designation, joining_date, employee_type, reporting_location, current_address)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `,
-      [
-        newUserId,
-        department,
-        designation,
-        joining_date || null,
-        employee_type,
-        reporting_location,
-        current_address,
-      ],
-    );
-
-    // await client.query(
-    //   `
-    //   INSERT INTO personal
-    //     (emp_id, dob, gender, department, joining_date, maritalstatus, nominee, aadharnumber, bloodgroup, nationality, current_address)
-    //   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    //   `,
-    //   [
-    //     newUserId,
-    //     dob || null,
-    //     gender,
-    //     department,
-    //     joining_date || null,
-    //     maritalstatus,
-    //     nominee,
-    //     aadharnumber,
-    //     bloodgroup,
-    //     nationality,
-    //     current_address,
-    //   ]
-    // );
+    // 5. Insert roles into user_roles table
+    if (roles && roles.length > 0) {
+      for (const roleId of roles) {
+        await client.query(
+          `
+          INSERT INTO user_role (user_id, role_id)
+          VALUES ($1, $2)
+          `,
+          [newUserId, roleId]
+        );
+      }
+    }
 
     // 6. Commit Transaction
     await client.query("COMMIT");
 
-    // await sendEmail(email, "Welcome to the Company", "employee_creation", { name, emp_id, email });
-
     res.status(201).json({
       message: "Employee created successfully",
-      user: { id: newUserId, emp_id, name, email, role },
+      user: {
+        id: newUserId,
+        name,
+        email,
+        roles: roles || [],
+      },
     });
+
   } catch (error) {
-    // 7. Rollback in case of error (avoids partial data)
+    // Rollback transaction
     await client.query("ROLLBACK");
+
     console.error("Transaction Error:", error);
 
-    // Handle unique constraint errors (e.g., duplicate email or emp_id)
     if (error.code === "23505") {
-      return res
-        .status(400)
-        .json({ message: "Email or Employee ID already exists" });
+      return res.status(400).json({
+        message: "Email or Employee ID already exists",
+      });
     }
 
-    res.status(500).json({ message: "Internal Server Error" });
-    // } finally {
-    // Release client back to the pool
+    res.status(500).json({
+      message: "Internal Server Error",
+    });
+
+  } finally {
     client.release();
   }
 };
