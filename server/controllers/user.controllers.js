@@ -63,7 +63,7 @@ const loginController = async (req, res) => {
       {
         id: user.id,
         // email:user.email,
-        role: roles, // Array of role names
+        role: roles.map((r) => r.role_name), // Array of role names
         emp_id: user.emp_id
       },
       process.env.JWT_SECRET,
@@ -81,7 +81,7 @@ const loginController = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: roles, // Array of role names
+        role: roles.map((r) => r.role_name), // Array of role names
         emp_id: user.emp_id,
         profile_image:user.profile_image
       }
