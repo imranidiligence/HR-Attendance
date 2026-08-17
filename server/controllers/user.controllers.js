@@ -627,5 +627,27 @@ const getAllEmployeesPaginated = async (req, res) => {
     });
   }
 }
+const getCountOfEmployees = async (req, res) => {
+  try {
+        const totalEmployees = await db.query
+    (`SELECT COUNT(*) AS total FROM users`);
+    const activeCount = await db.query
+    (`SELECT COUNT(*) AS total FROM users WHERE is_active = true`);
+    const totalActiveEmployees = activeCount.rows[0].total;
+    const inactiveCount = await db.query
+    (`SELECT COUNT(*) AS total FROM users WHERE is_active = false`);
+    const totalInactiveEmployees = inactiveCount.rows[0].total;
+    const newJoinersCount = await db.query
+    (`SELECT COUNT(*) AS total
+FROM organizations
+WHERE EXTRACT(YEAR FROM joining_date) = EXTRACT(YEAR FROM CURRENT_DATE);`);
+    const totalNewJoiners = newJoinersCount.rows[0].total;
+    res.status(200).json({totalEmployees: totalEmployees.rows[0].total, totalActiveEmployees, totalInactiveEmployees, totalNewJoiners });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
 
-module.exports = { loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated };
+
+module.exports = { loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };
