@@ -163,5 +163,459 @@ const getAllEmployees = async (req, res) => {
   }
 }
 
+const getAllEmployeesPaginated = async (req, res) => {
+  try {
+    // ==========================================
+    // Pagination
+    // ==========================================
 
-module.exports = { loginController,changeMyPassword,getAllEmployees };
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    // ==========================================
+    // Query Parameters
+    // ==========================================
+
+    const {
+      search = "",
+      department,
+      designation,
+      status,
+    } = req.query;
+
+    const searchValue = search.trim();
+
+    // ==========================================
+    // Build WHERE conditions
+    // ==========================================
+
+    const conditions = [];
+    const values = [];
+
+    let paramIndex = 1;
+
+    // ==========================================
+    // Search
+    // Name / Email / Employee ID
+    // ==========================================
+
+    if (searchValue) {
+      conditions.push(`
+        (
+          u.name ILIKE '%' || $${paramIndex} || '%'
+          OR u.email ILIKE '%' || $${paramIndex} || '%'
+          OR o.employeeidoforganisation::text ILIKE '%' || $${paramIndex} || '%'
+        )
+      `);
+
+      values.push(searchValue);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Department Filter
+    // ==========================================
+
+    if (department) {
+      conditions.push(`
+        o.department_id = $${paramIndex}
+      `);
+
+      values.push(department);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Designation Filter
+    // ==========================================
+
+    if (designation) {
+      conditions.push(`
+        o.designation_id = $${paramIndex}
+      `);
+
+      values.push(designation);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Status Filter
+    // ==========================================
+
+    if (status !== undefined && status !== "") {
+      conditions.push(`
+        o.is_active = $${paramIndex}
+      `);
+
+      values.push(status === "true");
+      paramIndex++;
+    }
+
+    // ==========================================
+    // WHERE clause
+    // ==========================================
+
+    const whereClause =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+    // ==========================================
+    // 1. Count total records
+    // ==========================================
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT u.id)::int AS total
+
+      FROM public.users u
+
+      LEFT JOIN public.personal p
+        ON u.emp_id = p.emp_id
+
+      LEFT JOIN public.organizations o
+        ON u.emp_id = o.employeeidoforganisation
+
+      LEFT JOIN public.departments d
+        ON o.department_id = d.id
+
+      LEFT JOIN public.designations des
+        ON o.designation_id = des.id
+
+      ${whereClause}
+    `;
+
+    const countResult = await db.query(
+      countQuery,
+      values
+    );
+
+    const total = countResult.rows[0].total;
+
+    // ==========================================
+    // 2. Pagination parameters
+    // ==========================================
+
+    const dataValues = [...values];
+
+    const limitParam = paramIndex;
+    const offsetParam = paramIndex + 1;
+
+    dataValues.push(limit);
+    dataValues.push(offset);
+
+    // ==========================================
+    // 3. Get employees
+    // ==========================================
+
+    const dataQuery = `
+      SELECT
+
+        -- =====================================
+        -- USERS
+        -- All columns except password
+        -- =====================================
+
+        to_jsonb(u) - 'password' AS user,
+
+        -- =====================================
+        -- PERSONAL
+        -- =====================================
+
+        jsonb_build_object(
+
+          'gender',
+          COALESCE(g.gender_name, p.gender),
+
+          'dob',
+          p.dob,
+
+          'bloodgroup',
+          COALESCE(bg.blood_group_name, p.bloodgroup),
+
+          'maritalstatus',
+          COALESCE(ms.marital_status_name, p.maritalstatus),
+
+          'nationality',
+          COALESCE(n.nationality_name, p.nationality),
+
+          'current_address',
+          p.current_address,
+
+          'aadharnumber',
+          p.aadharnumber,
+
+          'nominee',
+          p.nominee,
+
+          'emp_id',
+          p.emp_id,
+
+          'department',
+          COALESCE(d.department_name, p.department),
+
+          'joining_date',
+          p.joining_date,
+
+          'designation',
+          COALESCE(des.designation_name, p.designation),
+
+          'leaving_date',
+          p.leaving_date,
+
+          'employee_type',
+          COALESCE(et.employee_type_name, p.employee_type),
+
+          'reporting_location',
+          COALESCE(
+            rl.reporting_location_name,
+            p.reporting_location
+          ),
+
+          'contact',
+          p.contact,
+
+          'permanent_address',
+          p.permanent_address,
+
+          'first_name',
+          p.first_name,
+
+          'last_name',
+          p.last_name,
+
+          'email',
+          p.email,
+
+          'nationality_id',
+          p.nationality_id,
+
+          'gender_id',
+          p.gender_id,
+
+          'marital_status_id',
+          p.marital_status_id,
+
+          'blood_group_id',
+          p.blood_group_id
+
+        ) AS personal,
+
+        -- =====================================
+        -- ORGANIZATION
+        -- =====================================
+
+        jsonb_build_object(
+
+          'organization_name',
+          o.organization_name,
+
+          'organization_code',
+          o.organization_code,
+
+          'industry_type',
+          o.industry_type,
+
+          'organization_location',
+          o.organization_location,
+
+          'city',
+          o.city,
+
+          'state',
+          o.state,
+
+          'country',
+          o.country,
+
+          'is_active',
+          o.is_active,
+
+          'created_at',
+          o.created_at,
+
+          'id',
+          o.id,
+
+          'employee_type',
+          COALESCE(
+            et.employee_type_name,
+            o.employee_type_id::text
+          ),
+
+          'employee_id',
+          o.employee_id,
+
+          'reporting_location',
+          COALESCE(
+            rl.reporting_location_name,
+            o.reporting_location_id::text
+          ),
+
+          'organization_email',
+          o.organization_email,
+
+          'department',
+          COALESCE(
+            d.department_name,
+            o.department_id::text
+          ),
+
+          'designation',
+          COALESCE(
+            des.designation_name,
+            o.designation_id::text
+          ),
+
+          'joining_date',
+          o.joining_date,
+
+          'leaving_date',
+          o.leaving_date,
+
+          'official_email_id',
+          o.official_email_id,
+
+          'official_contact_no',
+          o.official_contact_no,
+
+          'reporting_to',
+          reporting_user.name,
+
+          'employeeidoforganisation',
+          o.employeeidoforganisation,
+
+          'employee_type_id',
+          o.employee_type_id,
+
+          'department_id',
+          o.department_id,
+
+          'designation_id',
+          o.designation_id,
+
+          'reporting_location_id',
+          o.reporting_location_id,
+
+          'reporting_to_id',
+          o.reporting_to_id
+
+        ) AS organization
+
+      FROM public.users u
+
+      -- =====================================
+      -- PERSONAL
+      -- =====================================
+
+      LEFT JOIN public.personal p
+        ON u.emp_id = p.emp_id
+
+      -- =====================================
+      -- ORGANIZATION
+      -- =====================================
+
+      LEFT JOIN public.organizations o
+        ON u.emp_id = o.employeeidoforganisation
+
+      -- =====================================
+      -- MASTER TABLES
+      -- =====================================
+
+      LEFT JOIN public.departments d
+        ON o.department_id = d.id
+
+      LEFT JOIN public.designations des
+        ON o.designation_id = des.id
+
+      LEFT JOIN public.employee_types et
+        ON o.employee_type_id = et.id
+
+      LEFT JOIN public.reporting_locations rl
+        ON o.reporting_location_id = rl.id
+
+      LEFT JOIN public.nationalities n
+        ON p.nationality_id = n.id
+
+      LEFT JOIN public.genders g
+        ON p.gender_id = g.id
+
+      LEFT JOIN public.marital_statuses ms
+        ON p.marital_status_id = ms.id
+
+      LEFT JOIN public.blood_groups bg
+        ON p.blood_group_id = bg.id
+
+      -- =====================================
+      -- REPORTING PERSON
+      -- =====================================
+
+      LEFT JOIN public.users reporting_user
+        ON o.reporting_to_id = reporting_user.id
+
+      ${whereClause}
+
+      -- =====================================
+      -- SORT
+      -- =====================================
+
+      ORDER BY u.created_at DESC, u.id DESC
+
+      -- =====================================
+      -- PAGINATION
+      -- =====================================
+
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+    const result = await db.query(
+      dataQuery,
+      dataValues
+    );
+
+    // ==========================================
+    // Pagination information
+    // ==========================================
+
+    const totalPages = Math.ceil(total / limit);
+
+    return res.status(200).json({
+      success: true,
+
+      pagination: {
+        currentPage: page,
+        limit: limit,
+        totalRecords: total,
+        totalPages: totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+
+      filters: {
+        search: searchValue || null,
+        department: department || null,
+        designation: designation || null,
+        status:
+          status === undefined || status === ""
+            ? null
+            : status === "true",
+      },
+
+      employees: result.rows,
+    });
+
+  } catch (error) {
+    console.error(
+      "Get Employees Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+}
+
+module.exports = { loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated };

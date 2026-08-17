@@ -6,6 +6,7 @@ const { addEmployController } = require("../controllers/attendance.controller");
 const { isAdmin } = require("../middlewares/roleMiddleware");
 const { db } = require("../db/connectDB");
 const uploadProfileImage = require("../middlewares/uploadProfileImage");
+const { updateEmployController } = require("../controllers/attendance.controller");
 
 // Admin
 
@@ -20,6 +21,7 @@ router.get("/today", auth, isAdmin, controller.getTodayOrganizationAttendance);
 // Add Employ by Admin
 
 router.post("/add-employee", uploadProfileImage.single("profile"), addEmployController)
+router.put("/employee/:id", updateEmployController);
 
 // Admin Attendance 
 router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)
