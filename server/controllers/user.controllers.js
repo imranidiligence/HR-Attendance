@@ -219,7 +219,7 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     if (department) {
       conditions.push(`
-        o.department_id = $${paramIndex}
+        o."DepartmentId" = $${paramIndex}
       `);
 
       values.push(department);
@@ -276,11 +276,11 @@ const getAllEmployeesPaginated = async (req, res) => {
       LEFT JOIN public.organizations o
         ON u.emp_id = o.employeeidoforganisation
 
-      LEFT JOIN public.departments d
-        ON o.department_id = d.id
+      LEFT JOIN public.department_master d
+        ON o.department_id = d."DepartmentId"
 
-      LEFT JOIN public.designations des
-        ON o.designation_id = des.id
+      LEFT JOIN public.designation_master des
+        ON o.designation_id = des.designation_id
 
       ${whereClause}
     `;
@@ -324,82 +324,97 @@ const getAllEmployeesPaginated = async (req, res) => {
 
         jsonb_build_object(
 
-          'gender',
-          COALESCE(g.gender_name, p.gender),
+  'gender',
+  COALESCE(
+    g.gender_name,
+    p.gender::text
+  ),
 
-          'dob',
-          p.dob,
+  'dob',
+  p.dob,
 
-          'bloodgroup',
-          COALESCE(bg.blood_group_name, p.bloodgroup),
+  'bloodgroup',
+  COALESCE(
+    bg.blood_group_name,
+    p.bloodgroup::text
+  ),
 
-          'maritalstatus',
-          COALESCE(ms.marital_status_name, p.maritalstatus),
+  'maritalstatus',
+  COALESCE(
+    ms.marital_status_name,
+    p.maritalstatus::text
+  ),
 
-          'nationality',
-          COALESCE(n.nationality_name, p.nationality),
+  'nationality',
+  COALESCE(
+    n.nationality_name,
+    p.nationality::text
+  ),
 
-          'current_address',
-          p.current_address,
+  'current_address',
+  p.current_address,
 
-          'aadharnumber',
-          p.aadharnumber,
+  'aadharnumber',
+  p.aadharnumber,
 
-          'nominee',
-          p.nominee,
+  'nominee',
+  p.nominee,
 
-          'emp_id',
-          p.emp_id,
+  'emp_id',
+  p.emp_id,
 
-          'department',
-          COALESCE(d.department_name, p.department),
+  'department',
+  COALESCE(
+    d."DepartmentName",
+    p.department::text
+  ),
 
-          'joining_date',
-          p.joining_date,
+  'joining_date',
+  p.joining_date,
 
-          'designation',
-          COALESCE(des.designation_name, p.designation),
+  'designation',
+  COALESCE(
+    des.designation_name,
+    p.designation::text
+  ),
 
-          'leaving_date',
-          p.leaving_date,
+  'leaving_date',
+  p.leaving_date,
 
-          'employee_type',
-          COALESCE(et.employee_type_name, p.employee_type),
+  'employee_type',
+  COALESCE(
+    et.employee_type_name,
+    p.employee_type::text
+  ),
 
-          'reporting_location',
-          COALESCE(
-            rl.reporting_location_name,
-            p.reporting_location
-          ),
+  'contact',
+  p.contact,
 
-          'contact',
-          p.contact,
+  'permanent_address',
+  p.permanent_address,
 
-          'permanent_address',
-          p.permanent_address,
+  'first_name',
+  p.first_name,
 
-          'first_name',
-          p.first_name,
+  'last_name',
+  p.last_name,
 
-          'last_name',
-          p.last_name,
+  'email',
+  p.email,
 
-          'email',
-          p.email,
+  'nationality_id',
+  p.nationality_id,
 
-          'nationality_id',
-          p.nationality_id,
+  'gender_id',
+  p.gender_id,
 
-          'gender_id',
-          p.gender_id,
+  'marital_status_id',
+  p.marital_status_id,
 
-          'marital_status_id',
-          p.marital_status_id,
+  'blood_group_id',
+  p.blood_group_id
 
-          'blood_group_id',
-          p.blood_group_id
-
-        ) AS personal,
+) AS personal,
 
         -- =====================================
         -- ORGANIZATION
@@ -446,18 +461,13 @@ const getAllEmployeesPaginated = async (req, res) => {
           'employee_id',
           o.employee_id,
 
-          'reporting_location',
-          COALESCE(
-            rl.reporting_location_name,
-            o.reporting_location_id::text
-          ),
 
           'organization_email',
           o.organization_email,
 
           'department',
           COALESCE(
-            d.department_name,
+            d."DepartmentName",
             o.department_id::text
           ),
 
@@ -522,29 +532,29 @@ const getAllEmployeesPaginated = async (req, res) => {
       -- MASTER TABLES
       -- =====================================
 
-      LEFT JOIN public.departments d
-        ON o.department_id = d.id
+      LEFT JOIN public.department_master d
+        ON o.department_id = d."DepartmentId"
 
-      LEFT JOIN public.designations des
-        ON o.designation_id = des.id
+      LEFT JOIN public.designation_master des
+        ON o.designation_id = des.designation_id
 
-      LEFT JOIN public.employee_types et
-        ON o.employee_type_id = et.id
+      LEFT JOIN public.employee_type_master et
+        ON o.employee_type_id = et.employee_type_id
 
-      LEFT JOIN public.reporting_locations rl
-        ON o.reporting_location_id = rl.id
+      LEFT JOIN public.branch_location_master rl
+        ON o.reporting_location_id = rl.branch_location_id
 
-      LEFT JOIN public.nationalities n
-        ON p.nationality_id = n.id
+      LEFT JOIN public.nationality_master n
+        ON p.nationality_id = n.nationality_id
 
-      LEFT JOIN public.genders g
-        ON p.gender_id = g.id
+      LEFT JOIN public.gender_master g
+        ON p.gender_id = g.gender_id
 
-      LEFT JOIN public.marital_statuses ms
-        ON p.marital_status_id = ms.id
+      LEFT JOIN public.marital_status_master ms
+        ON p.marital_status_id = ms.marital_status_id
 
-      LEFT JOIN public.blood_groups bg
-        ON p.blood_group_id = bg.id
+      LEFT JOIN public.blood_group_master bg
+        ON p.blood_group_id = bg.blood_group_id
 
       -- =====================================
       -- REPORTING PERSON
