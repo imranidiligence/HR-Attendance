@@ -1203,124 +1203,206 @@ exports.getMyAttendance = async (req, res) => {
     const limit = Math.max(parseInt(req.query.limit) || 15, 1);
     const offset = (page - 1) * limit;
 
-    // Total attendance records (30 days + today)
-    const countResult = await db.query(`
+    // Optional date filters
+    const { startDate, endDate } = req.query;
+
+    // Default: last 30 days + today
+    const defaultToDate = `
+      (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+    `;
+
+    const defaultFromDate = `
+      (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days'
+    `;
+
+    const fromDate = startDate || null;
+    const toDate = endDate || null;
+
+    // Validate date range
+    if (fromDate && toDate && new Date(fromDate) > new Date(toDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate cannot be greater than endDate",
+      });
+    }
+
+    // ---------------------------------------------------------
+    // TOTAL ITEMS
+    // ---------------------------------------------------------
+    const countResult = await db.query(
+      `
       SELECT COUNT(*)::int AS total
       FROM generate_series(
-        (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days',
-        (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date,
+        COALESCE($1::date, ${defaultFromDate}),
+        COALESCE($2::date, ${defaultToDate}),
         INTERVAL '1 day'
       ) d;
-    `);
+      `,
+      [fromDate, toDate]
+    );
 
     const totalItems = countResult.rows[0].total;
 
+    // ---------------------------------------------------------
+    // ATTENDANCE DATA
+    // ---------------------------------------------------------
     const { rows } = await db.query(
       `
-WITH date_range AS (
-  SELECT generate_series(
-    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days',
-    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date,
-    INTERVAL '1 day'
-  )::date AS attendance_date
-),
+      WITH date_range AS (
+        SELECT generate_series(
+          COALESCE($1::date, ${defaultFromDate}),
+          COALESCE($2::date, ${defaultToDate}),
+          INTERVAL '1 day'
+        )::date AS attendance_date
+      ),
 
-logs_summary AS (
-  SELECT
-      emp_id,
-      DATE(punch_time) AS attendance_date,
-      MIN(punch_time) AS log_punch_in,
-      MAX(punch_time) AS log_punch_out,
-      COUNT(*) AS total_logs
-  FROM attendance_logs
-  WHERE emp_id = $1
-  GROUP BY emp_id, DATE(punch_time)
-)
+      logs_summary AS (
+        SELECT
+            emp_id,
+            DATE(punch_time) AS attendance_date,
+            MIN(punch_time) AS log_punch_in,
+            MAX(punch_time) AS log_punch_out,
+            COUNT(*) AS total_logs
+        FROM attendance_logs
+        WHERE emp_id = $3
+        GROUP BY emp_id, DATE(punch_time)
+      )
 
-SELECT
-    $1 AS emp_id,
-    u.name AS employee_name,
-    TO_CHAR(dr.attendance_date,'YYYY-MM-DD') AS attendance_date,
+      SELECT
+          $3 AS emp_id,
+          u.name AS employee_name,
+          TO_CHAR(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
 
-    COALESCE(da.punch_in, ls.log_punch_in) AS punch_in,
+          COALESCE(
+            da.punch_in,
+            ls.log_punch_in
+          ) AS punch_in,
 
-    CASE
-        WHEN da.punch_out IS NOT NULL THEN da.punch_out
-        WHEN ls.total_logs > 1 THEN ls.log_punch_out
-        ELSE NULL
-    END AS punch_out,
+          CASE
+              WHEN da.punch_out IS NOT NULL
+                  THEN da.punch_out
 
-    CASE
-        WHEN COALESCE(da.punch_in, ls.log_punch_in) IS NULL THEN 0
+              WHEN ls.total_logs > 1
+                  THEN ls.log_punch_out
 
-        WHEN (
-            CASE
-                WHEN da.punch_out IS NOT NULL THEN da.punch_out
-                WHEN ls.total_logs > 1 THEN ls.log_punch_out
-                ELSE NULL
-            END
-        ) IS NULL THEN 0
+              ELSE NULL
+          END AS punch_out,
 
-        ELSE EXTRACT(EPOCH FROM (
-            (
-                CASE
-                    WHEN da.punch_out IS NOT NULL THEN da.punch_out
-                    WHEN ls.total_logs > 1 THEN ls.log_punch_out
-                    ELSE NULL
-                END
-            ) - COALESCE(da.punch_in, ls.log_punch_in)
-        ))
-    END AS total_seconds,
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 0
 
-    CASE
-        WHEN COALESCE(da.punch_in, ls.log_punch_in) IS NULL
-            THEN 'Absent'
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
 
-        WHEN (
-            CASE
-                WHEN da.punch_out IS NOT NULL THEN da.punch_out
-                WHEN ls.total_logs > 1 THEN ls.log_punch_out
-                ELSE NULL
-            END
-        ) IS NULL
-            THEN 'Working'
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
 
-        ELSE 'Present'
-    END AS status
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 0
 
-FROM date_range dr
+              ELSE EXTRACT(
+                EPOCH FROM (
+                  (
+                    CASE
+                        WHEN da.punch_out IS NOT NULL
+                            THEN da.punch_out
 
-CROSS JOIN (
-    SELECT name
-    FROM users
-    WHERE emp_id = $1
-) u
+                        WHEN ls.total_logs > 1
+                            THEN ls.log_punch_out
 
-LEFT JOIN daily_attendance da
-       ON da.emp_id = $1
-      AND da.attendance_date = dr.attendance_date
+                        ELSE NULL
+                    END
+                  )
+                  -
+                  COALESCE(
+                    da.punch_in,
+                    ls.log_punch_in
+                  )
+                )
+              )
+          END AS total_seconds,
 
-LEFT JOIN logs_summary ls
-       ON ls.emp_id = $1
-      AND ls.attendance_date = dr.attendance_date
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 'Absent'
 
-ORDER BY dr.attendance_date DESC
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
 
-LIMIT $2
-OFFSET $3;
-`,
-      [empId, limit, offset],
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
+
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 'Working'
+
+              ELSE 'Present'
+          END AS status
+
+      FROM date_range dr
+
+      CROSS JOIN (
+          SELECT name
+          FROM users
+          WHERE emp_id = $3
+      ) u
+
+      LEFT JOIN daily_attendance da
+             ON da.emp_id = $3
+            AND da.attendance_date = dr.attendance_date
+
+      LEFT JOIN logs_summary ls
+             ON ls.emp_id = $3
+            AND ls.attendance_date = dr.attendance_date
+
+      ORDER BY dr.attendance_date DESC
+
+      LIMIT $4
+      OFFSET $5;
+      `,
+      [
+        fromDate,
+        toDate,
+        empId,
+        limit,
+        offset,
+      ]
     );
-    console.log("Attendance Rows Fetched getMyAttendance:", rows);
+
+    console.log(
+      "Attendance Rows Fetched getMyAttendance:",
+      rows
+    );
+
     const attendance = rows.map((row) => {
       let total_hours = null;
 
-      if (row.total_seconds && row.punch_in && row.punch_out) {
+      if (
+        row.total_seconds &&
+        row.punch_in &&
+        row.punch_out
+      ) {
         const seconds = Number(row.total_seconds);
 
         total_hours = {
           hours: Math.floor(seconds / 3600),
-          minutes: Math.floor((seconds % 3600) / 60),
+          minutes: Math.floor(
+            (seconds % 3600) / 60
+          ),
         };
       }
 
@@ -1335,15 +1417,23 @@ OFFSET $3;
       attendance,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalItems / limit),
+        totalPages: Math.ceil(
+          totalItems / limit
+        ),
         totalItems,
         limit,
-        hasNext: page < Math.ceil(totalItems / limit),
+        hasNext:
+          page <
+          Math.ceil(totalItems / limit),
         hasPrevious: page > 1,
       },
     });
   } catch (err) {
-    console.error("getMyAttendance error:", err);
+    console.error(
+      "getMyAttendance error:",
+      err
+    );
+
     return res.status(500).json({
       success: false,
       message: "Server error",
