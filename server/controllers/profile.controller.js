@@ -2260,6 +2260,7 @@ exports.addBankInfo = async (req, res) => {
       account_type,
       is_active = true,
       pan_number,
+      account_type_id
     } = req.body;
 
     // console.log(req.body);
@@ -2272,8 +2273,8 @@ exports.addBankInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO bank_accounts (
-        employee_id, account_holder_name, bank_name, account_number, ifsc_code, branch_name, upi_id, account_type, pan_number, is_active
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        employee_id, account_holder_name, bank_name, account_number, ifsc_code, branch_name, upi_id, account_type, pan_number, account_type_id, is_active
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       ON CONFLICT (employee_id)
       DO UPDATE SET
         account_holder_name = EXCLUDED.account_holder_name,
@@ -2284,6 +2285,7 @@ exports.addBankInfo = async (req, res) => {
         upi_id = EXCLUDED.upi_id,
         account_type = EXCLUDED.account_type,
         pan_number = EXCLUDED.pan_number,
+        account_type_id = EXCLUDED.account_type_id,
         is_active = EXCLUDED.is_active,
         updated_at = NOW()
       RETURNING *
@@ -2298,6 +2300,7 @@ exports.addBankInfo = async (req, res) => {
         upi_id,
         account_type,
         pan_number,
+        account_type_id,
         is_active
       ]
     );
@@ -2345,6 +2348,7 @@ exports.updateBankInfo = async (req, res) => {
       upi_id,
       account_type,
       pan_number,
+      account_type_id,
       is_active
     } = req.body;
 
@@ -2390,6 +2394,7 @@ const recordCheck = await db.query(
         account_type = $7,
         pan_number = $8,
         is_active = $9,
+        account_type_id = $10,
         updated_at = NOW()
       WHERE employee_id = $10
       RETURNING *
@@ -2404,6 +2409,7 @@ const recordCheck = await db.query(
         account_type,
         pan_number,
         is_active ?? true,
+        account_type_id || null,
         emp_id
       ]
     );
