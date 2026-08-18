@@ -33,6 +33,7 @@ const branchLocationRoutes = require('./routes/branchLocationRoutes');
 const vendorTypeRoutes = require('./routes/vendorTypeRoutes');
 const cronRoutes = require("./routes/cron.routes");
 const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
+const degreeRoutes = require('./routes/degreeRoutes')
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -125,6 +126,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/branch-locations', branchLocationRoutes);
 app.use('/vendor-details', vendorDetailsRoutes);
 app.use('/api/vendor-types', vendorTypeRoutes);
+app.use('/api/degrees', degreeRoutes);
 // Leaves
 
 app.use("/api/leaves/types", leavesRoutes);
