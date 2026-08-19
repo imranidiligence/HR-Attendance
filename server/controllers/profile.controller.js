@@ -39,7 +39,7 @@ state
 */
 
 exports.addOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -151,7 +151,7 @@ exports.addOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -221,7 +221,7 @@ exports.addOrganizationInfo = async (req, res) => {
 
 exports.getOrganizationInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // ---------- Organization ----------
     const orgResult = await db.query(
@@ -252,7 +252,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM organizations
       WHERE employee_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     // ---------- Reporting ----------
@@ -264,7 +264,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM employee_reporting
       WHERE emp_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     if (!orgResult.rows.length) {
@@ -292,7 +292,7 @@ exports.getOrganizationInfo = async (req, res) => {
 };
 
 exports.updateOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -380,7 +380,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id || employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -391,7 +391,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         official_contact_no,
         reporting_to_id || null,
         employeeidoforganisation,
-        emp_id
+        employee_id
       ]
     );
 
@@ -411,7 +411,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       SET is_active = $1
       WHERE emp_id = $2
       `,
-      [isActive, emp_id]
+      [isActive, employee_id]
     );
 
     // ---------- Update Reporting ----------
@@ -428,7 +428,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         reporting_to_id || null
       ]
     );
