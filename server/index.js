@@ -136,6 +136,9 @@ app.use("/api/settings", settingsRoutes);
 
 // Cron Schedule Route
 
+//Dashboard 
+app.use("/api/dashboard", dashboardRoutes);
+
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
   try {
