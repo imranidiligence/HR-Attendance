@@ -35,6 +35,7 @@ const cronRoutes = require("./routes/cron.routes");
 const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
 const degreeRoutes = require('./routes/degreeRoutes')
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
+const dashboardRoutes = require("./routes/DashboardRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
