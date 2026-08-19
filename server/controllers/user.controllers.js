@@ -219,7 +219,7 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     if (department) {
       conditions.push(`
-        o."DepartmentId" = $${paramIndex}
+        o.department_id = $${paramIndex}
       `);
 
       values.push(department);
@@ -271,13 +271,13 @@ const getAllEmployeesPaginated = async (req, res) => {
       FROM public.users u
 
       LEFT JOIN public.personal p
-        ON u.emp_id = p.emp_id
+        ON u.id = p.employee_id
 
       LEFT JOIN public.organizations o
-        ON u.emp_id = o.employeeidoforganisation
+        ON u.id = o.employee_id
 
       LEFT JOIN public.department_master d
-        ON o.department_id = d."DepartmentId"
+        ON d."DepartmentId" = o.department_id
 
       LEFT JOIN public.designation_master des
         ON o.designation_id = des.designation_id
