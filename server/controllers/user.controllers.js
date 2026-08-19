@@ -360,8 +360,8 @@ const getAllEmployeesPaginated = async (req, res) => {
   'nominee',
   p.nominee,
 
-  'emp_id',
-  p.emp_id,
+  'employee_id',
+  p.employee_id,
 
   'department',
   COALESCE(
