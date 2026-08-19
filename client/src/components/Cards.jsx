@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useMemo, useEffect, useCallback, useRef } from "react";
 import { EmployContext } from "../context/EmployContextProvider";
 import PeopleIcon from "@mui/icons-material/People";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -7,80 +7,40 @@ import { IoEnterOutline } from "react-icons/io5";
 import { useLocation } from "react-router-dom";
 import { BsCalendarWeek } from "react-icons/bs";
 import { IoExit } from "react-icons/io5";
-import { useEffect } from "react";
-
 
 const Cards = () => {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isEmployeeDashboard = location.pathname.startsWith("/admin/my-dashboard");
-  const isEmployee = location.pathname.startsWith("/employee")
+  const isEmployee = location.pathname.startsWith("/employee");
   const user = JSON.parse(localStorage.getItem("user") || "{}");
-
-  const token = localStorage.getItem("token");
 
   const {
     adminAttendance = [],
     singleAttendance,
     loading,
-    auth,
-    refreshEmployeeDashboard,refreshAdminAttendance
     
   } = useContext(EmployContext);
-  const role = user?.role?.toLowerCase()?.trim();
-
-
-
-  // console.log(singleAttendance);
-
-
-useEffect(() => {
-  if (!auth?.token) return;
-
-  if (role === "admin") {
-    refreshAdminAttendance(); 
-  } else {
-    refreshEmployeeDashboard();
-  }
-
-}, [auth?.token, role]);
-
-
-  const getTime = (dateTime) => {
-    if (!dateTime) return "--";
   
-    // If already HH:MM
-    if (/^\d{2}:\d{2}$/.test(dateTime)) return dateTime;
-  
-    const date = new Date(dateTime);
-    if (isNaN(date.getTime())) return "--";
-  
-    return date.toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false, // change to true if you want AM/PM
-    });
-  };
-
-  // console.log("singleAttendance",singleAttendance)
-  // console.log("adminAttendance",adminAttendance)
-
-  /*Admin Cards */
+  /* Admin Cards - Filtered for active users only */
   const adminCards = useMemo(() => {
     if (!Array.isArray(adminAttendance) || adminAttendance.length === 0) {
       return [];
     }
 
-    const totalEmployees = adminAttendance.length;
+    // Filter to only include active users
+    const activeEmployees = adminAttendance.filter(
+      (emp) => emp.is_active === true,
+    );
 
-    const presentToday = adminAttendance.filter(
-      (emp) =>
-        emp.status === "Present" ||
-        emp.status === "Working"
+    const totalEmployees = activeEmployees.length;
+
+    const presentToday = activeEmployees.filter(
+      (emp) => emp.status === "Present" || emp.status === "Working",
     ).length;
 
-    const absentToday = adminAttendance.filter(
-      (emp) => emp.status === "Absent"
+    const absentToday = activeEmployees.filter(
+      (emp) => emp.status === "Absent",
     ).length;
 
     return [
@@ -98,7 +58,6 @@ useEffect(() => {
         icon: <CheckCircleIcon />,
         bgColor: "#16A34A",
       },
-      
       {
         id: 3,
         title: "Absent Today",
@@ -109,10 +68,8 @@ useEffect(() => {
     ];
   }, [adminAttendance]);
 
-  /* Employee Cards*/
+  /* Employee Cards */
   const employeeCards = useMemo(() => {
-    // if (!singleAttendance) return [];
-  
     return [
       {
         id: 1,
@@ -132,7 +89,7 @@ useEffect(() => {
         icon: <IoExit />,
         bgColor: "#dc2626",
       },
-        {
+      {
         id: 3,
         title: "Total Hours",
         value: singleAttendance?.today?.total_hours ?? "--",
@@ -143,15 +100,13 @@ useEffect(() => {
         id: 4,
         title: "Weekly Hours",
         value: singleAttendance?.weekly?.total_hours ?? "--",
-
         icon: <BsCalendarWeek />,
         bgColor: "#2563eb",
       },
     ];
   }, [singleAttendance]);
-  
 
-  /*Loading */
+  /* Loading */
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -165,19 +120,12 @@ useEffect(() => {
     );
   }
 
-  
-  
-  // const cardsToRender = isAdminRoute && (isEmployeeDashboard &&  isEmployee) ? adminCards : employeeCards;
   const cardsToRender =
-  isEmployee || (isAdminRoute && isEmployeeDashboard)
-    ? employeeCards
-    : isAdminRoute
-    ? adminCards
-    : [];
-  
-  // console.log("cardsToRender",cardsToRender)
-  //  const cardsToRender = isAdminRoute  ? adminCards : employeeCards;
-
+    isEmployee || (isAdminRoute && isEmployeeDashboard)
+      ? employeeCards
+      : isAdminRoute
+      ? adminCards
+      : [];
 
   if (!cardsToRender.length) return null;
 
@@ -200,9 +148,7 @@ useEffect(() => {
 
             <div>
               <p className="text-sm text-gray-500">{data.title}</p>
-              <p className="text-2xl font-semibold">
-                {data.value ?? "--"}
-              </p>
+              <p className="text-2xl font-semibold">{data.value ?? "--"}</p>
             </div>
           </div>
         </div>
@@ -212,4 +158,3 @@ useEffect(() => {
 };
 
 export default Cards;
-

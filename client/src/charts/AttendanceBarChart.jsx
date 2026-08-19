@@ -3,18 +3,34 @@ import { Bar } from "react-chartjs-2";
 import { EmployContext } from "../context/EmployContextProvider";
 import "../components/Charts";
 
-const AttendanceBarChart = () => {
+const AttendanceBarChart = ({ cardData = [] }) => {
   const { adminAttendance = [], loading } = useContext(EmployContext);
 
-  // 🔹 Derive counts from adminAttendance
+  // 🔹 Derive counts from adminAttendance - Filter for active users only
   const stats = useMemo(() => {
-    const total = adminAttendance.length;
+    // If cardData is provided and has data, use it
+    if (cardData && cardData.length > 0) {
+      const total = cardData.find(item => item.title === "Total Employees")?.total || 0;
+      const present = cardData.find(item => item.title === "Present Today")?.total || 0;
+      const absent = cardData.find(item => item.title === "Absent Today")?.total || 0;
+      
+      return [
+        { title: "Total Employee", total, bgColor: "#4331cc" },
+        { title: "Present", total: present, bgColor: "#27F598" },
+        { title: "Absent", total: absent, bgColor: "#ff4d4f" },
+      ];
+    }
 
-    const present = adminAttendance.filter(
+    // Fallback: Filter adminAttendance for active users
+    const activeEmployees = adminAttendance.filter(
+      (emp) => emp.is_active === true
+    );
+
+    const total = activeEmployees.length;
+    const present = activeEmployees.filter(
       i => i.status === "Present" || i.status === "Working"
     ).length;
-
-    const absent = adminAttendance.filter(
+    const absent = activeEmployees.filter(
       i => i.status === "Absent"
     ).length;
 
@@ -23,25 +39,10 @@ const AttendanceBarChart = () => {
       { title: "Present", total: present, bgColor: "#27F598" },
       { title: "Absent", total: absent, bgColor: "#ff4d4f" },
     ];
-  }, [adminAttendance]);
+  }, [adminAttendance, cardData]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[260px] text-gray-500">
-        Loading chart...
-      </div>
-    );
-  }
-
-  if (!adminAttendance.length) {
-    return (
-      <div className="flex items-center justify-center h-[260px] text-gray-500">
-        No attendance data
-      </div>
-    );
-  }
-
-  const chartData = {
+  // Memoize chart data to prevent unnecessary re-renders
+  const chartData = useMemo(() => ({
     labels: stats.map(i => i.title),
     datasets: [
       {
@@ -52,9 +53,10 @@ const AttendanceBarChart = () => {
         barThickness: 40,
       },
     ],
-  };
+  }), [stats]);
 
-  const options = {
+  // Memoize options
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -77,7 +79,23 @@ const AttendanceBarChart = () => {
         },
       },
     },
-  };
+  }), []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[260px] text-gray-500">
+        Loading chart...
+      </div>
+    );
+  }
+
+  if (!adminAttendance.length) {
+    return (
+      <div className="flex items-center justify-center h-[260px] text-gray-500">
+        No attendance data
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-[260px]">
@@ -86,4 +104,4 @@ const AttendanceBarChart = () => {
   );
 };
 
-export default AttendanceBarChart;
+export default React.memo(AttendanceBarChart);

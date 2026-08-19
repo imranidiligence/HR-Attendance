@@ -5,7 +5,7 @@ const Leavecards = ({ LeavecardData = [] }) => {
 
 
   useEffect(()=>{
-    console.log("LeavecardData",LeavecardData);
+    // console.log("LeavecardData",LeavecardData);
     
 
   },[LeavecardData])

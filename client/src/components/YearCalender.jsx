@@ -58,7 +58,7 @@ const YearCalendar = ({ year, holidays=[], attendanceData, employeesOnDay }) => 
 
   const status = attendanceData?.[date];
   const employeeCount = employeesOnDay?.[date];
-  console.log(date, attendanceData[date]);
+  // console.log(date, attendanceData[date]);
 
   return (
     <div

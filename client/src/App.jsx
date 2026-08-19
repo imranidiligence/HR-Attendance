@@ -1,5 +1,10 @@
 import { useContext, useEffect, useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 
 import Adminlayout from "./layout/Adminlayout";
@@ -34,11 +39,11 @@ import MonthlyAttendance from "./pages/MonthlyAttendance";
 import { EmployContext } from "./context/EmployContextProvider";
 
 function App() {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem("user") || "null"));
+  const [user, setUser] = useState(
+    JSON.parse(localStorage.getItem("user") || "null"),
+  );
 
-  const {isMyDash} = useContext(EmployContext);
-
-
+  const { isMyDash } = useContext(EmployContext);
 
   useEffect(() => {
     const handleStorage = (event) => {
@@ -107,16 +112,16 @@ function App() {
             <Route path="employee-details/:emp_id" element={<EmployeeDetails />} />
             <Route path="employee-details/edit/:emp_id" element={<AdminEditEmpProfile />} />
             {/* <Route path="all" element={<SingleEmpAttendance/>}/> */}
-            {/* <Route path="reporting" element={<ReportingAdmin/> }/>
+        {/* <Route path="reporting" element={<ReportingAdmin/> }/>
             <Route path="profile" element={<Profile />} />
             <Route path="help" element={<Help />} />
             {/* <Route path="cron-manager" element={<AttendanceSheet/>}/> */}
-            {/* <Route path="cron-manager" element={<CronManager/>}/>
+        {/* <Route path="cron-manager" element={<CronManager/>}/>
             <Route path="week" element={<WeeklyAttendance/>}/>
             <Route path="all" element={<MonthlyAttendance/>}/> */}
 
-            {/* EmployeeRoute */}
-          {/* <Route path="employee-details" element={<Employlayout />}>
+        {/* EmployeeRoute */}
+        {/* <Route path="employee-details" element={<Employlayout />}>
             <Route index element={<Overview />} />
             <Route path="attendance" element={<Attendance />} /> 
             <Route path="holidays" element={<Holidays />} />
@@ -125,62 +130,65 @@ function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="leaves" element={<Employleaves />} />
           </Route> */}
-           {/* */}
-            {/* */} 
-              
-          {/* </Route> */}
+        {/* */}
+        {/* */}
+
+        {/* </Route> */}
 
         {/* </Route> */}
         {/* } */}
 
-
         <Route element={<AdminRoute allowedRole="admin" />}>
-  <Route path="/admin" element={<Adminlayout />}>
-  {/* <Route path="employee-details/edit/:emp_id" element={<AdminEditEmpProfile />} /> */}
-    {/* ADMIN */}
-    <Route index element={<Overview />} />
-    <Route path="attendance" element={<Attendance />} />
-    <Route path="employees" element={<Employelist />} />
-    <Route path="add-emp" element={<AddEmploy />} />
-    <Route path="activity-logs" element={<AdminActivityLog />} />
-    <Route path="leaves" element={<Adminleaves />} />
-    <Route path="admin-attendance" element={<AdminAttendancePage />} />
-    <Route path="settings" element={<Settings />} />
-    <Route path="reporting" element={<ReportingAdmin />} />
-    <Route path="profile" element={<Profile />} />
-    <Route path="help" element={<Help />} />
-    <Route path="cron-manager" element={<CronManager />} />
-    <Route path="week" element={<WeeklyAttendance />} />
-    <Route path="all" element={<MonthlyAttendance />} />
+          <Route path="/admin" element={<Adminlayout />}>
+            {/* <Route path="employee-details/edit/:emp_id" element={<AdminEditEmpProfile />} /> */}
+            {/* ADMIN */}
+            <Route index element={<Overview />} />
+            <Route path="attendance" element={<Attendance />} />
+            <Route path="employees" element={<Employelist />} />
+            <Route path="add-emp" element={<AddEmploy />} />
+            <Route path="activity-logs" element={<AdminActivityLog />} />
+            <Route path="leaves" element={<Adminleaves />} />
+            <Route path="admin-attendance" element={<AdminAttendancePage />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="reporting" element={<ReportingAdmin />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="help" element={<Help />} />
 
-    {/* admin/employee-details/202500025 */}
+            <Route path="cron-manager" element={<CronManager />} />
+            <Route path="week" element={<WeeklyAttendance />} />
+            <Route path="all" element={<MonthlyAttendance />} />
+            <Route path="change-password" element={<ChangePassword />} />
 
-    {/* Employee profile from admin */}
-    <Route path="employee/edit/:emp_id" element={<EmployeeDetails />} />
-    <Route path="employee/edit/:emp_id" element={<AdminEditEmpProfile />} />
+            {/* admin/employee-details/202500025 */}
 
-    {/* ADMIN VIEWING OWN EMPLOYEE DASHBOARD */}
-    <Route path="my-dashboard" element={<Employlayout />}>
-      <Route index element={<Overview />} />
-      <Route path="attendance" element={<Attendance />} />
-      <Route path="holidays" element={<Holidays />} />
-      <Route path="profile" element={<Profile />} />
-      <Route path="settings" element={<Settings />} />
-      <Route path="leaves" element={<Employleaves />} />
-    </Route>
+            {/* Employee profile from admin */}
+            <Route path="employee/edit/:emp_id" element={<EmployeeDetails />} />
+            <Route
+              path="employee/edit/:emp_id"
+              element={<AdminEditEmpProfile />}
+            />
 
-    {/* Emp */}
+            {/* ADMIN VIEWING OWN EMPLOYEE DASHBOARD */}
+            <Route path="my-dashboard" element={<Employlayout />}>
+              <Route index element={<Overview />} />
+              <Route path="attendance" element={<Attendance />} />
+              <Route path="holidays" element={<Holidays />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="leaves" element={<Employleaves />} />
+            </Route>
 
-  </Route>
-</Route>
+            {/* Emp */}
+          </Route>
+        </Route>
 
         {/* EMPLOYEE */}
-        <Route element={<ProtectedRoute allowedRoles={["employee", "admin"]} />}>
-
- 
+        <Route
+          element={<ProtectedRoute allowedRoles={["employee", "admin"]} />}
+        >
           <Route path="/employee" element={<Employlayout />}>
             <Route index element={<Overview />} />
-            <Route path="attendance" element={<Attendance />} /> 
+            <Route path="attendance" element={<Attendance />} />
             <Route path="holidays" element={<Holidays />} />
             <Route path="change-password" element={<ChangePassword />} />
             <Route path="profile" element={<Profile />} />

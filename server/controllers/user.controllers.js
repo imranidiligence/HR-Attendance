@@ -46,13 +46,24 @@ const loginController = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
+      const roleResult = await db.query(
+        `
+        SELECT r.role_id, r.role_name
+        FROM user_role ur
+        INNER JOIN role_master r ON r.role_id = ur.role_id
+        WHERE ur.user_id = $1
+        `,
+        [user.id]
+      );
+
+      const roles = roleResult.rows;
 
 
     const token = jwt.sign(
       {
         id: user.id,
         // email:user.email,
-        role: user.role,
+        role: roles.map((r) => r.role_name), // Array of role names
         emp_id: user.emp_id
       },
       process.env.JWT_SECRET,
@@ -70,7 +81,7 @@ const loginController = async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: roles.map((r) => r.role_name), // Array of role names
         emp_id: user.emp_id,
         profile_image:user.profile_image
       }
@@ -152,5 +163,491 @@ const getAllEmployees = async (req, res) => {
   }
 }
 
+const getAllEmployeesPaginated = async (req, res) => {
+  try {
+    // ==========================================
+    // Pagination
+    // ==========================================
 
-module.exports = { loginController,changeMyPassword,getAllEmployees };
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit) || 10, 1);
+    const offset = (page - 1) * limit;
+
+    // ==========================================
+    // Query Parameters
+    // ==========================================
+
+    const {
+      search = "",
+      department,
+      designation,
+      status,
+    } = req.query;
+
+    const searchValue = search.trim();
+
+    // ==========================================
+    // Build WHERE conditions
+    // ==========================================
+
+    const conditions = [];
+    const values = [];
+
+    let paramIndex = 1;
+
+    // ==========================================
+    // Search
+    // Name / Email / Employee ID
+    // ==========================================
+
+    if (searchValue) {
+      conditions.push(`
+        (
+          u.name ILIKE '%' || $${paramIndex} || '%'
+          OR u.email ILIKE '%' || $${paramIndex} || '%'
+          OR o.employeeidoforganisation::text ILIKE '%' || $${paramIndex} || '%'
+        )
+      `);
+
+      values.push(searchValue);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Department Filter
+    // ==========================================
+
+    if (department) {
+      conditions.push(`
+        o."DepartmentId" = $${paramIndex}
+      `);
+
+      values.push(department);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Designation Filter
+    // ==========================================
+
+    if (designation) {
+      conditions.push(`
+        o.designation_id = $${paramIndex}
+      `);
+
+      values.push(designation);
+      paramIndex++;
+    }
+
+    // ==========================================
+    // Status Filter
+    // ==========================================
+
+    if (status !== undefined && status !== "") {
+      conditions.push(`
+        o.is_active = $${paramIndex}
+      `);
+
+      values.push(status === "true");
+      paramIndex++;
+    }
+
+    // ==========================================
+    // WHERE clause
+    // ==========================================
+
+    const whereClause =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+    // ==========================================
+    // 1. Count total records
+    // ==========================================
+
+    const countQuery = `
+      SELECT COUNT(DISTINCT u.id)::int AS total
+
+      FROM public.users u
+
+      LEFT JOIN public.personal p
+        ON u.emp_id = p.emp_id
+
+      LEFT JOIN public.organizations o
+        ON u.emp_id = o.employeeidoforganisation
+
+      LEFT JOIN public.department_master d
+        ON o.department_id = d."DepartmentId"
+
+      LEFT JOIN public.designation_master des
+        ON o.designation_id = des.designation_id
+
+      ${whereClause}
+    `;
+
+    const countResult = await db.query(
+      countQuery,
+      values
+    );
+
+    const total = countResult.rows[0].total;
+
+    // ==========================================
+    // 2. Pagination parameters
+    // ==========================================
+
+    const dataValues = [...values];
+
+    const limitParam = paramIndex;
+    const offsetParam = paramIndex + 1;
+
+    dataValues.push(limit);
+    dataValues.push(offset);
+
+    // ==========================================
+    // 3. Get employees
+    // ==========================================
+
+    const dataQuery = `
+      SELECT
+
+        -- =====================================
+        -- USERS
+        -- All columns except password
+        -- =====================================
+
+        to_jsonb(u) - 'password' AS user,
+
+        -- =====================================
+        -- PERSONAL
+        -- =====================================
+
+        jsonb_build_object(
+
+  'gender',
+  COALESCE(
+    g.gender_name,
+    p.gender::text
+  ),
+
+  'dob',
+  p.dob,
+
+  'bloodgroup',
+  COALESCE(
+    bg.blood_group_name,
+    p.bloodgroup::text
+  ),
+
+  'maritalstatus',
+  COALESCE(
+    ms.marital_status_name,
+    p.maritalstatus::text
+  ),
+
+  'nationality',
+  COALESCE(
+    n.nationality_name,
+    p.nationality::text
+  ),
+
+  'current_address',
+  p.current_address,
+
+  'aadharnumber',
+  p.aadharnumber,
+
+  'nominee',
+  p.nominee,
+
+  'emp_id',
+  p.emp_id,
+
+  'department',
+  COALESCE(
+    d."DepartmentName",
+    p.department::text
+  ),
+
+  'joining_date',
+  p.joining_date,
+
+  'designation',
+  COALESCE(
+    des.designation_name,
+    p.designation::text
+  ),
+
+  'leaving_date',
+  p.leaving_date,
+
+  'employee_type',
+  COALESCE(
+    et.employee_type_name,
+    p.employee_type::text
+  ),
+
+  'contact',
+  p.contact,
+
+  'permanent_address',
+  p.permanent_address,
+
+  'first_name',
+  p.first_name,
+
+  'last_name',
+  p.last_name,
+
+  'email',
+  p.email,
+
+  'nationality_id',
+  p.nationality_id,
+
+  'gender_id',
+  p.gender_id,
+
+  'marital_status_id',
+  p.marital_status_id,
+
+  'blood_group_id',
+  p.blood_group_id
+
+) AS personal,
+
+        -- =====================================
+        -- ORGANIZATION
+        -- =====================================
+
+        jsonb_build_object(
+
+          'organization_name',
+          o.organization_name,
+
+          'organization_code',
+          o.organization_code,
+
+          'industry_type',
+          o.industry_type,
+
+          'organization_location',
+          o.organization_location,
+
+          'city',
+          o.city,
+
+          'state',
+          o.state,
+
+          'country',
+          o.country,
+
+          'is_active',
+          o.is_active,
+
+          'created_at',
+          o.created_at,
+
+          'id',
+          o.id,
+
+          'employee_type',
+          COALESCE(
+            et.employee_type_name,
+            o.employee_type_id::text
+          ),
+
+          'employee_id',
+          o.employee_id,
+
+
+          'organization_email',
+          o.organization_email,
+
+          'department',
+          COALESCE(
+            d."DepartmentName",
+            o.department_id::text
+          ),
+
+          'designation',
+          COALESCE(
+            des.designation_name,
+            o.designation_id::text
+          ),
+
+          'joining_date',
+          o.joining_date,
+
+          'leaving_date',
+          o.leaving_date,
+
+          'official_email_id',
+          o.official_email_id,
+
+          'official_contact_no',
+          o.official_contact_no,
+
+          'reporting_to',
+          reporting_user.name,
+
+          'employeeidoforganisation',
+          o.employeeidoforganisation,
+
+          'employee_type_id',
+          o.employee_type_id,
+
+          'department_id',
+          o.department_id,
+
+          'designation_id',
+          o.designation_id,
+
+          'reporting_location_id',
+          o.reporting_location_id,
+
+          'reporting_to_id',
+          o.reporting_to_id
+
+        ) AS organization
+
+      FROM public.users u
+
+      -- =====================================
+      -- PERSONAL
+      -- =====================================
+
+      LEFT JOIN public.personal p
+        ON u.emp_id = p.emp_id
+
+      -- =====================================
+      -- ORGANIZATION
+      -- =====================================
+
+      LEFT JOIN public.organizations o
+        ON u.emp_id = o.employeeidoforganisation
+
+      -- =====================================
+      -- MASTER TABLES
+      -- =====================================
+
+      LEFT JOIN public.department_master d
+        ON o.department_id = d."DepartmentId"
+
+      LEFT JOIN public.designation_master des
+        ON o.designation_id = des.designation_id
+
+      LEFT JOIN public.employee_type_master et
+        ON o.employee_type_id = et.employee_type_id
+
+      LEFT JOIN public.branch_location_master rl
+        ON o.reporting_location_id = rl.branch_location_id
+
+      LEFT JOIN public.nationality_master n
+        ON p.nationality_id = n.nationality_id
+
+      LEFT JOIN public.gender_master g
+        ON p.gender_id = g.gender_id
+
+      LEFT JOIN public.marital_status_master ms
+        ON p.marital_status_id = ms.marital_status_id
+
+      LEFT JOIN public.blood_group_master bg
+        ON p.blood_group_id = bg.blood_group_id
+
+      -- =====================================
+      -- REPORTING PERSON
+      -- =====================================
+
+      LEFT JOIN public.users reporting_user
+        ON o.reporting_to_id = reporting_user.id
+
+      ${whereClause}
+
+      -- =====================================
+      -- SORT
+      -- =====================================
+
+      ORDER BY u.created_at DESC, u.id DESC
+
+      -- =====================================
+      -- PAGINATION
+      -- =====================================
+
+      LIMIT $${limitParam}
+      OFFSET $${offsetParam}
+    `;
+
+    const result = await db.query(
+      dataQuery,
+      dataValues
+    );
+
+    // ==========================================
+    // Pagination information
+    // ==========================================
+
+    const totalPages = Math.ceil(total / limit);
+
+    return res.status(200).json({
+      success: true,
+
+      pagination: {
+        currentPage: page,
+        limit: limit,
+        totalRecords: total,
+        totalPages: totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+
+      filters: {
+        search: searchValue || null,
+        department: department || null,
+        designation: designation || null,
+        status:
+          status === undefined || status === ""
+            ? null
+            : status === "true",
+      },
+
+      employees: result.rows,
+    });
+
+  } catch (error) {
+    console.error(
+      "Get Employees Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+}
+const getCountOfEmployees = async (req, res) => {
+  try {
+        const totalEmployees = await db.query
+    (`SELECT COUNT(*) AS total FROM users`);
+    const activeCount = await db.query
+    (`SELECT COUNT(*) AS total FROM users WHERE is_active = true`);
+    const totalActiveEmployees = activeCount.rows[0].total;
+    const inactiveCount = await db.query
+    (`SELECT COUNT(*) AS total FROM users WHERE is_active = false`);
+    const totalInactiveEmployees = inactiveCount.rows[0].total;
+    const newJoinersCount = await db.query
+    (`SELECT COUNT(*) AS total
+FROM organizations
+WHERE EXTRACT(YEAR FROM joining_date) = EXTRACT(YEAR FROM CURRENT_DATE);`);
+    const totalNewJoiners = newJoinersCount.rows[0].total;
+    res.status(200).json({totalEmployees: totalEmployees.rows[0].total, totalActiveEmployees, totalInactiveEmployees, totalNewJoiners });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+
+module.exports = { loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };

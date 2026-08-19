@@ -43,9 +43,17 @@
 
 // // module.exports = { db, connectDB };
 
-const { Pool } = require("pg"); // 1. Change Client to Pool
-require("dotenv").config();
+console.log("DB FILE LOADED");
 
+require("dotenv").config();
+const { Pool } = require("pg"); // 1. Change Client to Pool
+console.log({
+  host: process.env.PSQL_HOST,
+  port: process.env.PSQL_USER,
+  user: process.env.PSQL_PORT,
+  password: process.env.PSQL_PASSWORD,
+  database: process.env.PSQL_DATABASE,
+});
 const db = new Pool({
   host: process.env.PSQL_HOST,
   user: process.env.PSQL_USER,
@@ -58,7 +66,7 @@ const db = new Pool({
   connectionTimeoutMillis: 2000, // Return an error if a connection takes too long
 });
 
-// With a Pool, you don't actually NEED a manual "connectDB" function 
+// With a Pool, you don't actually NEED a manual "connectDB" function
 // because the pool handles connecting automatically when you run a query.
 const connectDB = async () => {
   try {

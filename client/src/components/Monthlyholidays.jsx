@@ -23,7 +23,7 @@ const MonthlyHolidays = () => {
   const {holidays} = useContext(EmployContext);
 
   useEffect(()=>{
-    console.log("holidays",holidays)
+    // console.log("holidays",holidays)
   },[holidays])
 
   const today = new Date(now.getFullYear(),now.getMonth(),now.getDate());

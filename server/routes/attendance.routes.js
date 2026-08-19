@@ -6,6 +6,7 @@ const { addEmployController } = require("../controllers/attendance.controller");
 const { isAdmin } = require("../middlewares/roleMiddleware");
 const { db } = require("../db/connectDB");
 const uploadProfileImage = require("../middlewares/uploadProfileImage");
+const { updateEmployController } = require("../controllers/attendance.controller");
 
 // Admin
 
@@ -13,13 +14,14 @@ router.get("/sync", controller.syncAttendance);
 
 
 // Today All Employ Attendance
-router.get("/today", controller.getTodayOrganizationAttendance);
+router.get("/today", auth, isAdmin, controller.getTodayOrganizationAttendance);
 
 
 
 // Add Employ by Admin
 
-router.post("/add-employee", auth, isAdmin, uploadProfileImage.single("profile"), addEmployController)
+router.post("/add-employee", uploadProfileImage.single("profile"), addEmployController)
+router.put("/employee/:id", updateEmployController);
 
 // Admin Attendance 
 router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)
@@ -29,7 +31,8 @@ router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)
 router.get("/activity-log", auth, isAdmin, controller.getActivityLog);
 
 router.get("/activity-log/exports", auth, isAdmin, controller.exportActivityLog);
-
+// New API for all employees
+router.get("/today/all", auth, isAdmin, controller.getTodayOrganizationAttendanceAll);
 
 
 // Express route example

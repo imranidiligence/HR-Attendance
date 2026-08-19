@@ -257,7 +257,7 @@ const Adminleaves = () => {
   // },[filteredLeaves]);
 
   const handlePendingLeaves = (data)=>{
-      console.log("data from AdminLeaves",data);
+      // console.log("data from AdminLeaves",data);
 
     setLeaveCount(data);
 

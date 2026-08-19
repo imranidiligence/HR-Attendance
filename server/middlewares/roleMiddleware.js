@@ -11,7 +11,7 @@ const authorizeRole = (role) => {
 const isAdmin = (req, res, next) => {
 
   // console.log("req.user",req.user);
-  if (!req.user || req.user.role !== "admin") {
+  if (!req.user || !req.user.role.includes("HR-ADMIN")) {
     return res.status(403).json({ message: "Access denied. Admin only." });
   }
   next();

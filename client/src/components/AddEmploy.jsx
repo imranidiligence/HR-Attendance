@@ -75,7 +75,6 @@ const AddEmployee = () => {
 
       const resp = await addEmploy(formData);
 
-      console.log("resp Add Emp",resp);
       setEmployeeBasic(resp.user);
 
       setEmpId(resp.user.emp_id);
@@ -355,13 +354,15 @@ const AddEmployee = () => {
         <div className="max-w-6xl mx-auto mt-5 rounded-xl min-h-[400px]">
 
           <MainProfile
-            empId={empId}
             personalData={personal}
             educationData={education}
             experienceData={experience}
-            nomineeData={nominee}
             contactData={contact}
+            nomineeData={nominee}
             bankData={bank}
+            organizationData={employeeBasic}
+            empId={empId}
+            userRole="admin"
             documents={documents}
             isEditing={isEditing}
             setIsEditing={setIsEditing}

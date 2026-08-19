@@ -63,7 +63,7 @@ const AdminAttendance = () => {
 
     useEffect(()=>{
 
-      console.log("filters",filters.adminAttSearch);
+      // console.log("filters",filters.adminAttSearch);
     },[filters])
 
   const [data, setData] = useState([]);
@@ -103,7 +103,7 @@ const AdminAttendance = () => {
 
         const json = await res.json();
 
-        console.log("json",json);
+        // console.log("json",json);
 
         if (res.ok) {
           setData(json.attendance || []);

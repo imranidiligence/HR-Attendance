@@ -87,8 +87,8 @@ const CronManager = () => {
   const scheduleId = schedules[index].id; 
   const isNew = schedules[index].isNew; 
 
-  console.log("schedules",schedules)
-  console.log("scheduleId",scheduleId)
+  // console.log("schedules",schedules)
+  // console.log("scheduleId",scheduleId)
 
   const [hour, minute] = draft.timeValue.split(':');
   const payload = {

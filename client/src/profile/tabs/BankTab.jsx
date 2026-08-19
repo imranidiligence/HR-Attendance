@@ -208,7 +208,7 @@ const token = localStorage.getItem("token");
       const res = await getBank(finalEmpId);
       const bankData = res?.data?.bankDetails;
 
-      console.log("bankData",bankData);
+      // console.log("bankData",bankData);
       if (bankData?.length > 0) {
         const mapped = bankData.map((b) => ({
           ...emptyBank,

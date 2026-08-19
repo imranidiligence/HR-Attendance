@@ -2,12 +2,11 @@ const { db } = require("../db/connectDB");
 require("dotenv").config();
 const { getDeviceAttendance } = require("../services/zk.service");
 const sendEmail = require("../utils/mailer");
-const cron = require('node-cron');
+const cron = require("node-cron");
 const bcrypt = require("bcrypt");
 const dotenv = require("dotenv");
 const path = require("path");
 const env = process.env.NODE_ENV;
-
 
 // Pick the correct file
 const envFile = env === "production" ? ".env.production" : ".env.local";
@@ -16,13 +15,15 @@ const envFile = env === "production" ? ".env.production" : ".env.local";
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 // Determine admin emails dynamically
-const adminEmails = process.env.NODE_ENV === "production"
-  ? process.env.PROD_ADMIN_EMAILS  // from .env.production
-  : process.env.LOCAL_ADMIN_EMAILS; // from .env.local
+const adminEmails =
+  process.env.NODE_ENV === "production"
+    ? process.env.PROD_ADMIN_EMAILS // from .env.production
+    : process.env.LOCAL_ADMIN_EMAILS; // from .env.local
 
-const ccEmails = process.env.NODE_ENV === "production"
-  ? process.env.PROD_CC_EMAILS || "" // optional, can also fetch from DB if needed
-  : process.env.LOCAL_CC_EMAILS;
+const ccEmails =
+  process.env.NODE_ENV === "production"
+    ? process.env.PROD_CC_EMAILS || "" // optional, can also fetch from DB if needed
+    : process.env.LOCAL_CC_EMAILS;
 
 // console.log("Admin Emails:", adminEmails);
 // console.log("CC Emails:", ccEmails);
@@ -38,7 +39,8 @@ exports.getAdminMyAttendance = async (req, res) => {
     const empId = req.user.emp_id;
 
     // 1. Sync recent activity (No changes here, remains efficient)
-    await db.query(`
+    await db.query(
+      `
       INSERT INTO daily_attendance (emp_id, attendance_date, punch_in, punch_out, expected_hours)
       SELECT 
         emp_id, 
@@ -61,10 +63,13 @@ exports.getAdminMyAttendance = async (req, res) => {
       ) t
       GROUP BY emp_id, attendance_date
       ON CONFLICT (emp_id, attendance_date) DO NOTHING;
-    `, [empId]);
+    `,
+      [empId],
+    );
 
     // 2. Fetch attendance with Working Hours Calculation
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       WITH dates AS (
         SELECT generate_series(
           CURRENT_DATE - INTERVAL '29 days', 
@@ -117,14 +122,19 @@ LEFT JOIN daily_attendance da ON da.attendance_date = d.attendance_date AND da.e
 LEFT JOIN attendance_log_data al ON al.attendance_date = d.attendance_date
 WHERE u.is_active = true  -- Ensuring only active users are processed
 ORDER BY d.attendance_date DESC;
-    `, [empId]);
-
+    `,
+      [empId],
+    );
+    console.log(rows);
     // 3. Format result for Frontend (consistent with your table row logic)
-    const formattedData = rows.map(r => {
+    const formattedData = rows.map((r) => {
       const formatTime = (isoStr) => {
-        if (!isoStr) return '---';
-        return new Date(isoStr).toLocaleTimeString('en-IN', {
-          hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata'
+        if (!isoStr) return "---";
+        return new Date(isoStr).toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: "Asia/Kolkata",
         });
       };
 
@@ -136,229 +146,406 @@ ORDER BY d.attendance_date DESC;
         ...r,
         punch_in: formatTime(r.punch_in),
         punch_out: formatTime(r.punch_out),
-        total_hours_str: `${hours}h ${minutes}m`
+        total_hours_str: `${hours}h ${minutes}m`,
       };
     });
 
     res.status(200).json({
       total_documents: formattedData.length,
-      attendance: formattedData
+      attendance: formattedData,
     });
-
   } catch (err) {
     console.error("❌ getAdminMyAttendance error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-
 exports.addEmployController = async (req, res) => {
-
   const client = await db.connect();
 
-  console.log("addEmp", req.body)
-
-  // FrontendData
-  // addEmp {
-  //   name: 'john',
-  //   role: 'employee',
-  //   email: 'john@gmail.com',
-  //   emp_id: '12345',
-  //   profile_image: 'blob:http://localhost:5173/7aa33e42-9c92-4f86-b81b-febcf0485a54',
-  //   password: '123456',
-  //   current_address: 'xyz'
-  // }
-
+  console.log("addEmp", req.body);
 
   try {
     const {
       name,
       email,
       password,
-      emp_id,
-      role,
-      shift_id,
-      dob,
-      gender,
-      department,
-      designation,
-      joining_date,
-      maritalstatus,
-      nominee,
-      aadharnumber,
-      bloodgroup,
-      nationality,
-      employee_type,
-      current_address,
-      reporting_location,
-      is_active
+      is_active,
+      roles,
     } = req.body;
 
-
-    console.log(name, email, password, emp_id);
+    console.log(name, email, password, is_active, roles);
+    console.log("Roles:", roles);
 
     // 1. Validation
-    if (!name || !email || !password || !emp_id) {
-      return res.status(400).json({ message: "All essential fields required" });
+    if (!name || !email || !password || !is_active || !roles) {
+      return res.status(400).json({
+        message: "All essential fields required",
+      });
+    }
+
+    // Validate roles
+    if (roles !== undefined && !Array.isArray(roles)) {
+      return res.status(400).json({
+        message: "Roles must be an array",
+      });
     }
 
     // 2. Start Transaction
     await client.query("BEGIN");
 
-
-
     // 3. Hash Password
     const hashedPassword = await bcrypt.hash(String(password), 10);
-    const profile_image = req.file ? `/uploads/${req.file.filename}` : null;
 
-    // 4. Insert into 'users' table
+    const profile_image = req.file
+      ? `/uploads/${req.file.filename}`
+      : null;
+
+    // 4. Insert into users table
     const userResult = await client.query(
       `
       INSERT INTO users 
-        (name, email, password, role, emp_id, is_active, shift_id, profile_image)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (name, email, password, is_active, profile_image)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING id
       `,
       [
         name,
         email.toLowerCase().trim(),
         hashedPassword,
-        role || "employee",
-        emp_id,
         is_active === undefined ? true : is_active,
-        shift_id || 3,
         profile_image,
       ]
     );
 
     const newUserId = userResult.rows[0].id;
 
-    // 5. Insert into 'personal' table
-    await client.query(
-      `
-      INSERT INTO personal 
-        (emp_id, department, designation, joining_date, employee_type, reporting_location, current_address)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `,
-      [
-        newUserId,
-        department,
-        designation,
-        joining_date || null,
-        employee_type,
-        reporting_location,
-        current_address,
-      ]
-    );
-
-    // await client.query(
-    //   `
-    //   INSERT INTO personal 
-    //     (emp_id, dob, gender, department, joining_date, maritalstatus, nominee, aadharnumber, bloodgroup, nationality, current_address)
-    //   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    //   `,
-    //   [
-    //     newUserId,
-    //     dob || null,
-    //     gender,
-    //     department,
-    //     joining_date || null,
-    //     maritalstatus,
-    //     nominee,
-    //     aadharnumber,
-    //     bloodgroup,
-    //     nationality,
-    //     current_address,
-    //   ]
-    // );
-
-
+    // 5. Insert roles into user_roles table
+    if (roles && roles.length > 0) {
+      for (const roleId of roles) {
+        await client.query(
+          `
+          INSERT INTO user_role (user_id, role_id)
+          VALUES ($1, $2)
+          `,
+          [newUserId, roleId]
+        );
+      }
+    }
 
     // 6. Commit Transaction
     await client.query("COMMIT");
 
-
-    // await sendEmail(email, "Welcome to the Company", "employee_creation", { name, emp_id, email });
-
-
     res.status(201).json({
       message: "Employee created successfully",
-      user: { id: newUserId, emp_id, name, email,role },
+      user: {
+        id: newUserId,
+        name,
+        email,
+        roles: roles || [],
+      },
     });
 
   } catch (error) {
-    // 7. Rollback in case of error (avoids partial data)
+    // Rollback transaction
     await client.query("ROLLBACK");
+
     console.error("Transaction Error:", error);
 
-    // Handle unique constraint errors (e.g., duplicate email or emp_id)
-    if (error.code === '23505') {
-      return res.status(400).json({ message: "Email or Employee ID already exists" });
+    if (error.code === "23505") {
+      return res.status(400).json({
+        message: "Email or Employee ID already exists",
+      });
     }
 
-    res.status(500).json({ message: "Internal Server Error" });
-    // } finally {
-    // Release client back to the pool
+    res.status(500).json({
+      message: "Internal Server Error",
+    });
+
+  } finally {
     client.release();
   }
-}
+};
 
+exports.updateEmployController = async (req, res) => {
+  const client = await db.connect();
 
+  try {
+    const { id } = req.params;
 
+    const {
+      name,
+      email,
+      password,
+      is_active,
+      emp_id,
+      roles,
+    } = req.body;
 
+    console.log("Update Employee:", id, req.body);
 
+    // Validate roles only if it was provided
+    if (roles !== undefined && !Array.isArray(roles)) {
+      return res.status(400).json({
+        message: "Roles must be an array",
+      });
+    }
 
+    // Validate roles are not empty if roles is provided
+    if (roles !== undefined && roles.length === 0) {
+      return res.status(400).json({
+        message: "At least one role is required",
+      });
+    }
+
+    await client.query("BEGIN");
+
+    // ------------------------------------------------
+    // 1. Check if user exists
+    // ------------------------------------------------
+
+    const userResult = await client.query(
+      `SELECT id, name, email, emp_id, is_active
+       FROM users
+       WHERE id = $1`,
+      [id]
+    );
+
+    if (userResult.rows.length === 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        message: "Employee not found",
+      });
+    }
+
+    // ------------------------------------------------
+    // 2. Build dynamic UPDATE query
+    // ------------------------------------------------
+
+    const updateFields = [];
+    const updateValues = [];
+    let parameterIndex = 1;
+
+    if (name !== undefined) {
+      updateFields.push(`name = $${parameterIndex}`);
+      updateValues.push(name);
+      parameterIndex++;
+    }
+
+    if (email !== undefined) {
+      updateFields.push(`email = $${parameterIndex}`);
+      updateValues.push(email.toLowerCase().trim());
+      parameterIndex++;
+    }
+    if (emp_id !== undefined) {
+      updateFields.push(`emp_id = $${parameterIndex}`);
+      updateValues.push(emp_id);
+      parameterIndex++;
+    }
+
+    if (is_active !== undefined) {
+      updateFields.push(`is_active = $${parameterIndex}`);
+      updateValues.push(is_active);
+      parameterIndex++;
+    }
+
+    // ------------------------------------------------
+    // 3. Password
+    // ------------------------------------------------
+
+    if (password !== undefined) {
+      const hashedPassword = await bcrypt.hash(
+        String(password),
+        10
+      );
+
+      updateFields.push(`password = $${parameterIndex}`);
+      updateValues.push(hashedPassword);
+      parameterIndex++;
+    }
+
+    // ------------------------------------------------
+    // 4. Update users table only if fields exist
+    // ------------------------------------------------
+
+    let updatedUser;
+
+    if (updateFields.length > 0) {
+      updateValues.push(id);
+
+      const updateQuery = `
+        UPDATE users
+        SET ${updateFields.join(", ")}
+        WHERE id = $${parameterIndex}
+        RETURNING id, name, email, is_active
+      `;
+
+      const result = await client.query(
+        updateQuery,
+        updateValues
+      );
+
+      updatedUser = result.rows[0];
+    } else {
+      updatedUser = userResult.rows[0];
+    }
+
+    // ------------------------------------------------
+    // 5. Update roles ONLY if roles was passed
+    // ------------------------------------------------
+
+    if (roles !== undefined) {
+
+      // Delete existing roles
+      await client.query(
+        `
+        DELETE FROM user_role
+        WHERE user_id = $1
+        `,
+        [id]
+      );
+
+      // Insert new roles
+      for (const roleId of roles) {
+        await client.query(
+          `
+          INSERT INTO user_role (user_id, role_id)
+          VALUES ($1, $2)
+          `,
+          [id, roleId]
+        );
+      }
+    }
+
+    // ------------------------------------------------
+    // 6. Get current roles
+    // ------------------------------------------------
+
+    const roleResult = await client.query(
+      `
+      SELECT r.role_id, r.role_name
+      FROM user_role ur
+      INNER JOIN roles r
+        ON r.role_id = ur.role_id
+      WHERE ur.user_id = $1
+      ORDER BY r.role_id
+      `,
+      [id]
+    );
+
+    // ------------------------------------------------
+    // 7. Commit
+    // ------------------------------------------------
+
+    await client.query("COMMIT");
+
+    return res.status(200).json({
+      message: "Employee updated successfully",
+
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        is_active: updatedUser.is_active,
+        emp_id: updatedUser.emp_id,
+
+        roles: roleResult.rows,
+      },
+    });
+
+  } catch (error) {
+
+    await client.query("ROLLBACK");
+
+    console.error("Update Employee Error:", error);
+
+    if (error.code === "23505") {
+      return res.status(400).json({
+        message: "Email already exists",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Internal Server Error",
+    });
+
+  } finally {
+    client.release();
+  }
+};
 
 /*  Generate daily attendance */
 exports.getTodayAttendance = async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT
-        u.id,
-        u.name,
-        u.device_user_id,
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
-        CASE
-          WHEN d.punch_in IS NOT NULL AND d.punch_out IS NOT NULL THEN 'Present'
-          WHEN d.punch_in IS NOT NULL AND d.punch_out IS NULL THEN 'Working'
-          ELSE 'Absent'
-        END AS status,
-
-        d.punch_in,
-        d.punch_out,
-        COALESCE(d.total_hours, 0) AS total_hours
-
-      FROM users u
-      LEFT JOIN daily_attendance d
-        ON u.id = d.device_user_id
-        AND d.attendance_date = CURRENT_DATE
-      WHERE u.role = 'employee'
-      ORDER BY u.name;
+    // Total employees
+    const countResult = await db.query(`
+      SELECT COUNT(*) AS total
+      FROM users
+      WHERE role IN ('employee', 'admin')
+      AND is_active = true;
     `);
 
-    // Dashboard counts
-    const summary = {
-      total_employees: result.rows.length,
-      present_today: result.rows.filter(
-        e => e.status === 'Present' || e.status === 'Working'
-      ).length,
-      absent_today: result.rows.filter(e => e.status === 'Absent').length
-    };
+    const totalItems = Number(countResult.rows[0].total);
+
+    // Attendance data
+    const result = await db.query(
+      `
+      SELECT
+          u.id,
+          u.name,
+          u.emp_id,
+
+          CASE
+            WHEN d.punch_in IS NOT NULL AND d.punch_out IS NOT NULL THEN 'Present'
+            WHEN d.punch_in IS NOT NULL AND d.punch_out IS NULL THEN 'Working'
+            ELSE 'Absent'
+          END AS status,
+
+          d.punch_in,
+          d.punch_out,
+          COALESCE(d.total_hours,0) AS total_hours
+
+      FROM users u
+
+      LEFT JOIN daily_attendance d
+        ON u.id = d.user_id
+       AND d.attendance_date = CURRENT_DATE
+
+      WHERE u.role = 'employee'
+        AND u.is_active = true
+
+      ORDER BY u.name
+
+      LIMIT $1
+      OFFSET $2;
+      `,
+      [limit, offset],
+    );
 
     res.json({
-      summary,
-      employees: result.rows
+      employees: result.rows,
+      pagination: {
+        currentPage: page,
+        totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        limit,
+      },
     });
-
   } catch (err) {
     console.error("getTodayAttendance error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
-
-
-// /*  Admin – today attendance */ 
+// /*  Admin – today attendance */
 
 exports.generateDailyAttendance = async (req, res) => {
   try {
@@ -390,25 +577,25 @@ exports.generateDailyAttendance = async (req, res) => {
   }
 };
 
-
-
 // 2.0
 
 exports.runAttendanceTask = async () => {
   try {
-    console.log(`[${new Date().toISOString()}] CRON: Triggering processAndSendAttendanceReport...`);
+    console.log(
+      `[${new Date().toISOString()}] CRON: Triggering processAndSendAttendanceReport...`,
+    );
 
     // Pass 'true' so the email actually sends during the cron run
     const data = await exports.processAndSendAttendanceReport(true);
 
-    console.log(`[${new Date().toISOString()}] CRON: Success. Processed ${data.length} records.`);
+    console.log(
+      `[${new Date().toISOString()}] CRON: Success. Processed ${data.length} records.`,
+    );
   } catch (error) {
     // This catch block is vital so a database error doesn't crash your whole Node app
     console.error(`[${new Date().toISOString()}] CRON ERROR:`, error);
   }
 };
-
-
 
 // Reusable logic: handles DB sync, Emailing (if flag is true), and Data Return
 const formatInterval = (interval) => {
@@ -420,9 +607,15 @@ const formatInterval = (interval) => {
   return `${hours}h ${minutes}m`;
 };
 
-exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = null, res = null) => {
+exports.processAndSendAttendanceReport = async (
+  sendEmailToAdmin = false,
+  req = null,
+  res = null,
+) => {
   try {
-    const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const todayIST = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
 
     console.log("env", env);
     const query = `
@@ -494,20 +687,27 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
 `;
 
     const { rows } = await db.query(query, [todayIST]);
+    console.log("Attendance Rows Fetched:", rows);
 
-    const mailDateFormat = new Date().toLocaleDateString('en-GB', {
-      timeZone: 'Asia/Kolkata',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    }).replace(/\//g, '-');
+    const mailDateFormat = new Date()
+      .toLocaleDateString("en-GB", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+      .replace(/\//g, "-");
 
-
-    dotenv.config({ path: process.env.NODE_ENV === "production" ? ".env.production" : ".env.local" });
+    dotenv.config({
+      path:
+        process.env.NODE_ENV === "production"
+          ? ".env.production"
+          : ".env.local",
+    });
     // --- EMAIL LOGIC ---
     // Only runs when triggered by Cron (passing true)
     if (sendEmailToAdmin) {
-      // const adminEmails = "hradmin@i-diligence.com,s.hanif@i-diligence.com,s.imran@i-diligence.com"; 
+      // const adminEmails = "hradmin@i-diligence.com,s.hanif@i-diligence.com,s.imran@i-diligence.com";
       // const adminEmails = "s.imran@i-diligence.com"
       // const ccEmails = "s.irfan@i-diligence.com";
       // const adminEmails = process.env.NODE_ENV === "production"
@@ -520,11 +720,12 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
       const subject = `Attendance Report - ${mailDateFormat}`;
 
       // Fetch from DB
-      const type = process.env.NODE_ENV === "production" ? "production" : "local";
+      const type =
+        process.env.NODE_ENV === "production" ? "production" : "local";
 
       const emailResult = await db.query(
         `SELECT email FROM "EmployeeEmail" WHERE type = $1`,
-        [type]
+        [type],
       );
 
       // console.log(first)
@@ -532,48 +733,62 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
 
       // console.log("AdminEmail Row", row);
 
-      const adminEmails =  emailResult.rows.map(r => r.email?.trim())
-          .filter(Boolean)
-          .join(",")
-    
+      const adminEmails = emailResult.rows
+        .map((r) => r.email?.trim())
+        .filter(Boolean)
+        .join(",");
 
       // console.log("process.env.NODE_ENV",process.env.NODE_ENV)
 
-      console.log("adminEmails",adminEmails);
+      console.log("adminEmails", adminEmails);
 
       // Generate HTML rows for the email
 
       // console.log("rows",rows)
       const tableRowsHtml = rows
-        .filter(emp => emp.is_active && emp.emp_id && emp.emp_id !== "2020")
-        .map(emp => {
-
+        .filter((emp) => emp.is_active && emp.emp_id && emp.emp_id !== "2020")
+        .map((emp) => {
           // console.log("emp",emp)
           // 1. Status Colors (Backgrounds)
-          const statusBg = emp.status === 'Working' ? '#ff9800' : (emp.status === 'Absent' ? '#dc3545' : '#28a745');
+          const statusBg =
+            emp.status === "Working"
+              ? "#ff9800"
+              : emp.status === "Absent"
+                ? "#dc3545"
+                : "#28a745";
 
           // 2. Format Times & Date
           const timeIn = emp.punch_in
-            ? new Date(emp.punch_in).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
-            : '---';
+            ? new Date(emp.punch_in).toLocaleTimeString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "---";
 
           const timeOut = emp.punch_out
-            ? new Date(emp.punch_out).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })
-            : '---';
+            ? new Date(emp.punch_out).toLocaleTimeString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              })
+            : "---";
 
-
-
-          // const attendanceDate = emp.punch_in 
+          // const attendanceDate = emp.punch_in
           //   ? new Date(emp.punch_in).toLocaleDateString('en-IN', { day: 'numeric', month: 'numeric', year: 'numeric' })
           //   : '---';
 
           const attendanceDate = emp.punch_in
-            ? new Date(emp.punch_in).toLocaleDateString('en-GB', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric'
-            }).replace(/\//g, '-')
-            : '---';
+            ? new Date(emp.punch_in)
+                .toLocaleDateString("en-GB", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })
+                .replace(/\//g, "-")
+            : "---";
 
           // 3. Return Table Row
 
@@ -585,7 +800,7 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
             <td style="border:1px solid #ddd; padding:8px; text-align:center;">${attendanceDate}</td>
             <td style="border:1px solid #ddd; padding:8px; text-align:center;">${timeIn}</td>
             <td style="border:1px solid #ddd; padding:8px; text-align:center;">${timeOut}</td>
-            <td style="border:1px solid #ddd; padding:8px; text-align:center;">${formatInterval(emp.total_hours) || '0h 0m'}</td>
+            <td style="border:1px solid #ddd; padding:8px; text-align:center;">${formatInterval(emp.total_hours) || "0h 0m"}</td>
         <td style="border: 1px solid #ddd; padding: 10px; text-align: center; vertical-align: middle;">
   <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto; width: 90px;">
     <tr>
@@ -601,20 +816,21 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
   </table>
 </td>
           </tr>`;
-        }).join('');
+        })
+        .join("");
 
       // console.log("rows",rows)
       const now = new Date();
       const formattedDate = now
-        .toLocaleDateString('en-IN', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          timeZone: 'Asia/Kolkata'
+        .toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          timeZone: "Asia/Kolkata",
         })
-        .replace(/\//g, '-');
+        .replace(/\//g, "-");
 
-      console.log("adminEmail Send Mail",adminEmails);
+      console.log("adminEmail Send Mail", adminEmails);
 
       // console.log(formattedDate);
       await sendEmail(
@@ -623,10 +839,12 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
         "admin_all_present",
         {
           date: formattedDate,
-          time: new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }),
-          employee_rows: tableRowsHtml
+          time: new Date().toLocaleTimeString("en-IN", {
+            timeZone: "Asia/Kolkata",
+          }),
+          employee_rows: tableRowsHtml,
         },
-        ccEmails
+        ccEmails,
       );
       console.log("CRON: Email sent successfully.");
     }
@@ -634,7 +852,6 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
     // Handle API Response vs Cron return
     if (res) return res.status(200).json(rows);
     return rows;
-
   } catch (error) {
     console.error("Attendance Process Error:", error);
     if (res) return res.status(500).json({ message: "Internal Server Error" });
@@ -642,19 +859,136 @@ exports.processAndSendAttendanceReport = async (sendEmailToAdmin = false, req = 
   }
 };
 
-
+// In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const offset = (page - 1) * limit;
+    // Default to showing only active users
+    const showInactive = req.query.showInactive === "true" || false;
 
-    const data = await exports.processAndSendAttendanceReport(false);
-    res.status(200).json(data);
+    // Get total count of ACTIVE employees AND admins
+    let countQuery = `
+      SELECT COUNT(*) as total 
+      FROM users 
+      WHERE role IN ('employee', 'admin')
+    `;
+
+    // Only show inactive if explicitly requested
+    if (!showInactive) {
+      countQuery += ` AND is_active = true`;
+    }
+
+    const countResult = await db.query(countQuery);
+    const totalItems = parseInt(countResult.rows[0].total);
+
+    // Get paginated attendance data for EMPLOYEES AND ADMINS
+    let query = `
+      WITH attendance_summary AS (
+        SELECT
+          da.emp_id,
+          da.attendance_date,
+          COUNT(*) AS punch_count,
+          MIN(da.punch_in) AS first_punch,
+          MAX(
+            CASE
+              WHEN da.punch_out = da.punch_in THEN NULL
+              ELSE da.punch_out
+            END
+          ) AS last_punch,
+          COALESCE(
+            SUM(
+              CASE 
+                WHEN da.punch_out IS NOT NULL 
+                THEN da.punch_out - da.punch_in
+                ELSE INTERVAL '0'
+              END
+            ),
+            INTERVAL '0 hours'
+          ) AS total_hours
+        FROM public.daily_attendance da
+        WHERE da.attendance_date = CURRENT_DATE
+        GROUP BY da.emp_id, da.attendance_date
+      )
+
+      SELECT
+        u.emp_id,
+        u.name,
+        u.role,
+        u.is_active,
+        COALESCE(a.attendance_date, CURRENT_DATE) AS attendance_date,
+        a.first_punch AS punch_in,
+        a.last_punch AS punch_out,
+        CASE
+          WHEN NOT u.is_active THEN 'Inactive'
+          WHEN a.punch_count IS NULL THEN 'Absent'
+          WHEN a.punch_count >= 1 AND a.last_punch IS NULL THEN 'Working'
+          WHEN a.punch_count >= 1 THEN 'Present'
+          ELSE 'Absent'
+        END AS status,
+        COALESCE(a.total_hours, INTERVAL '0 hours') AS total_hours
+      FROM users u
+      LEFT JOIN attendance_summary a ON u.emp_id = a.emp_id
+      WHERE u.role IN ('employee', 'admin')  -- Include both employees and admins
+    `;
+
+    // Add is_active filter if not showing inactive
+    if (!showInactive) {
+      query += ` AND u.is_active = true`;
+    }
+
+    query += ` ORDER BY u.role DESC, u.is_active DESC, u.name LIMIT $1 OFFSET $2`;
+
+    const { rows } = await db.query(query, [limit, offset]);
+    console.log("Attendance Rows Fetched: organization", rows);
+
+    // Format total_hours to HH:MM for frontend
+    const formattedRows = rows.map((row) => {
+      let totalHours = "00:00";
+      if (row.total_hours) {
+        const hours = row.total_hours.hours || 0;
+        const minutes = row.total_hours.minutes || 0;
+        totalHours = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+      }
+
+      return {
+        ...row,
+        total_hours: totalHours,
+        punch_in: row.punch_in
+          ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
+        punch_out: row.punch_out
+          ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      employees: formattedRows,
+      pagination: {
+        currentPage: page,
+        totalItems: totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        limit: limit,
+      },
+    });
   } catch (error) {
     console.error("Manual report error:", error);
     res.status(500).json({ message: "Failed to process attendance" });
   }
 };
-
-
 
 // cron.schedule('0 11,16,21 * * 1-6', async () => {
 //   console.log(`[${new Date().toISOString()}] Starting hourly attendance report...`);
@@ -687,7 +1021,6 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 //   timezone: "Asia/Kolkata"
 // });
 
-
 // cron.schedule('4 12 * * *', async () => {
 //   console.log(`[${new Date().toISOString()}] Starting 8:30 PM attendance report...`);
 //   exports.runAttendanceTask();
@@ -696,12 +1029,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 //   timezone: "Asia/Kolkata"
 // });
 
-
-
-
 // single Emp Attendance
-
-
 
 function intervalToHHMM(total_hours) {
   if (!total_hours) return "00:00";
@@ -745,7 +1073,6 @@ exports.getMyTodayAttendance = async (req, res) => {
       return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
     };
 
-
     const todayResult = await db.query(
       `
     SELECT 
@@ -773,7 +1100,7 @@ WHERE emp_id = $1
 AND attendance_date = CURRENT_DATE
 LIMIT 1;
       `,
-      [empId]
+      [empId],
     );
 
     let today;
@@ -799,7 +1126,7 @@ LIMIT 1;
         WHERE emp_id = $1
           AND punch_time::date = CURRENT_DATE
         `,
-        [empId]
+        [empId],
       );
 
       const row = liveResult.rows[0];
@@ -820,9 +1147,7 @@ LIMIT 1;
         today = {
           punch_in: formatTime(row.punch_in),
           punch_out:
-            row.punch_out !== row.punch_in
-              ? formatTime(row.punch_out)
-              : null,
+            row.punch_out !== row.punch_in ? formatTime(row.punch_out) : null,
           total_hours: secondsToHHMM(totalSeconds),
           status:
             row.punch_out && row.punch_out !== row.punch_in
@@ -831,7 +1156,6 @@ LIMIT 1;
         };
       }
     }
-
 
     const weeklyResult = await db.query(
       `
@@ -847,7 +1171,7 @@ LIMIT 1;
         AND punch_in IS NOT NULL
         AND punch_out IS NOT NULL
       `,
-      [empId]
+      [empId],
     );
 
     const weeklySeconds = weeklyResult.rows[0].total_seconds;
@@ -858,13 +1182,11 @@ LIMIT 1;
         total_hours: secondsToHHMM(weeklySeconds),
       },
     });
-
   } catch (err) {
     console.error("getMyTodayAttendance error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
-
 
 // Device → activity_log (every punch, real time)
 //         ↓
@@ -873,388 +1195,256 @@ LIMIT 1;
 // daily_attendance (refreshed snapshot for today)
 //         ↓
 // UI
-
-
-
 exports.getMyAttendance = async (req, res) => {
   try {
     const empId = req.user.emp_id;
 
-   const { rows } = await db.query(`
-WITH date_range AS (
-  SELECT generate_series(
-    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days',
-    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date,
-    '1 day'
-  )::date AS attendance_date
-),
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit) || 15, 1);
+    const offset = (page - 1) * limit;
 
-logs_summary AS (
-  SELECT
-    emp_id,
-    DATE(punch_time) AS attendance_date,
-    MIN(punch_time) AS log_punch_in,
-    MAX(punch_time) AS log_punch_out,
-    COUNT(*) AS total_logs
-  FROM attendance_logs
-  WHERE emp_id = $1
-  GROUP BY emp_id, DATE(punch_time)
-)
+    // Optional date filters
+    const { startDate, endDate } = req.query;
 
-SELECT 
-  $1 AS emp_id,
-  u.name AS employee_name,
-  to_char(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
+    // Default: last 30 days + today
+    const defaultToDate = `
+      (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
+    `;
 
-  -- Punch In
-  COALESCE(da.punch_in, ls.log_punch_in) AS punch_in,
+    const defaultFromDate = `
+      (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days'
+    `;
 
-  -- Punch Out Logic
-  CASE
-    WHEN da.punch_out IS NOT NULL THEN da.punch_out
-    WHEN ls.total_logs > 1 THEN ls.log_punch_out
-    ELSE NULL
-  END AS punch_out,
+    const fromDate = startDate || null;
+    const toDate = endDate || null;
 
-  -- Total Seconds
-  CASE 
-    WHEN COALESCE(da.punch_in, ls.log_punch_in) IS NULL THEN 0
-    
-    WHEN (
-      CASE
-        WHEN da.punch_out IS NOT NULL THEN da.punch_out
-        WHEN ls.total_logs > 1 THEN ls.log_punch_out
-        ELSE NULL
-      END
-    ) IS NULL THEN 0
+    // Validate date range
+    if (fromDate && toDate && new Date(fromDate) > new Date(toDate)) {
+      return res.status(400).json({
+        success: false,
+        message: "startDate cannot be greater than endDate",
+      });
+    }
 
-    ELSE EXTRACT(EPOCH FROM (
-      (
-        CASE
-          WHEN da.punch_out IS NOT NULL THEN da.punch_out
-          WHEN ls.total_logs > 1 THEN ls.log_punch_out
-          ELSE NULL
-        END
-      ) - COALESCE(da.punch_in, ls.log_punch_in)
-    ))
-  END AS total_seconds,
+    // ---------------------------------------------------------
+    // TOTAL ITEMS
+    // ---------------------------------------------------------
+    const countResult = await db.query(
+      `
+      SELECT COUNT(*)::int AS total
+      FROM generate_series(
+        COALESCE($1::date, ${defaultFromDate}),
+        COALESCE($2::date, ${defaultToDate}),
+        INTERVAL '1 day'
+      ) d;
+      `,
+      [fromDate, toDate]
+    );
 
-  -- Status
-  CASE
-    WHEN COALESCE(da.punch_in, ls.log_punch_in) IS NULL 
-      THEN 'Absent'
+    const totalItems = countResult.rows[0].total;
 
-    WHEN (
-      CASE
-        WHEN da.punch_out IS NOT NULL THEN da.punch_out
-        WHEN ls.total_logs > 1 THEN ls.log_punch_out
-        ELSE NULL
-      END
-    ) IS NULL
-      THEN 'Working'
+    // ---------------------------------------------------------
+    // ATTENDANCE DATA
+    // ---------------------------------------------------------
+    const { rows } = await db.query(
+      `
+      WITH date_range AS (
+        SELECT generate_series(
+          COALESCE($1::date, ${defaultFromDate}),
+          COALESCE($2::date, ${defaultToDate}),
+          INTERVAL '1 day'
+        )::date AS attendance_date
+      ),
 
-    ELSE 'Present'
-  END AS status
+      logs_summary AS (
+        SELECT
+            emp_id,
+            DATE(punch_time) AS attendance_date,
+            MIN(punch_time) AS log_punch_in,
+            MAX(punch_time) AS log_punch_out,
+            COUNT(*) AS total_logs
+        FROM attendance_logs
+        WHERE emp_id = $3
+        GROUP BY emp_id, DATE(punch_time)
+      )
 
-FROM date_range dr
+      SELECT
+          $3 AS emp_id,
+          u.name AS employee_name,
+          TO_CHAR(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
 
-CROSS JOIN (
-  SELECT name 
-  FROM users 
-  WHERE emp_id = $1
-) u
+          COALESCE(
+            da.punch_in,
+            ls.log_punch_in
+          ) AS punch_in,
 
-LEFT JOIN daily_attendance da
-  ON da.emp_id = $1
- AND da.attendance_date = dr.attendance_date
+          CASE
+              WHEN da.punch_out IS NOT NULL
+                  THEN da.punch_out
 
-LEFT JOIN logs_summary ls
-  ON ls.emp_id = $1
- AND ls.attendance_date = dr.attendance_date
+              WHEN ls.total_logs > 1
+                  THEN ls.log_punch_out
 
-ORDER BY dr.attendance_date DESC;
-`, [empId]);
+              ELSE NULL
+          END AS punch_out,
 
-    // Main query with better punch out logic and activity_log fallback
-    // const { rows } = await db.query(`
-    // WITH date_range AS (
-    //   SELECT generate_series(
-    //     (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days',
-    //     (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date,
-    //     '1 day'
-    //   )::date AS attendance_date
-    // ),
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 0
 
-    // logs_summary AS (
-    //   SELECT
-    //     emp_id,
-    //     DATE(punch_time) AS attendance_date,
-    //     MIN(punch_time) AS punch_in,
-    //     CASE 
-    //       WHEN COUNT(*) > 1 THEN MAX(punch_time)
-    //       ELSE NULL
-    //     END AS punch_out
-    //   FROM attendance_logs
-    //   WHERE emp_id = $1
-    //   GROUP BY emp_id, DATE(punch_time)
-    // )
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
 
-    // SELECT 
-    //   $1 AS emp_id,
-    //   u.name AS employee_name,
-    //   to_char(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
 
-    //   COALESCE(da.punch_in, ls.punch_in) AS punch_in,
-    //   COALESCE(da.punch_out, ls.punch_out) AS punch_out,
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 0
 
-    //   CASE 
-    //     WHEN COALESCE(da.punch_in, ls.punch_in) IS NULL THEN 0
-    //     WHEN COALESCE(da.punch_out, ls.punch_out) IS NULL THEN 0
-    //     ELSE EXTRACT(EPOCH FROM (
-    //       COALESCE(da.punch_out, ls.punch_out) - 
-    //       COALESCE(da.punch_in, ls.punch_in)
-    //     ))
-    //   END AS total_seconds,
+              ELSE EXTRACT(
+                EPOCH FROM (
+                  (
+                    CASE
+                        WHEN da.punch_out IS NOT NULL
+                            THEN da.punch_out
 
-    // CASE
+                        WHEN ls.total_logs > 1
+                            THEN ls.log_punch_out
 
-    //   -- Absent
-    //   WHEN COALESCE(da.punch_in, ls.punch_in) IS NULL THEN 'Absent'
+                        ELSE NULL
+                    END
+                  )
+                  -
+                  COALESCE(
+                    da.punch_in,
+                    ls.log_punch_in
+                  )
+                )
+              )
+          END AS total_seconds,
 
-    //   -- Working (punched in but no punch out today)
-    //   WHEN COALESCE(da.punch_in, ls.punch_in) IS NOT NULL
-    //        AND COALESCE(da.punch_out, ls.punch_out) IS NULL
-    //        AND dr.attendance_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
-    //   THEN 'Working'
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 'Absent'
 
-    //   -- Late Come (after 10:00)
-    //   WHEN COALESCE(da.punch_in, ls.punch_in)::time > time '10:00:00'
-    //   THEN 'Late Come'
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
 
-    //   -- Early Go
-    //   WHEN COALESCE(da.punch_out, ls.punch_out) IS NOT NULL
-    //        AND COALESCE(da.punch_out, ls.punch_out) <
-    //            (
-    //              COALESCE(da.punch_in, ls.punch_in) +
-    //              INTERVAL '7:30 hours'
-    //            )
-    //   THEN 'Early Go'
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
 
-    //   -- Present
-    //   WHEN EXTRACT(EPOCH FROM (
-    //         COALESCE(da.punch_out, ls.punch_out) -
-    //         COALESCE(da.punch_in, ls.punch_in)
-    //        )) >= (8 * 3600 - 600)
-    //   THEN 'Present'
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 'Working'
 
-    //   ELSE 'Absent'
+              ELSE 'Present'
+          END AS status
 
-    // END AS status
+      FROM date_range dr
 
-    // FROM date_range dr
+      CROSS JOIN (
+          SELECT name
+          FROM users
+          WHERE emp_id = $3
+      ) u
 
-    // CROSS JOIN (SELECT name FROM users WHERE emp_id = $1) u
+      LEFT JOIN daily_attendance da
+             ON da.emp_id = $3
+            AND da.attendance_date = dr.attendance_date
 
-    // LEFT JOIN daily_attendance da
-    //   ON da.emp_id = $1
-    //  AND da.attendance_date = dr.attendance_date
+      LEFT JOIN logs_summary ls
+             ON ls.emp_id = $3
+            AND ls.attendance_date = dr.attendance_date
 
-    // LEFT JOIN logs_summary ls
-    //   ON ls.emp_id = $1
-    //  AND ls.attendance_date = dr.attendance_date
+      ORDER BY dr.attendance_date DESC
 
-    // ORDER BY dr.attendance_date DESC;
-    // `, [empId]);
+      LIMIT $4
+      OFFSET $5;
+      `,
+      [
+        fromDate,
+        toDate,
+        empId,
+        limit,
+        offset,
+      ]
+    );
 
-//     const { rows } = await db.query(`
-// WITH emp_data AS (
-//   SELECT 
-//     u.emp_id,
-//     u.name,
-//     s.start_time,
-//     s.end_time,
-//     s.name AS shift_name,
-//     ws.working_days,
+    console.log(
+      "Attendance Rows Fetched getMyAttendance:",
+      rows
+    );
 
-//     -- Detect Night Shift
-//     CASE 
-//       WHEN s.start_time > s.end_time THEN true
-//       ELSE false
-//     END AS is_night_shift
-
-    
-
-//   FROM users u
-//   LEFT JOIN shifts s ON u.shift_id = s.id
-//   LEFT JOIN weekly_schedules ws ON u.shift_id = ws.id
-//   WHERE u.emp_id = $1
-// ),
-
-// date_range AS (
-//   SELECT generate_series(
-//     (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days',
-//     (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date,
-//     '1 day'
-//   )::date AS attendance_date
-// ),
-
-// logs_with_shift_date AS (
-//   SELECT
-//     l.emp_id,
-
-//     --  FIXED attendance date
-//     CASE 
-//       WHEN ed.is_night_shift = true 
-//            AND l.punch_time::time < ed.end_time
-//       THEN (l.punch_time::date - INTERVAL '1 day')::date
-//       ELSE l.punch_time::date
-//     END AS attendance_date,
-
-//     l.punch_time
-
-//   FROM attendance_logs l
-//   JOIN emp_data ed ON ed.emp_id = l.emp_id
-//   WHERE l.emp_id = $1
-// ),
-
-// logs_summary AS (
-//   SELECT
-//     emp_id,
-//     attendance_date,
-//     MIN(punch_time) AS punch_in,
-//     CASE 
-//       WHEN COUNT(*) > 1 THEN MAX(punch_time)
-//       ELSE NULL
-//     END AS punch_out
-//   FROM logs_with_shift_date
-//   GROUP BY emp_id, attendance_date
-// )
-
-// SELECT 
-//   ed.emp_id,
-//   ed.name AS employee_name,
-//   to_char(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
-
-//   ls.punch_in,
-//   ls.punch_out,
-
-//   ed.shift_name,
-
-//   -- Work seconds
-//   CASE 
-//     WHEN ls.punch_in IS NULL THEN 0
-//     WHEN ls.punch_out IS NULL THEN 0
-//     ELSE EXTRACT(EPOCH FROM (ls.punch_out - ls.punch_in))
-//   END AS total_seconds,
-// CASE 
-//   WHEN EXTRACT(DOW FROM dr.attendance_date) = 6 
-//   THEN 5 * 3600   -- Saturday
-
-//   WHEN EXTRACT(DOW FROM dr.attendance_date) = 0 
-//   THEN 0          -- Sunday (optional)
-
-//   ELSE 9 * 3600   -- Normal days
-// END AS required_seconds,
-
-//   -- Day Type
-//   CASE 
-//     WHEN EXTRACT(DOW FROM dr.attendance_date) = ANY(ed.working_days)
-//     THEN 'Working Day'
-//     ELSE 'Week Off'
-//   END AS day_type,
-
-//   -- FINAL STATUS
-//   CASE
-
-//     -- Week Off
-//     WHEN EXTRACT(DOW FROM dr.attendance_date) != ANY(ed.working_days)
-//          AND ls.punch_in IS NULL
-//     THEN 'Week Off'
-
-//     -- Week Off Worked
-//     WHEN EXTRACT(DOW FROM dr.attendance_date) != ANY(ed.working_days)
-//          AND ls.punch_in IS NOT NULL
-//     THEN 'Week Off Worked'
-
-//     -- Absent
-//     WHEN ls.punch_in IS NULL
-//     THEN 'Absent'
-
-//     -- Working (today)
-//     WHEN ls.punch_in IS NOT NULL
-//          AND ls.punch_out IS NULL
-//          AND dr.attendance_date = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
-//     THEN 'Working'
-
-//     -- Late (shift-based)
-//     WHEN ls.punch_in::time > ed.start_time + INTERVAL '15 minutes'
-//     THEN 'Late Come'
-
-//     -- Early Go (IMPORTANT FIX for night shift)
-//     WHEN ls.punch_out IS NOT NULL AND (
-//       CASE 
-//         WHEN ed.is_night_shift = true
-//         THEN ls.punch_out::time < ed.end_time
-//         ELSE ls.punch_out::time < ed.end_time
-//       END
-//     )
-//     THEN 'Early Go'
-
-//     -- Present
-//     WHEN EXTRACT(EPOCH FROM (ls.punch_out - ls.punch_in)) >= (7 * 3600)
-//     THEN 'Present'
-
-//     ELSE 'Absent'
-
-//   END AS status
-
-// FROM date_range dr
-// CROSS JOIN emp_data ed
-
-// LEFT JOIN logs_summary ls
-//   ON ls.emp_id = ed.emp_id
-//  AND ls.attendance_date = dr.attendance_date
-
-// ORDER BY dr.attendance_date DESC;
-// `, [empId]);
-
-    const attendance = rows.map(r => {
+    const attendance = rows.map((row) => {
       let total_hours = null;
 
-      if (r.total_seconds && r.punch_in && r.punch_out) {
-        const secs = Math.abs(Number(r.total_seconds));
+      if (
+        row.total_seconds &&
+        row.punch_in &&
+        row.punch_out
+      ) {
+        const seconds = Number(row.total_seconds);
+
         total_hours = {
-          hours: Math.floor(secs / 3600),
-          minutes: Math.floor((secs % 3600) / 60)
+          hours: Math.floor(seconds / 3600),
+          minutes: Math.floor(
+            (seconds % 3600) / 60
+          ),
         };
       }
 
-      return { ...r, total_hours };
+      return {
+        ...row,
+        total_hours,
+      };
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      count: attendance.length,
-      attendance
+      attendance,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(
+          totalItems / limit
+        ),
+        totalItems,
+        limit,
+        hasNext:
+          page <
+          Math.ceil(totalItems / limit),
+        hasPrevious: page > 1,
+      },
     });
-
-    // res.status(200).json({
-    //   success:true,
-    //   count:attendance.length,
-    //   attendance
-    // })
   } catch (err) {
-    console.error("getMyAttendance error:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error(
+      "getMyAttendance error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
-
-
 
 exports.getMyHolidays = async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT * FROM holidays ORDER BY holiday_date ASC`
+      `SELECT * FROM holidays ORDER BY holiday_date ASC`,
     );
 
     res.status(200).json(rows);
@@ -1263,8 +1453,6 @@ exports.getMyHolidays = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
 
 exports.getActivityLog = async (req, res) => {
   try {
@@ -1282,7 +1470,9 @@ exports.getActivityLog = async (req, res) => {
     /* ---------------- Date Filter ---------------- */
     if (from && to) {
       values.push(from, to);
-      conditions.push(`(punch_time)::date BETWEEN $${values.length - 1} AND $${values.length}`);
+      conditions.push(
+        `(punch_time)::date BETWEEN $${values.length - 1} AND $${values.length}`,
+      );
     }
 
     /* ---------------- Employee Filter ---------------- */
@@ -1295,7 +1485,7 @@ exports.getActivityLog = async (req, res) => {
     if (search) {
       values.push(`%${search.trim()}%`);
       const searchIdx = values.length;
-      
+
       // This allows searching by Emp ID, IP, or specifically the formatted Time
       conditions.push(`(
         emp_id::text ILIKE $${searchIdx} OR 
@@ -1345,18 +1535,155 @@ exports.getActivityLog = async (req, res) => {
 
     res.json({
       success: true,
-      pagination: isExport ? null : {
-        totalRecords: Number(count.rows[0].count),
-        currentPage: parsedPage,
-        totalPages: Math.ceil(count.rows[0].count / parsedLimit),
-        limit: parsedLimit,
-      },
+      pagination: isExport
+        ? null
+        : {
+            totalRecords: Number(count.rows[0].count),
+            currentPage: parsedPage,
+            totalPages: Math.ceil(count.rows[0].count / parsedLimit),
+            limit: parsedLimit,
+          },
       data: data.rows,
     });
-
   } catch (err) {
     console.error("Activity Log Error:", err);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// New controller
+// New controller for all users including inactive
+exports.getTodayOrganizationAttendanceAll = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+
+    const offset = (page - 1) * limit;
+
+    // Get total count of ALL employees and admins
+    const countResult = await db.query(`
+      SELECT COUNT(*) as total 
+      FROM users 
+      WHERE role IN ('employee', 'admin')
+    `);
+    const totalItems = parseInt(countResult.rows[0].total);
+
+    // Get ALL users with attendance
+    const query = `
+      WITH attendance_summary AS (
+  SELECT
+    da.emp_id,
+    da.attendance_date,
+    COUNT(*) AS punch_count,
+    MIN(da.punch_in) AS first_punch,
+    MAX(
+      CASE
+        WHEN da.punch_out = da.punch_in THEN NULL
+        ELSE da.punch_out
+      END
+    ) AS last_punch,
+    COALESCE(
+      SUM(
+        CASE
+          WHEN da.punch_out IS NOT NULL
+          THEN da.punch_out - da.punch_in
+          ELSE INTERVAL '0'
+        END
+      ),
+      INTERVAL '0'
+    ) AS total_hours
+  FROM daily_attendance da
+  WHERE da.attendance_date = CURRENT_DATE
+  GROUP BY da.emp_id, da.attendance_date
+)
+
+SELECT
+    u.emp_id,
+    u.name,
+    u.email,
+    u.role,
+    u.is_active,
+
+    -- Personal table fields
+    p.department,
+    p.joining_date,
+
+    COALESCE(a.attendance_date, CURRENT_DATE) AS attendance_date,
+    a.first_punch AS punch_in,
+    a.last_punch AS punch_out,
+
+    CASE
+      WHEN NOT u.is_active THEN 'Inactive'
+      WHEN a.punch_count IS NULL THEN 'Absent'
+      WHEN a.punch_count >= 1 AND a.last_punch IS NULL THEN 'Working'
+      WHEN a.punch_count >= 1 THEN 'Present'
+      ELSE 'Absent'
+    END AS status,
+
+    COALESCE(a.total_hours, INTERVAL '0') AS total_hours
+
+FROM users u
+LEFT JOIN personal p
+       ON p.emp_id = u.emp_id
+LEFT JOIN attendance_summary a
+       ON a.emp_id = u.emp_id
+
+WHERE u.role IN ('employee', 'admin')
+
+ORDER BY
+    u.role DESC,
+    u.is_active DESC,
+    u.name
+
+LIMIT $1 OFFSET $2;
+    `;
+
+    const { rows } = await db.query(query, [limit, offset]);
+    console.log("Attendance Rows Fetched: organization (all users)", rows);
+
+    const formattedRows = rows.map((row) => {
+      let totalHours = "00:00";
+      if (row.total_hours) {
+        const hours = row.total_hours.hours || 0;
+        const minutes = row.total_hours.minutes || 0;
+        totalHours = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+      }
+
+      return {
+        ...row,
+        total_hours: totalHours,
+        punch_in: row.punch_in
+          ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
+        punch_out: row.punch_out
+          ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
+          : "--",
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      employees: formattedRows,
+      pagination: {
+        currentPage: page,
+        totalItems: totalItems,
+        totalPages: Math.ceil(totalItems / limit),
+        limit: limit,
+      },
+    });
+  } catch (error) {
+    console.error("Manual report error:", error);
+    res.status(500).json({ message: "Failed to process attendance" });
   }
 };
 /**
@@ -1379,48 +1706,26 @@ exports.exportActivityLog = async (req, res) => {
     // Same filter logic as above
     if (from && to) {
       params.push(from, to);
-      filters.push(`punch_time::DATE BETWEEN $${params.length - 1} AND $${params.length}`);
+      filters.push(
+        `punch_time::DATE BETWEEN $${params.length - 1} AND $${params.length}`,
+      );
     }
     if (emp_id) {
       params.push(emp_id);
       filters.push(`emp_id = $${params.length}`);
     }
 
-    const whereClause = filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : "";
+    const whereClause =
+      filters.length > 0 ? ` WHERE ${filters.join(" AND ")}` : "";
     const finalQuery = `${queryText} ${whereClause} ORDER BY punch_time DESC`;
 
     const { rows } = await db.query(finalQuery, params);
 
     res.status(200).json({
       success: true,
-      data: rows // Returns the full array
+      data: rows, // Returns the full array
     });
   } catch (error) {
     res.status(500).json({ success: false, message: "Export Data Error" });
   }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
