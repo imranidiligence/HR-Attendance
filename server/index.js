@@ -33,6 +33,7 @@ const branchLocationRoutes = require('./routes/branchLocationRoutes');
 const vendorTypeRoutes = require('./routes/vendorTypeRoutes');
 const cronRoutes = require("./routes/cron.routes");
 const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
+const dashboardRoutes = require("./routes/DashboardRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -131,6 +132,9 @@ app.use("/api/leaves/types", leavesRoutes);
 app.use("/api/settings", settingsRoutes);
 
 // Cron Schedule Route
+
+//Dashboard 
+app.use("/api/dashboard", dashboardRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
