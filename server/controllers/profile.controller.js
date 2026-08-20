@@ -39,7 +39,7 @@ state
 */
 
 exports.addOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -53,7 +53,6 @@ exports.addOrganizationInfo = async (req, res) => {
       country,
 
       employee_type_id,
-      employee_id,
       reporting_location_id,
 
       organization_email,
@@ -71,18 +70,18 @@ exports.addOrganizationInfo = async (req, res) => {
     } = req.body;
 
     // ---------- Validation ----------
-    if (
-      !organization_name ||
-      !organization_code ||
-      !industry_type ||
-      !department_id ||
-      !designation_id
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Required fields are missing"
-      });
-    }
+    // if (
+    //   !organization_name ||
+    //   !organization_code ||
+    //   !industry_type ||
+    //   !department_id ||
+    //   !designation_id
+    // ) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Required fields are missing"
+    //   });
+    // }
 
     await client.query("BEGIN");
 
@@ -118,27 +117,6 @@ exports.addOrganizationInfo = async (req, res) => {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
       )
-      ON CONFLICT (employee_id)
-      DO UPDATE SET
-        organization_name = EXCLUDED.organization_name,
-        organization_code = EXCLUDED.organization_code,
-        industry_type = EXCLUDED.industry_type,
-        organization_location = EXCLUDED.organization_location,
-        city = EXCLUDED.city,
-        state = EXCLUDED.state,
-        country = EXCLUDED.country,
-        is_active = EXCLUDED.is_active,
-        employee_type_id = EXCLUDED.employee_type_id,
-        reporting_location_id = EXCLUDED.reporting_location_id,
-        organization_email = EXCLUDED.organization_email,
-        department_id = EXCLUDED.department_id,
-        designation_id = EXCLUDED.designation_id,
-        joining_date = EXCLUDED.joining_date,
-        leaving_date = EXCLUDED.leaving_date,
-        official_email_id = EXCLUDED.official_email_id,
-        official_contact_no = EXCLUDED.official_contact_no,
-        reporting_to_id = EXCLUDED.reporting_to_id,
-        employeeidoforganisation = EXCLUDED.employeeidoforganisation
       RETURNING *
       `,
       [
@@ -151,7 +129,7 @@ exports.addOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -179,7 +157,7 @@ exports.addOrganizationInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         reporting_to_id || null
       ]
     );
@@ -191,7 +169,7 @@ exports.addOrganizationInfo = async (req, res) => {
       SET is_active = $1
       WHERE emp_id = $2
       `,
-      [isActive, emp_id]
+      [isActive, employee_id]
     );
 
     await client.query("COMMIT");
@@ -221,7 +199,7 @@ exports.addOrganizationInfo = async (req, res) => {
 
 exports.getOrganizationInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // ---------- Organization ----------
     const orgResult = await db.query(
@@ -252,7 +230,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM organizations
       WHERE employee_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     // ---------- Reporting ----------
@@ -264,7 +242,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM employee_reporting
       WHERE emp_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     if (!orgResult.rows.length) {
@@ -292,7 +270,7 @@ exports.getOrganizationInfo = async (req, res) => {
 };
 
 exports.updateOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -324,18 +302,18 @@ exports.updateOrganizationInfo = async (req, res) => {
     } = req.body;
 
     // ---------- Validation ----------
-    if (
-      !organization_name ||
-      !organization_code ||
-      !industry_type ||
-      !department_id ||
-      !designation_id
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Required fields are missing"
-      });
-    }
+    // if (
+    //   !organization_name ||
+    //   !organization_code ||
+    //   !industry_type ||
+    //   !department_id ||
+    //   !designation_id
+    // ) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Required fields are missing"
+    //   });
+    // }
 
     await client.query("BEGIN");
 
@@ -380,7 +358,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id || employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -391,7 +369,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         official_contact_no,
         reporting_to_id || null,
         employeeidoforganisation,
-        emp_id
+        employee_id
       ]
     );
 
@@ -411,7 +389,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       SET is_active = $1
       WHERE emp_id = $2
       `,
-      [isActive, emp_id]
+      [isActive, employee_id]
     );
 
     // ---------- Update Reporting ----------
@@ -428,7 +406,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         reporting_to_id || null
       ]
     );
@@ -484,7 +462,6 @@ exports.addPersonInfo = async (req, res) => {
       bloodgroup,
       maritalstatus,
       nationality,
-      address,
       aadharnumber,
       nominee,
       department,
@@ -498,17 +475,17 @@ exports.addPersonInfo = async (req, res) => {
       blood_group_id
     } = req.body;
 
-    // console.log("addPersonal",req.body)
+    console.log("employ id",employee_id)
 
     // console.log("department",department);
     // ---------- Validation ----------
-    if (
-     !first_name || !last_name || !email
-    ) {
-      return res.status(400).json({
-        message: "All required fields must be filled",
-      });
-    }
+    // if (
+    //  !first_name || !last_name || !email
+    // ) {
+    //   return res.status(400).json({
+    //     message: "All required fields must be filled",
+    //   });
+    // }
 
     const parseDob = (dateStr) => {
       if (!dateStr) return null;
@@ -549,13 +526,11 @@ exports.addPersonInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO personal (
-        employee_id,
         gender,
         dob,
         bloodgroup,
         maritalstatus,
         nationality,
-        address,
         aadharnumber,
         nominee,
         department,
@@ -566,19 +541,18 @@ exports.addPersonInfo = async (req, res) => {
         nationality_id, 
         gender_id, 
         marital_status_id, 
-        blood_group_id
+        blood_group_id,
+        employee_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17,$18)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17)
       RETURNING *
       `,
       [
-        employee_id,
         gender,
         formattedDob,
         bloodgroup,
         maritalstatus,
         nationality,
-        address,
         aadharnumber,
         nominee || null,
         department,
@@ -589,7 +563,8 @@ exports.addPersonInfo = async (req, res) => {
         nationality_id, 
         gender_id, 
         marital_status_id, 
-        blood_group_id
+        blood_group_id,
+        employee_id
       ]
     );
 
@@ -610,7 +585,7 @@ exports.getPersonalInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        u.employee_id,
+        u.id,
         u.name,
         u.email,
         u.role,
@@ -656,8 +631,8 @@ exports.getPersonalInfo = async (req, res) => {
 
       FROM users u
       LEFT JOIN personal p
-        ON u.emp_id = p.emp_id
-      WHERE u.employee_id = $1
+        ON u.id = p.employee_id
+      WHERE u.id = $1
       `,
       [employee_id]
     );
@@ -730,12 +705,12 @@ exports.updatePersonalInfo = async (req, res) => {
     const formattedLeavingDate = parseDate(leaving_date);
 
     // ---------- Validation ----------
-    if (!first_name || !last_name || !email) {
-      return res.status(400).json({
-        success: false,
-        message: "First name, last name and email are required"
-      });
-    }
+    // if (!first_name || !last_name || !email) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "First name, last name and email are required"
+    //   });
+    // }
 
     // ---------- Update users table ----------
     const fullName = `${first_name || ""} ${last_name || ""}`.trim();
@@ -858,9 +833,9 @@ exports.addEducationInfo = async (req, res) => {
 
     // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
 
-    if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
+    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
+    //   return res.status(403).json({ message: "Unauthorized" });
+    // }
 
     let educationArray = [];
 
@@ -886,29 +861,30 @@ exports.addEducationInfo = async (req, res) => {
     for (const edu of educationArray) {
       // Now 'edu' will be an object like { degree: "Degress", ... }
       const {
-        degree,
+        // degree,
         field_of_study,
         institution_name,
         university,
         passing_year,
         percentage_or_grade,
+        degree_id
       } = edu;
 
       const { rows } = await db.query(
         `
         INSERT INTO education
-          (employee_id, degree, field_of_study, institution_name, university, passing_year, percentage_or_grade)
+          (employee_id, field_of_study, institution_name, university, passing_year, percentage_or_grade, degree_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
         `,
         [
           employee_id,
-          degree || null,
           field_of_study || null,
           institution_name || null,
           university || null,
           passing_year || null,
           percentage_or_grade || null,
+          degree_id || null,  
         ]
       );
 
@@ -1057,13 +1033,13 @@ exports.updateEducationInfo = async (req, res) => {
             `
             SELECT id
             FROM education
-            WHERE emp_id = $1
+            WHERE employee_id = $1
               AND degree = $2
               AND passing_year = $3
             LIMIT 1
             `,
             [
-              emp_id,
+              employee_id,
               edu.degree,
               edu.passing_year || null
             ]
@@ -1112,7 +1088,7 @@ exports.updateEducationInfo = async (req, res) => {
 
         if (updateResult.rowCount === 0) {
           throw new Error(
-            `Education record with ID ${edu.id} was not found for employee ${emp_id}`
+            `Education record with ID ${edu.id} was not found for employee ${employee_id}`
           );
         }
 
@@ -1190,14 +1166,14 @@ exports.deleteEducationInfo = async (req, res) => {
     }
 
     // Authorization
-    if (
-      req.user.role === "employee" &&
-      String(req.user.emp_id) !== String(emp_id)
-    ) {
-      return res.status(403).json({
-        message: "Access Denied: You cannot delete this record"
-      });
-    }
+    // if (
+    //   req.user.role === "employee" &&
+    //   String(req.user.emp_id) !== String(emp_id)
+    // ) {
+    //   return res.status(403).json({
+    //     message: "Access Denied: You cannot delete this record"
+    //   });
+    // }
 
     const result = await db.query(
       `
@@ -1244,14 +1220,15 @@ exports.addExperienceInfo = async (req, res) => {
       end_date,
       total_years,
       location,
+      designation_id
     } = req.body;
 
     // 1. Check for Missing Required Fields
-    if (!company_name || !designation || !start_date || !end_date || !location) {
-      return res.status(400).json({
-        message: "All fields (Company, Designation, Dates, and Location) are required",
-      });
-    }
+    // if (!company_name || !designation || !start_date || !end_date || !location) {
+    //   return res.status(400).json({
+    //     message: "All fields (Company, Designation, Dates, and Location) are required",
+    //   });
+    // }
 
     // 2. Validate Date Formats
     const start = new Date(start_date);
@@ -1271,21 +1248,21 @@ exports.addExperienceInfo = async (req, res) => {
     }
 
     // 4. Sanitize Inputs (Optional but recommended: prevent excessive string lengths)
-    if (company_name.length > 255 || designation.length > 255) {
-      return res.status(400).json({
-        message: "Company name or designation is too long",
-      });
-    }
+    // if (company_name.length > 255 || designation.length > 255) {
+    //   return res.status(400).json({
+    //     message: "Company name or designation is too long",
+    //   });
+    // }
 
     // 5. Database Insertion
     const result = await db.query(
       `
       INSERT INTO experience 
-        (employee_id, company_name, designation, start_date, end_date, total_years, location) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        (employee_id, company_name, designation, start_date, end_date, total_years, location, designation_id) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
       RETURNING *
       `,
-      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim()]
+      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim(), designation_id]
     );
 
     // Send Notification
@@ -1360,18 +1337,18 @@ exports.updateExperienceInfo = async (req, res) => {
     } = req.body;
 
     // ---------- Required Fields ----------
-    if (
-      !company_name ||
-      !designation ||
-      !designation_id ||
-      !start_date ||
-      !end_date ||
-      !location
-    ) {
-      return res.status(400).json({
-        message: "All required fields are required"
-      });
-    }
+    // if (
+    //   !company_name ||
+    //   !designation ||
+    //   !designation_id ||
+    //   !start_date ||
+    //   !end_date ||
+    //   !location
+    // ) {
+    //   return res.status(400).json({
+    //     message: "All required fields are required"
+    //   });
+    // }
 
     // ---------- Validate Dates ----------
     const start = new Date(start_date);
@@ -2010,9 +1987,9 @@ exports.addNomineeInfo = async (req, res) => {
     const empId = employee_id || req.user.emp_id;
 
     // 1. Basic Validation
-    if (!nominees || !Array.isArray(nominees) || nominees.length === 0) {
-      return res.status(400).json({ success: false, message: "Nominees array is required" });
-    }
+    // if (!nominees || !Array.isArray(nominees) || nominees.length === 0) {
+    //   return res.status(400).json({ success: false, message: "Nominees array is required" });
+    // }
 
     // 2. Fetch Existing Total Percentage from DB
     const percentageCheck = await db.query(
@@ -2030,23 +2007,23 @@ exports.addNomineeInfo = async (req, res) => {
 
     // 3. Validate Each New Nominee & Calculate Incoming Total
     let incomingTotal = 0;
-    for (const nominee of nominees) {
-      const { nominee_name, nominee_relation, nominee_contact, nominee_percentage } = nominee;
+    // for (const nominee of nominees) {
+    //   const { nominee_name, nominee_relation, nominee_contact, nominee_percentage } = nominee;
 
-      if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
-        return res.status(400).json({ success: false, message: "All nominee fields are required" });
-      }
+    //   if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
+    //     return res.status(400).json({ success: false, message: "All nominee fields are required" });
+    //   }
 
-      if (!/^[0-9]{10}$/.test(nominee_contact.toString())) {
-        return res.status(400).json({ success: false, message: "Contact number must be 10 digits" });
-      }
+    //   if (!/^[0-9]{10}$/.test(nominee_contact.toString())) {
+    //     return res.status(400).json({ success: false, message: "Contact number must be 10 digits" });
+    //   }
 
-      const pct = Number(nominee_percentage);
-      if (pct <= 0 || pct > 100) {
-        return res.status(400).json({ success: false, message: "Percentage must be between 1 and 100" });
-      }
-      incomingTotal += pct;
-    }
+    //   const pct = Number(nominee_percentage);
+    //   if (pct <= 0 || pct > 100) {
+    //     return res.status(400).json({ success: false, message: "Percentage must be between 1 and 100" });
+    //   }
+    //   incomingTotal += pct;
+    // }
 
     // 4. Final Percentage Cap Check
     if (existingTotal + incomingTotal > 100) {
@@ -2076,7 +2053,7 @@ exports.addNomineeInfo = async (req, res) => {
     });
 
     const query = `
-      INSERT INTO nominee (emp_id, nominee_name, nominee_relation, nominee_contact, nominee_percentage)
+      INSERT INTO nominee (employee_id, nominee_name, nominee_relation, nominee_contact, nominee_percentage)
       VALUES ${placeholders.join(", ")} RETURNING *`;
 
     const result = await db.query(query, values);
@@ -2140,9 +2117,9 @@ exports.updateNomineeInfo = async (req, res) => {
     const newPercentage = Number(nominee_percentage);
 
     // 1. Basic Validation
-    if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
-      return res.status(400).json({ success: false, message: "All fields are required" });
-    }
+    // if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
+    //   return res.status(400).json({ success: false, message: "All fields are required" });
+    // }
 
     // 2. Contact Validation (10 digits)
     const contactStr = nominee_contact.toString();
@@ -2266,9 +2243,9 @@ exports.addBankInfo = async (req, res) => {
     // console.log(req.body);
 
 
-    if (!account_holder_name || !bank_name || !account_number || !ifsc_code || !branch_name) {
-      return res.status(400).json({ message: "All required fields must be provided." });
-    }
+    // if (!account_holder_name || !bank_name || !account_number || !ifsc_code || !branch_name) {
+    //   return res.status(400).json({ message: "All required fields must be provided." });
+    // }
 
     const result = await db.query(
       `
@@ -2352,18 +2329,18 @@ exports.updateBankInfo = async (req, res) => {
       is_active
     } = req.body;
 
-    if (
-      !account_holder_name ||
-      !bank_name ||
-      !account_number ||
-      !ifsc_code ||
-      !account_type ||
-      !pan_number
-    ) {
-      return res.status(400).json({
-        message: "Required bank fields are missing"
-      });
-    }
+    // if (
+    //   !account_holder_name ||
+    //   !bank_name ||
+    //   !account_number ||
+    //   !ifsc_code ||
+    //   !account_type ||
+    //   !pan_number
+    // ) {
+    //   return res.status(400).json({
+    //     message: "Required bank fields are missing"
+    //   });
+    // }
 
 
 const recordCheck = await db.query(
@@ -2538,9 +2515,9 @@ exports.addBankDocInfo = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    if (!documentType) {
-      return res.status(400).json({ message: "Document type is required" });
-    }
+    // if (!documentType) {
+    //   return res.status(400).json({ message: "Document type is required" });
+    // }
 
     //  Get old file BEFORE update
     const { rows: existing } = await db.query(
@@ -2780,9 +2757,9 @@ exports.addAddressInfo = async (req, res) => {
 
     // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
 
-    if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
+    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
+    //   return res.status(403).json({ message: "Unauthorized" });
+    // }
 
     
     const query = `
@@ -2811,16 +2788,16 @@ exports.updateAddressInfo = async (req, res) => {
     
     // console.log("emp_id Add Education", emp_id)
 
-    if(!emp_id){
+    if(!employee_id){
       return res.status(400).json({message:"employee_id required"});
     }
 
 
     // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
 
-    if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
+    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
+    //   return res.status(403).json({ message: "Unauthorized" });
+    // }
 
     const query = `Update address set permanent_address=$1,current_address=$2 where employee_id=$3`;
     await db.query(query, [permanent_address, current_address, employee_id]);
