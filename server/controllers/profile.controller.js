@@ -484,7 +484,6 @@ exports.addPersonInfo = async (req, res) => {
       bloodgroup,
       maritalstatus,
       nationality,
-      address,
       aadharnumber,
       nominee,
       department,
@@ -498,7 +497,7 @@ exports.addPersonInfo = async (req, res) => {
       blood_group_id
     } = req.body;
 
-    // console.log("addPersonal",req.body)
+    console.log("employ id",employee_id)
 
     // console.log("department",department);
     // ---------- Validation ----------
@@ -549,13 +548,11 @@ exports.addPersonInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO personal (
-        employee_id,
         gender,
         dob,
         bloodgroup,
         maritalstatus,
         nationality,
-        address,
         aadharnumber,
         nominee,
         department,
@@ -566,19 +563,18 @@ exports.addPersonInfo = async (req, res) => {
         nationality_id, 
         gender_id, 
         marital_status_id, 
-        blood_group_id
+        blood_group_id,
+        employee_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17,$18)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17)
       RETURNING *
       `,
       [
-        employee_id,
         gender,
         formattedDob,
         bloodgroup,
         maritalstatus,
         nationality,
-        address,
         aadharnumber,
         nominee || null,
         department,
@@ -589,7 +585,8 @@ exports.addPersonInfo = async (req, res) => {
         nationality_id, 
         gender_id, 
         marital_status_id, 
-        blood_group_id
+        blood_group_id,
+        employee_id
       ]
     );
 
