@@ -68,25 +68,24 @@ router.put("/personal/:employee_id", auth, updatePersonalInfo);
 
 // GET Request
 router.get("/education/:employee_id", auth, getEducationInfo);
-router.post("/education/:employee_id", auth, selfOrAdminMiddleware,  upload.any(),addEducationInfo);
+router.post("/education/:employee_id", auth,  upload.any(),addEducationInfo);
 router.put(
   "/education/:employee_id/:id", 
   auth, 
-  selfOrAdminMiddleware, 
   upload.any(),
   updateEducationInfo
 );
 
-router.delete("/education/:employee_id/:id", auth, selfOrAdminMiddleware, deleteEducationInfo);
+router.delete("/education/:employee_id/:id", auth, deleteEducationInfo);
 
 
 
 // Experience
 
 router.get("/experience/:employee_id", auth, getExperienceInfo);
-router.post("/experience/:employee_id", auth, selfOrAdminMiddleware, addExperienceInfo);
-router.put("/experience/:employee_id/:id", auth, selfOrAdminMiddleware, updateExperienceInfo);
-router.delete("/experience/:employee_id/:id", auth, selfOrAdminMiddleware, deleteExperienceInfo);
+router.post("/experience/:employee_id", auth, addExperienceInfo);
+router.put("/experience/:employee_id/:id", auth, updateExperienceInfo);
+router.delete("/experience/:employee_id/:id", auth, deleteExperienceInfo);
 
 
 
@@ -101,7 +100,7 @@ router.get("/contact/:employee_id", auth, getContactInfo);
 router.post("/contact/:employee_id",auth,addContactInfo)
 
 // PUT Request
-router.put("/contact/:employee_id", auth, selfOrAdminMiddleware, updateContactInfo);
+router.put("/contact/:employee_id", auth, updateContactInfo);
 
 router.delete("/contact/:employee_id/:id",auth,deleteContactInfo)
 
@@ -117,12 +116,12 @@ router.delete("/nominee/:employee_id/:id",auth,deleteNomineeInfo);
 
 
 router.get("/bank/:employee_id", auth, getBankInfo);
-router.post("/bank/:employee_id", auth, selfOrAdminMiddleware, addBankInfo);
-router.put("/bank/:employee_id", auth, selfOrAdminMiddleware, updateBankInfo);
+router.post("/bank/:employee_id", auth, addBankInfo);
+router.put("/bank/:employee_id", auth, updateBankInfo);
 
-router.post("/profile/address", auth, selfOrAdminMiddleware, addAddressInfo);
+router.post("/profile/address", auth, addAddressInfo);
 router.get("/profile/address/:employee_id", auth, getAddressInfo);
-router.put("/profile/address/:employee_id", auth, selfOrAdminMiddleware, updateAddressInfo);
+router.put("/profile/address/:employee_id", auth, updateAddressInfo);
 
 
 // Document Upload Api 
@@ -148,7 +147,6 @@ router.put("/profile/address/:employee_id", auth, selfOrAdminMiddleware, updateA
 router.post(
   "/bank/doc/:employee_id",
   auth,
-  selfOrAdminMiddleware,
   (req, res, next) => {
     uploadBankDoc(req, res, (err) => {
       if (err) {
@@ -177,7 +175,6 @@ router.get("/bank/doc/:employee_id", auth, getAllBankDoc);
 router.post(
   "/image/:emp_id",
   auth,
-  selfOrAdminMiddleware,
   uploadProfileImage.single("profile"),
   addProfileImage
 );

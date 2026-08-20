@@ -53,7 +53,6 @@ exports.addOrganizationInfo = async (req, res) => {
       country,
 
       employee_type_id,
-      employee_id,
       reporting_location_id,
 
       organization_email,
@@ -118,27 +117,6 @@ exports.addOrganizationInfo = async (req, res) => {
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
       )
-      ON CONFLICT (employee_id)
-      DO UPDATE SET
-        organization_name = EXCLUDED.organization_name,
-        organization_code = EXCLUDED.organization_code,
-        industry_type = EXCLUDED.industry_type,
-        organization_location = EXCLUDED.organization_location,
-        city = EXCLUDED.city,
-        state = EXCLUDED.state,
-        country = EXCLUDED.country,
-        is_active = EXCLUDED.is_active,
-        employee_type_id = EXCLUDED.employee_type_id,
-        reporting_location_id = EXCLUDED.reporting_location_id,
-        organization_email = EXCLUDED.organization_email,
-        department_id = EXCLUDED.department_id,
-        designation_id = EXCLUDED.designation_id,
-        joining_date = EXCLUDED.joining_date,
-        leaving_date = EXCLUDED.leaving_date,
-        official_email_id = EXCLUDED.official_email_id,
-        official_contact_no = EXCLUDED.official_contact_no,
-        reporting_to_id = EXCLUDED.reporting_to_id,
-        employeeidoforganisation = EXCLUDED.employeeidoforganisation
       RETURNING *
       `,
       [
@@ -607,7 +585,7 @@ exports.getPersonalInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        u.employee_id,
+        u.id,
         u.name,
         u.email,
         u.role,
@@ -653,8 +631,8 @@ exports.getPersonalInfo = async (req, res) => {
 
       FROM users u
       LEFT JOIN personal p
-        ON u.emp_id = p.emp_id
-      WHERE u.employee_id = $1
+        ON u.id = p.employee_id
+      WHERE u.id = $1
       `,
       [employee_id]
     );
@@ -883,29 +861,30 @@ exports.addEducationInfo = async (req, res) => {
     for (const edu of educationArray) {
       // Now 'edu' will be an object like { degree: "Degress", ... }
       const {
-        degree,
+        // degree,
         field_of_study,
         institution_name,
         university,
         passing_year,
         percentage_or_grade,
+        degree_id
       } = edu;
 
       const { rows } = await db.query(
         `
         INSERT INTO education
-          (employee_id, degree, field_of_study, institution_name, university, passing_year, percentage_or_grade)
+          (employee_id, field_of_study, institution_name, university, passing_year, percentage_or_grade, degree_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
         `,
         [
           employee_id,
-          degree || null,
           field_of_study || null,
           institution_name || null,
           university || null,
           passing_year || null,
           percentage_or_grade || null,
+          degree_id || null,  
         ]
       );
 
@@ -1241,6 +1220,7 @@ exports.addExperienceInfo = async (req, res) => {
       end_date,
       total_years,
       location,
+      designation_id
     } = req.body;
 
     // 1. Check for Missing Required Fields
@@ -1278,11 +1258,11 @@ exports.addExperienceInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO experience 
-        (employee_id, company_name, designation, start_date, end_date, total_years, location) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7) 
+        (employee_id, company_name, designation, start_date, end_date, total_years, location, designation_id) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
       RETURNING *
       `,
-      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim()]
+      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim(), designation_id]
     );
 
     // Send Notification
