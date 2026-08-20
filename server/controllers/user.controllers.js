@@ -31,18 +31,21 @@ const loginController = async (req, res) => {
 
   
     const result = await db.query(
-      `SELECT id, name, email, password, role, emp_id,profile_image 
+      `SELECT id, name, email, password, role, emp_id,profile_image, is_active 
        FROM users 
        WHERE email = $1 OR emp_id = $2`,
       [identifier,identifier]
     );
-
+    // console.log(result, "result");
     if (result.rows.length === 0) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
     const user = result.rows[0];
 
+    if (!user.is_active) {
+      return res.status(401).json({ message: "User account is inactive" });
+    }
 
     // console.log("user",user);
     
@@ -686,22 +689,19 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       );
     }
 
-    // Update user status
-    const query = `
-      UPDATE users
-      SET
-        is_active = $1,
-        "UpdatedBy" = COALESCE($2, "UpdatedBy"),
-        "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE id = $3
-      RETURNING *
-    `;
+   // Update user status
+const query = `
+  UPDATE users
+  SET
+    is_active = $1
+  WHERE id = $2
+  RETURNING *
+`;
 
-    const result = await db.query(query, [
-      IsActive,
-      UpdatedBy || null,
-      id
-    ]);
+const result = await db.query(query, [
+  IsActive,
+  id
+]);
 
     return successResponse(
       res,
