@@ -472,7 +472,8 @@ exports.addPersonInfo = async (req, res) => {
       nationality_id, 
       gender_id, 
       marital_status_id, 
-      blood_group_id
+      blood_group_id,
+      contact,
     } = req.body;
 
     console.log("employ id",employee_id)
@@ -542,9 +543,10 @@ exports.addPersonInfo = async (req, res) => {
         gender_id, 
         marital_status_id, 
         blood_group_id,
-        employee_id
+        employee_id,
+        contact
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17,$18)
       RETURNING *
       `,
       [
@@ -564,7 +566,8 @@ exports.addPersonInfo = async (req, res) => {
         gender_id, 
         marital_status_id, 
         blood_group_id,
-        employee_id
+        employee_id,
+        contact
       ]
     );
 
@@ -598,7 +601,7 @@ exports.getPersonalInfo = async (req, res) => {
 
         p.bloodgroup,
         p.blood_group_id,
-
+        p.contact
         p.maritalstatus,
         p.marital_status_id,
 
