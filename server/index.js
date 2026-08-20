@@ -34,6 +34,7 @@ const vendorTypeRoutes = require('./routes/vendorTypeRoutes');
 const cronRoutes = require("./routes/cron.routes");
 const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
 const dashboardRoutes = require("./routes/DashboardRoutes");
+const holidayTypeRoutes = require("./routes/holidayTypeRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -135,6 +136,7 @@ app.use("/api/settings", settingsRoutes);
 
 //Dashboard 
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/holiday-types", holidayTypeRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
