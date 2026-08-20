@@ -31,12 +31,12 @@ const loginController = async (req, res) => {
 
   
     const result = await db.query(
-      `SELECT id, name, email, password, role, emp_id,profile_image 
+      `SELECT id, name, email, password, role, emp_id,profile_image, is_active 
        FROM users 
        WHERE email = $1 OR emp_id = $2`,
       [identifier,identifier]
     );
-
+    // console.log(result, "result");
     if (result.rows.length === 0) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
@@ -44,7 +44,7 @@ const loginController = async (req, res) => {
     const user = result.rows[0];
 
     if (!user.is_active) {
-      return res.status(403).json({ message: "User account is inactive" });
+      return res.status(401).json({ message: "User account is inactive" });
     }
 
     // console.log("user",user);
