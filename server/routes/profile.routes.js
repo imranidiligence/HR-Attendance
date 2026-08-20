@@ -147,17 +147,51 @@ router.put("/profile/address/:employee_id", auth, updateAddressInfo);
 router.post(
   "/bank/doc/:employee_id",
   auth,
+
   (req, res, next) => {
+
     uploadBankDoc(req, res, (err) => {
+
       if (err) {
+
+        console.error(
+          "Bank Document Upload Error:",
+          err
+        );
+
         if (err instanceof multer.MulterError) {
-          return res.status(400).json({ message: err.message });
+
+          return res.status(400).json({
+            success: false,
+            message: err.message,
+            code: err.code
+          });
+
         }
-        return res.status(400).json({ message: err.message });
+
+        return res.status(400).json({
+          success: false,
+          message: err.message
+        });
+
       }
+
+      console.log(
+        "Uploaded File:",
+        req.file
+      );
+
+      console.log(
+        "Form Body:",
+        req.body
+      );
+
       next();
+
     });
+
   },
+
   addBankDocInfo
 );
 

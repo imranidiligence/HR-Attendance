@@ -2226,7 +2226,7 @@ exports.deleteNomineeInfo = async (req, res) => {
 
 exports.addBankInfo = async (req, res) => {
   try {
-    const employee_id = req.params.emp_id;
+    const {employee_id } = req.params;
     const {
       account_holder_name,
       bank_name,
@@ -2252,19 +2252,6 @@ exports.addBankInfo = async (req, res) => {
       INSERT INTO bank_accounts (
         employee_id, account_holder_name, bank_name, account_number, ifsc_code, branch_name, upi_id, account_type, pan_number, account_type_id, is_active
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      ON CONFLICT (employee_id)
-      DO UPDATE SET
-        account_holder_name = EXCLUDED.account_holder_name,
-        bank_name = EXCLUDED.bank_name,
-        account_number = EXCLUDED.account_number,
-        ifsc_code = EXCLUDED.ifsc_code,
-        branch_name = EXCLUDED.branch_name,
-        upi_id = EXCLUDED.upi_id,
-        account_type = EXCLUDED.account_type,
-        pan_number = EXCLUDED.pan_number,
-        account_type_id = EXCLUDED.account_type_id,
-        is_active = EXCLUDED.is_active,
-        updated_at = NOW()
       RETURNING *
       `,
       [
@@ -2511,86 +2498,107 @@ exports.addBankDocInfo = async (req, res) => {
     const { documentType, documentNumber, documentTypeId } = req.body;
     const file = req.file;
 
-    if (!file) {
-      return res.status(400).json({ message: "No file uploaded" });
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "employee_id is required"
+      });
     }
 
-    // if (!documentType) {
-    //   return res.status(400).json({ message: "Document type is required" });
-    // }
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded. Use form-data field 'document'."
+      });
+    }
 
-    //  Get old file BEFORE update
-    const { rows: existing } = await db.query(
-      "SELECT file_path FROM bank_documents WHERE employee_id = $1 AND document_type = $2",
-      [employee_id, documentType]
+    if (!documentType) {
+      return res.status(400).json({
+        success: false,
+        message: "documentType is required"
+      });
+    }
+
+    if (!documentTypeId) {
+      return res.status(400).json({
+        success: false,
+        message: "documentTypeId is required"
+      });
+    }
+
+    const existingResult = await db.query(
+      `
+      SELECT file_path
+      FROM bank_documents
+      WHERE employee_id = $1
+        AND document_type_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [employee_id, documentTypeId]
     );
 
-    //  Insert or Update
+    const existing = existingResult.rows;
+
+    const filePath = `/uploads/bank-docs/${file.filename}`;
+
     const result = await db.query(
       `
       INSERT INTO bank_documents (
         employee_id,
         document_type,
         document_number,
-        documentTypeId,
+        document_type_id,
         file_name,
         file_path,
         file_size,
-        created_at,
-        updated_at
+        created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-      ON CONFLICT (employee_id, document_type)
-      DO UPDATE SET
-        document_number = EXCLUDED.document_number,
-        file_name = EXCLUDED.file_name,
-        file_path = EXCLUDED.file_path,
-        file_size = EXCLUDED.file_size,
-        updated_at = NOW()
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
       RETURNING *;
       `,
       [
         employee_id,
         documentType,
-        documentNumber,
+        documentNumber || null,
         documentTypeId,
         file.originalname,
-        `/uploads/bank-docs/${file.filename}`,
-        file.size,
-        documentTypeId,
+        filePath,
+        file.size
       ]
     );
 
-    // Delete old physical file if exists
     if (existing.length > 0 && existing[0].file_path) {
       const oldFilePath = path.join(
         __dirname,
-        "..",
         "..",
         existing[0].file_path
       );
 
       if (fs.existsSync(oldFilePath)) {
         fs.unlink(oldFilePath, (err) => {
-          if (err) console.error("Could not delete old file:", err);
+          if (err) {
+            console.error("Could not delete old file:", err);
+          } else {
+            console.log("Old file deleted:", oldFilePath);
+          }
         });
       }
     }
 
     return res.status(201).json({
+      success: true,
       message: "Bank document saved successfully",
-      document: result.rows[0],
+      document: result.rows[0]
     });
-
   } catch (error) {
-    console.error("Database Error:", error.message);
+    console.error("Add Bank Document Error:", error);
 
-    if (!res.headersSent) {
-      res.status(500).json({
-        message: "Internal Server Error",
-        error: error.message,
-      });
-    }
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
@@ -2744,45 +2752,58 @@ exports.getProfileImage = async (req, res) => {
 };
 exports.addAddressInfo = async (req, res) => {
   try {
-    const { employee_id, permanent_address, current_address } = req.params;
+    const {
+      employee_id,
+      permanent_address,
+      current_address
+    } = req.body;
 
-    // console.log("Education",req.body);
-    
-    // console.log("emp_id Add Education", emp_id)
+    console.log("Address Body:", req.body);
+    console.log("employee_id:", employee_id);
 
-    if(!employee_id){
-      return res.status(400).json({message:"employee_id required"});
+    if (employee_id == null || employee_id === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "employee_id required"
+      });
     }
 
-
-    // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
-
-    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-    //   return res.status(403).json({ message: "Unauthorized" });
-    // }
-
-    
     const query = `
-      INSERT INTO address (employee_id, permanent_address, current_address)
+      INSERT INTO address (
+        employee_id,
+        permanent_address,
+        current_address
+      )
       VALUES ($1, $2, $3)
-      ON CONFLICT (employee_id) DO UPDATE SET permanent_address = EXCLUDED.permanent_address, current_address = EXCLUDED.current_address
+      RETURNING *;
     `;
-    await db.query(query, [employee_id, permanent_address, current_address]);
 
-    res.status(201).json({
+    const result = await db.query(query, [
+      employee_id,
+      permanent_address,
+      current_address
+    ]);
+
+    return res.status(201).json({
+      success: true,
       message: "Address info added successfully",
-      address: { permanent_address, current_address },
+      data: result.rows[0]
     });
 
   } catch (error) {
     console.error("[ERROR] /address POST:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
 exports.updateAddressInfo = async (req, res) => {
   try {
-    const { employee_id, permanent_address, current_address} = req.params;
+    const { employee_id, permanent_address, current_address} = req.body;
 
     // console.log("Education",req.body);
     
