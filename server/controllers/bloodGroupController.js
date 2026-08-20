@@ -92,7 +92,7 @@ const updateBloodGroup = async (req, res) => {
       return errorResponse(res, 404, 'Blood group not found', null);
     }
 
-    const { blood_group_name, phone_code, updated_by, is_active } = req.body;
+    const { blood_group_name, updated_by, is_active } = req.body;
 
     if (blood_group_name !== undefined && blood_group_name.trim() === '') {
       return errorResponse(res, 400, 'blood_group_name cannot be empty', null);
@@ -101,16 +101,14 @@ const updateBloodGroup = async (req, res) => {
     const query = `
       UPDATE blood_group_master
       SET blood_group_name = COALESCE($1, blood_group_name),
-          phone_code = COALESCE($2, phone_code),
-          updated_by = COALESCE($3, updated_by),
-          is_active = COALESCE($4, is_active),
+          updated_by = COALESCE($2, updated_by),
+          is_active = COALESCE($3, is_active),
           updated_at = CURRENT_TIMESTAMP
-      WHERE blood_group_id = $5
+      WHERE blood_group_id = $4
       RETURNING *
     `;
     const values = [
       blood_group_name !== undefined ? blood_group_name : null,
-      phone_code !== undefined ? phone_code : null,
       updated_by !== undefined ? updated_by : null,
       is_active !== undefined ? is_active : null,
       id,
