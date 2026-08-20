@@ -592,9 +592,7 @@ exports.getPersonalInfo = async (req, res) => {
         u.is_active,
         u.profile_image,
         u.shift_id,
-
-        TO_CHAR(p.dob, 'DD-MM-YYYY') AS dob,
-
+        p.dob,
         p.gender,
         p.gender_id,
 
@@ -615,11 +613,11 @@ exports.getPersonalInfo = async (req, res) => {
 
         p.department,
 
-        TO_CHAR(p.joining_date, 'DD-MM-YYYY') AS joining_date,
+       p.joining_date,
 
         p.designation,
 
-        TO_CHAR(p.leaving_date, 'DD-MM-YYYY') AS leaving_date,
+        p.leaving_date,
 
         p.employee_type,
         p.reporting_location,
