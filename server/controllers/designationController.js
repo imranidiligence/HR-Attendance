@@ -122,28 +122,79 @@ const updateDesignation = async (req, res) => {
 };
 
 const deleteDesignation = async (req, res) => {
-  try {
+   try {
     const { id } = req.params;
+
+    // Validate designation ID
     if (!id || isNaN(id)) {
-      return errorResponse(res, 400, 'Valid designation_id is required', null);
+      return errorResponse(
+        res,
+        400,
+        "Valid designation_id is required",
+        null
+      );
     }
 
-    const existing = await db.query('SELECT * FROM designation_master WHERE designation_id = $1', [id]);
+    // Check designation exists
+    const existing = await db.query(
+      `SELECT designation_id FROM designation_master WHERE designation_id = $1`,
+      [id]
+    );
+
     if (existing.rows.length === 0) {
-      return errorResponse(res, 404, 'Designation not found', null);
+      return errorResponse(
+        res,
+        404,
+        "Designation not found",
+        null
+      );
     }
 
-    const { updated_by } = req.body;
+    // Get request body
+    const { is_active, updated_by } = req.body;
+
+    // Validate is_active
+    if (typeof is_active !== "boolean") {
+      return errorResponse(
+        res,
+        400,
+        "is_active must be true or false",
+        null
+      );
+    }
+
+    // Update designation status
     const query = `
       UPDATE designation_master
-      SET is_active = FALSE, updated_by = COALESCE($1, updated_by), updated_at = CURRENT_TIMESTAMP
-      WHERE designation_id = $2
+      SET
+        is_active = $1,
+        updated_by = COALESCE($2, updated_by),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE designation_id = $3
       RETURNING *
     `;
-    const result = await db.query(query, [updated_by || null, id]);
-    return successResponse(res, 200, 'Designation deleted successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      is_active,
+      updated_by || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      `Designation ${
+        is_active ? "activated" : "deactivated"
+      } successfully`,
+      result.rows[0]
+    );
+
   } catch (error) {
-    return handleDbError(res, error, 'Failed to delete designation');
+    return handleDbError(
+      res,
+      error,
+      "Failed to update designation status"
+    );
   }
 };
 

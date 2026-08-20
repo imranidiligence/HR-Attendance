@@ -122,28 +122,80 @@ const updateMaritalStatus = async (req, res) => {
 };
 
 const deleteMaritalStatus = async (req, res) => {
-  try {
+   try {
     const { id } = req.params;
+
+    // Validate marital status ID
     if (!id || isNaN(id)) {
-      return errorResponse(res, 400, 'Valid marital_status_id is required', null);
+      return errorResponse(
+        res,
+        400,
+        "Valid marital_status_id is required",
+        null
+      );
     }
 
-    const existing = await db.query('SELECT * FROM marital_status_master WHERE marital_status_id = $1', [id]);
+    // Check marital status exists
+    const existing = await db.query(
+      `SELECT marital_status_id
+       FROM marital_status_master
+       WHERE marital_status_id = $1`,
+      [id]
+    );
+
     if (existing.rows.length === 0) {
-      return errorResponse(res, 404, 'Marital status not found', null);
+      return errorResponse(
+        res,
+        404,
+        "Marital status not found",
+        null
+      );
     }
 
-    const { updated_by } = req.body;
+    const { is_active, updated_by } = req.body;
+
+    // Validate is_active
+    if (typeof is_active !== "boolean") {
+      return errorResponse(
+        res,
+        400,
+        "is_active must be true or false",
+        null
+      );
+    }
+
+    // Update marital status
     const query = `
       UPDATE marital_status_master
-      SET is_active = FALSE, updated_by = COALESCE($1, updated_by), updated_at = CURRENT_TIMESTAMP
-      WHERE marital_status_id = $2
+      SET
+        is_active = $1,
+        updated_by = COALESCE($2, updated_by),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE marital_status_id = $3
       RETURNING *
     `;
-    const result = await db.query(query, [updated_by || null, id]);
-    return successResponse(res, 200, 'Marital status deleted successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      is_active,
+      updated_by || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      `Marital status ${
+        is_active ? "activated" : "deactivated"
+      } successfully`,
+      result.rows[0]
+    );
+
   } catch (error) {
-    return handleDbError(res, error, 'Failed to delete marital status');
+    return handleDbError(
+      res,
+      error,
+      "Failed to update marital status"
+    );
   }
 };
 
