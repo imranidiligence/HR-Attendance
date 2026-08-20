@@ -601,7 +601,7 @@ exports.getPersonalInfo = async (req, res) => {
 
         p.bloodgroup,
         p.blood_group_id,
-        p.contact
+        p.contact,
         p.maritalstatus,
         p.marital_status_id,
 
