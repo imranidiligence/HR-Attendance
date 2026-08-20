@@ -585,7 +585,7 @@ exports.getPersonalInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        u.employee_id,
+        u.id,
         u.name,
         u.email,
         u.role,
@@ -631,8 +631,8 @@ exports.getPersonalInfo = async (req, res) => {
 
       FROM users u
       LEFT JOIN personal p
-        ON u.emp_id = p.emp_id
-      WHERE u.employee_id = $1
+        ON u.id = p.employee_id
+      WHERE u.id = $1
       `,
       [employee_id]
     );
