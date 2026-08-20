@@ -689,19 +689,19 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       );
     }
 
-    // Update user status
-    const query = `
-      UPDATE users
-      SET
-        is_active = $1,
-      WHERE id = $2
-      RETURNING *
-    `;
+   // Update user status
+const query = `
+  UPDATE users
+  SET
+    is_active = $1
+  WHERE id = $2
+  RETURNING *
+`;
 
-    const result = await db.query(query, [
-      IsActive,
-      id
-    ]);
+const result = await db.query(query, [
+  IsActive,
+  id
+]);
 
     return successResponse(
       res,
