@@ -122,28 +122,81 @@ const updateContactType = async (req, res) => {
 };
 
 const deleteContactType = async (req, res) => {
-  try {
+    try {
     const { id } = req.params;
+
+    // Validate contact type ID
     if (!id || isNaN(id)) {
-      return errorResponse(res, 400, 'Valid contact_type_id is required', null);
+      return errorResponse(
+        res,
+        400,
+        "Valid contact_type_id is required",
+        null
+      );
     }
 
-    const existing = await db.query('SELECT * FROM contact_type_master WHERE contact_type_id = $1', [id]);
+    // Check contact type exists
+    const existing = await db.query(
+      `SELECT contact_type_id
+       FROM contact_type_master
+       WHERE contact_type_id = $1`,
+      [id]
+    );
+
     if (existing.rows.length === 0) {
-      return errorResponse(res, 404, 'Contact type not found', null);
+      return errorResponse(
+        res,
+        404,
+        "Contact type not found",
+        null
+      );
     }
 
-    const { updated_by } = req.body;
+    // Get request body
+    const { is_active, updated_by } = req.body;
+
+    // Validate is_active
+    if (typeof is_active !== "boolean") {
+      return errorResponse(
+        res,
+        400,
+        "is_active must be true or false",
+        null
+      );
+    }
+
+    // Update contact type status
     const query = `
       UPDATE contact_type_master
-      SET is_active = FALSE, updated_by = COALESCE($1, updated_by), updated_at = CURRENT_TIMESTAMP
-      WHERE contact_type_id = $2
+      SET
+        is_active = $1,
+        updated_by = COALESCE($2, updated_by),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE contact_type_id = $3
       RETURNING *
     `;
-    const result = await db.query(query, [updated_by || null, id]);
-    return successResponse(res, 200, 'Contact type deleted successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      is_active,
+      updated_by || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      `Contact type ${
+        is_active ? "activated" : "deactivated"
+      } successfully`,
+      result.rows[0]
+    );
+
   } catch (error) {
-    return handleDbError(res, error, 'Failed to delete contact type');
+    return handleDbError(
+      res,
+      error,
+      "Failed to update contact type status"
+    );
   }
 };
 

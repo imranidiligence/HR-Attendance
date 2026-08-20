@@ -136,29 +136,56 @@ const updateDepartment = async (req, res) => {
 const deleteDepartment = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!id || isNaN(id)) {
       return errorResponse(res, 400, 'Valid DepartmentId is required', null);
     }
 
-    const existing = await db.query(`SELECT * FROM "department_master" WHERE "DepartmentId" = $1`, [id]);
+    const existing = await db.query(
+      `SELECT * FROM "department_master" WHERE "DepartmentId" = $1`,
+      [id]
+    );
+
     if (existing.rows.length === 0) {
       return errorResponse(res, 404, 'Department not found', null);
     }
 
-    const { UpdatedBy } = req.body;
+    const { UpdatedBy, IsActive } = req.body;
+
+    // Validate IsActive
+    if (typeof IsActive !== 'boolean') {
+      return errorResponse(
+        res,
+        400,
+        'IsActive must be true or false',
+        null
+      );
+    }
 
     const query = `
       UPDATE "department_master"
-      SET "IsActive" = FALSE,
-          "UpdatedBy" = COALESCE($1, "UpdatedBy"),
+      SET "IsActive" = $1,
+          "UpdatedBy" = COALESCE($2, "UpdatedBy"),
           "UpdatedAt" = CURRENT_TIMESTAMP
-      WHERE "DepartmentId" = $2
+      WHERE "DepartmentId" = $3
       RETURNING *
     `;
-    const result = await db.query(query, [UpdatedBy || null, id]);
-    return successResponse(res, 200, 'Department deleted successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      IsActive,
+      UpdatedBy || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      'Department status updated successfully',
+      result.rows[0]
+    );
+
   } catch (error) {
-    return handleDbError(res, error, 'Failed to delete department');
+    return handleDbError(res, error, 'Failed to update department status');
   }
 };
 
