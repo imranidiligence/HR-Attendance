@@ -2,6 +2,11 @@ const jwt = require("jsonwebtoken");
 
 const bcrypt = require("bcrypt");
 const { db } = require("../db/connectDB");
+const {
+  successResponse,
+  errorResponse,
+  handleDbError
+} = require("../utils/response");
 const sendNotification = require("../services/notification.services");
 
 
@@ -649,5 +654,70 @@ WHERE EXTRACT(YEAR FROM joining_date) = EXTRACT(YEAR FROM CURRENT_DATE);`);
   }
 };
 
+// User Active / InActive
+const updateUserActiveOrInActiveStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-module.exports = { loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };
+    // Validate User ID
+    if (!id || isNaN(id)) {
+      return errorResponse(res, 400, 'Valid User ID is required', null);
+    }
+
+    // Check whether user exists
+    const existing = await db.query(
+      `SELECT * FROM users WHERE id = $1`,
+      [id]
+    );
+
+    if (existing.rows.length === 0) {
+      return errorResponse(res, 404, 'User not found', null);
+    }
+
+    const { UpdatedBy, IsActive } = req.body;
+
+    // Validate IsActive
+    if (typeof IsActive !== 'boolean') {
+      return errorResponse(
+        res,
+        400,
+        'IsActive must be true or false',
+        null
+      );
+    }
+
+    // Update user status
+    const query = `
+      UPDATE users
+      SET
+        is_active = $1,
+        "UpdatedBy" = COALESCE($2, "UpdatedBy"),
+        "UpdatedAt" = CURRENT_TIMESTAMP
+      WHERE id = $3
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [
+      IsActive,
+      UpdatedBy || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      `User ${IsActive ? 'activated' : 'deactivated'} successfully`,
+      result.rows[0]
+    );
+
+  } catch (error) {
+    return handleDbError(
+      res,
+      error,
+      'Failed to update user status'
+    );
+  }
+};
+
+
+module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };

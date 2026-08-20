@@ -41,10 +41,10 @@ router.get("/organization/employee", auth, async (req, res) => {
     });
   }
 });
-router.post("/organization/:emp_id", auth, addOrganizationInfo);
+router.post("/organization/:employee_id", auth, addOrganizationInfo);
 
 // Specific employee by admin edit
-router.get("/organization/:emp_id", auth, getOrganizationInfo)
+router.get("/organization/:employee_id", auth, getOrganizationInfo)
 
 //  Only Admin Can Update Organization
 
@@ -54,10 +54,10 @@ router.put("/organization/:empId", auth, isAdmin, updateOrganizationInfo)
 
 
 
-router.get("/personal/:emp_id", auth, getPersonalInfo);
+router.get("/personal/:employee_id", auth, getPersonalInfo);
 
-router.post("/personal/:emp_id", auth, selfOrAdminMiddleware, addPersonInfo);
-router.put("/personal/:emp_id", auth, selfOrAdminMiddleware, updatePersonalInfo);
+router.post("/personal/:employee_id", auth, addPersonInfo);
+router.put("/personal/:employee_id", auth, updatePersonalInfo);
 
 
 
@@ -67,26 +67,25 @@ router.put("/personal/:emp_id", auth, selfOrAdminMiddleware, updatePersonalInfo)
 // POST Request
 
 // GET Request
-router.get("/education/:emp_id", auth, getEducationInfo);
-router.post("/education/:emp_id", auth, selfOrAdminMiddleware,  upload.any(),addEducationInfo);
+router.get("/education/:employee_id", auth, getEducationInfo);
+router.post("/education/:employee_id", auth,  upload.any(),addEducationInfo);
 router.put(
-  "/education/:emp_id/:id", 
+  "/education/:employee_id/:id", 
   auth, 
-  selfOrAdminMiddleware, 
   upload.any(),
   updateEducationInfo
 );
 
-router.delete("/education/:emp_id/:id", auth, selfOrAdminMiddleware, deleteEducationInfo);
+router.delete("/education/:employee_id/:id", auth, deleteEducationInfo);
 
 
 
 // Experience
 
-router.get("/experience/:emp_id", auth, getExperienceInfo);
-router.post("/experience/:emp_id", auth, selfOrAdminMiddleware, addExperienceInfo);
-router.put("/experience/:emp_id/:id", auth, selfOrAdminMiddleware, updateExperienceInfo);
-router.delete("/experience/:emp_id/:id", auth, selfOrAdminMiddleware, deleteExperienceInfo);
+router.get("/experience/:employee_id", auth, getExperienceInfo);
+router.post("/experience/:employee_id", auth, addExperienceInfo);
+router.put("/experience/:employee_id/:id", auth, updateExperienceInfo);
+router.delete("/experience/:employee_id/:id", auth, deleteExperienceInfo);
 
 
 
@@ -95,34 +94,34 @@ router.delete("/experience/:emp_id/:id", auth, selfOrAdminMiddleware, deleteExpe
 
 
 // GET Request
-router.get("/contact/:emp_id", auth, getContactInfo);
+router.get("/contact/:employee_id", auth, getContactInfo);
 
 
-router.post("/contact/:emp_id",auth,addContactInfo)
+router.post("/contact/:employee_id",auth,addContactInfo)
 
 // PUT Request
-router.put("/contact/:emp_id", auth, selfOrAdminMiddleware, updateContactInfo);
+router.put("/contact/:employee_id", auth, updateContactInfo);
 
-router.delete("/contact/:emp_id/:id",auth,deleteContactInfo)
+router.delete("/contact/:employee_id/:id",auth,deleteContactInfo)
 
 // Nominee API
 
-router.get("/nominee/:emp_id",auth,getNomineeInfo)
-router.post("/nominee/:emp_id",auth,addNomineeInfo);
-router.put("/nominee/:emp_id/:id",auth,updateNomineeInfo);
-router.delete("/nominee/:emp_id/:id",auth,deleteNomineeInfo);
+router.get("/nominee/:employee_id",auth,getNomineeInfo)
+router.post("/nominee/:employee_id",auth,addNomineeInfo);
+router.put("/nominee/:employee_id/:id",auth,updateNomineeInfo);
+router.delete("/nominee/:employee_id/:id",auth,deleteNomineeInfo);
 
 
 // BANK API
 
 
-router.get("/bank/:emp_id", auth, getBankInfo);
-router.post("/bank/:emp_id", auth, selfOrAdminMiddleware, addBankInfo);
-router.put("/bank/:emp_id", auth, selfOrAdminMiddleware, updateBankInfo);
+router.get("/bank/:employee_id", auth, getBankInfo);
+router.post("/bank/:employee_id", auth, addBankInfo);
+router.put("/bank/:employee_id", auth, updateBankInfo);
 
-router.post("/profile/address", auth, selfOrAdminMiddleware, addAddressInfo);
-router.get("/profile/address/:emp_id", auth, getAddressInfo);
-router.put("/profile/address/:emp_id", auth, selfOrAdminMiddleware, updateAddressInfo);
+router.post("/profile/address", auth, addAddressInfo);
+router.get("/profile/address/:employee_id", auth, getAddressInfo);
+router.put("/profile/address/:employee_id", auth, updateAddressInfo);
 
 
 // Document Upload Api 
@@ -146,28 +145,61 @@ router.put("/profile/address/:emp_id", auth, selfOrAdminMiddleware, updateAddres
 // );
 
 router.post(
-  "/bank/doc/:emp_id",
+  "/bank/doc/:employee_id",
   auth,
-  selfOrAdminMiddleware,
+
   (req, res, next) => {
+
     uploadBankDoc(req, res, (err) => {
+
       if (err) {
+
+        console.error(
+          "Bank Document Upload Error:",
+          err
+        );
+
         if (err instanceof multer.MulterError) {
-          return res.status(400).json({ message: err.message });
+
+          return res.status(400).json({
+            success: false,
+            message: err.message,
+            code: err.code
+          });
+
         }
-        return res.status(400).json({ message: err.message });
+
+        return res.status(400).json({
+          success: false,
+          message: err.message
+        });
+
       }
+
+      console.log(
+        "Uploaded File:",
+        req.file
+      );
+
+      console.log(
+        "Form Body:",
+        req.body
+      );
+
       next();
+
     });
+
   },
+
   addBankDocInfo
 );
 
-router.delete("/bank/doc/:emp_id/:id", auth,deleteDocument);
+router.delete("/bank/doc/:employee_id/:id", auth,deleteDocument);
 
 
 // GET all bank documents for an employee
-router.get("/bank/doc/:emp_id", auth, getAllBankDoc);
+router.get("/bank/doc/:employee_id", auth, getAllBankDoc);
 
 
 
@@ -177,7 +209,6 @@ router.get("/bank/doc/:emp_id", auth, getAllBankDoc);
 router.post(
   "/image/:emp_id",
   auth,
-  selfOrAdminMiddleware,
   uploadProfileImage.single("profile"),
   addProfileImage
 );
