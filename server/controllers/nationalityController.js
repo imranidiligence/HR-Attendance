@@ -122,28 +122,80 @@ const updateNationality = async (req, res) => {
 };
 
 const deleteNationality = async (req, res) => {
-  try {
+    try {
     const { id } = req.params;
+
+    // Validate nationality ID
     if (!id || isNaN(id)) {
-      return errorResponse(res, 400, 'Valid nationality_id is required', null);
+      return errorResponse(
+        res,
+        400,
+        "Valid nationality_id is required",
+        null
+      );
     }
 
-    const existing = await db.query('SELECT * FROM nationality_master WHERE nationality_id = $1', [id]);
+    // Check nationality exists
+    const existing = await db.query(
+      `SELECT nationality_id
+       FROM nationality_master
+       WHERE nationality_id = $1`,
+      [id]
+    );
+
     if (existing.rows.length === 0) {
-      return errorResponse(res, 404, 'Nationality not found', null);
+      return errorResponse(
+        res,
+        404,
+        "Nationality not found",
+        null
+      );
     }
 
-    const { updated_by } = req.body;
+    const { is_active, updated_by } = req.body;
+
+    // Validate is_active
+    if (typeof is_active !== "boolean") {
+      return errorResponse(
+        res,
+        400,
+        "is_active must be true or false",
+        null
+      );
+    }
+
+    // Update nationality status
     const query = `
       UPDATE nationality_master
-      SET is_active = FALSE, updated_by = COALESCE($1, updated_by), updated_at = CURRENT_TIMESTAMP
-      WHERE nationality_id = $2
+      SET
+        is_active = $1,
+        updated_by = COALESCE($2, updated_by),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE nationality_id = $3
       RETURNING *
     `;
-    const result = await db.query(query, [updated_by || null, id]);
-    return successResponse(res, 200, 'Nationality deleted successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      is_active,
+      updated_by || null,
+      id
+    ]);
+
+    return successResponse(
+      res,
+      200,
+      `Nationality ${
+        is_active ? "activated" : "deactivated"
+      } successfully`,
+      result.rows[0]
+    );
+
   } catch (error) {
-    return handleDbError(res, error, 'Failed to delete nationality');
+    return handleDbError(
+      res,
+      error,
+      "Failed to update nationality status"
+    );
   }
 };
 

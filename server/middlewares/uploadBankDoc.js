@@ -2,51 +2,99 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// ALWAYS use absolute path
-const uploadDir = path.join(__dirname, "..", "uploads", "bank-docs");
+// =====================================================
+// Upload directory
+// =====================================================
 
-// ensure folder exists
+const uploadDir = path.join(
+  __dirname,
+  "..",
+  "uploads",
+  "bank-docs"
+);
+
+// Create directory if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+  fs.mkdirSync(uploadDir, {
+    recursive: true
+  });
 }
 
+// =====================================================
+// Storage
+// =====================================================
+
 const storage = multer.diskStorage({
+
   destination: (req, file, cb) => {
+
     cb(null, uploadDir);
+
   },
+
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueName = `bank_${req.params.emp_id}_${Date.now()}${ext}`;
+
+    const employeeId = req.params.employee_id;
+
+    const ext = path
+      .extname(file.originalname)
+      .toLowerCase();
+
+    const uniqueName =
+      `bank_${employeeId}_${Date.now()}${ext}`;
+
     cb(null, uniqueName);
-  },
+
+  }
+
 });
 
+// =====================================================
+// File filter
+// =====================================================
+
 const fileFilter = (req, file, cb) => {
-  const allowed = ["application/pdf", "image/png", "image/jpeg"];
+
+  const allowed = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg"
+  ];
+
   if (!allowed.includes(file.mimetype)) {
-    return cb(new Error("Only PDF, PNG, JPG allowed"));
+
+    return cb(
+      new Error(
+        "Only PDF, PNG, JPG allowed"
+      )
+    );
+
   }
+
   cb(null, true);
+
 };
 
+// =====================================================
+// Multer
+// IMPORTANT:
+// cURL field = document
+// Therefore use .single("document")
+// =====================================================
+
 const uploadBankDoc = multer({
+
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter,
-}).single("file")
 
-// const uploadBankDoc = multer({
-//   storage,
-//   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-//   fileFilter,
-// }).fields([
-//   { name: "Aadhar Card", maxCount: 1 },
-//   { name: "PAN Card", maxCount: 1 },
-//   { name: "Bank PassBook", maxCount: 1 },
-//   { name: "Passport", maxCount: 1 },
-//    { name: "Updated CV", maxCount: 1 },
-//   { name: "UAN Card", maxCount: 1 },
-// ]);
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  },
 
+  fileFilter
+
+}).single("document");
+
+
+// =====================================================
 
 module.exports = uploadBankDoc;
