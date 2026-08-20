@@ -39,7 +39,7 @@ state
 */
 
 exports.addOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -151,7 +151,7 @@ exports.addOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -221,7 +221,7 @@ exports.addOrganizationInfo = async (req, res) => {
 
 exports.getOrganizationInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // ---------- Organization ----------
     const orgResult = await db.query(
@@ -252,7 +252,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM organizations
       WHERE employee_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     // ---------- Reporting ----------
@@ -264,7 +264,7 @@ exports.getOrganizationInfo = async (req, res) => {
       FROM employee_reporting
       WHERE emp_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     if (!orgResult.rows.length) {
@@ -292,7 +292,7 @@ exports.getOrganizationInfo = async (req, res) => {
 };
 
 exports.updateOrganizationInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const client = await db.connect();
 
   try {
@@ -380,7 +380,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         country,
         isActive,
         employee_type_id,
-        employee_id || emp_id,
+        employee_id || employee_id,
         reporting_location_id,
         organization_email,
         department_id,
@@ -391,7 +391,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         official_contact_no,
         reporting_to_id || null,
         employeeidoforganisation,
-        emp_id
+        employee_id
       ]
     );
 
@@ -411,7 +411,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       SET is_active = $1
       WHERE emp_id = $2
       `,
-      [isActive, emp_id]
+      [isActive, employee_id]
     );
 
     // ---------- Update Reporting ----------
@@ -428,7 +428,7 @@ exports.updateOrganizationInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         reporting_to_id || null
       ]
     );
@@ -476,7 +476,7 @@ const parseDob = (dob) => {
 
 exports.addPersonInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     const {
       gender,
@@ -535,8 +535,8 @@ exports.addPersonInfo = async (req, res) => {
 
     // ---------- Prevent Duplicate ----------
     const exists = await db.query(
-      "SELECT 1 FROM personal WHERE emp_id = $1",
-      [emp_id]
+      "SELECT 1 FROM personal WHERE employee_id = $1",
+      [employee_id]
     );
 
     if (exists.rowCount > 0) {
@@ -549,7 +549,7 @@ exports.addPersonInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO personal (
-        emp_id,
+        employee_id,
         gender,
         dob,
         bloodgroup,
@@ -572,7 +572,7 @@ exports.addPersonInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         gender,
         formattedDob,
         bloodgroup,
@@ -605,12 +605,12 @@ exports.addPersonInfo = async (req, res) => {
 
 exports.getPersonalInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     const result = await db.query(
       `
       SELECT
-        u.emp_id,
+        u.employee_id,
         u.name,
         u.email,
         u.role,
@@ -657,9 +657,9 @@ exports.getPersonalInfo = async (req, res) => {
       FROM users u
       LEFT JOIN personal p
         ON u.emp_id = p.emp_id
-      WHERE u.emp_id = $1
+      WHERE u.employee_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     if (!result.rows.length) {
@@ -682,7 +682,7 @@ exports.getPersonalInfo = async (req, res) => {
 
 exports.updatePersonalInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     const {
       first_name,
@@ -751,7 +751,7 @@ exports.updatePersonalInfo = async (req, res) => {
       [
         fullName,
         email,
-        emp_id
+        employee_id
       ]
     );
 
@@ -812,7 +812,7 @@ exports.updatePersonalInfo = async (req, res) => {
         formattedLeavingDate,
         employee_type,
         reporting_location,
-        emp_id
+        employee_id
       ]
     );
 
@@ -845,14 +845,14 @@ exports.updatePersonalInfo = async (req, res) => {
 // Education
 exports.addEducationInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // console.log("Education",req.body);
     
     // console.log("emp_id Add Education", emp_id)
 
-    if(!emp_id){
-      return res.status(400).json({message:"emp_id required"});
+    if(!employee_id){
+      return res.status(400).json({message:"employee_id required"});
     }
 
 
@@ -897,12 +897,12 @@ exports.addEducationInfo = async (req, res) => {
       const { rows } = await db.query(
         `
         INSERT INTO education
-          (emp_id, degree, field_of_study, institution_name, university, passing_year, percentage_or_grade)
+          (employee_id, degree, field_of_study, institution_name, university, passing_year, percentage_or_grade)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
         RETURNING *
         `,
         [
-          emp_id,
+          employee_id,
           degree || null,
           field_of_study || null,
           institution_name || null,
@@ -928,9 +928,9 @@ exports.addEducationInfo = async (req, res) => {
 
 exports.getEducationInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
-    const empIdInt = parseInt(emp_id, 10);
+    const empIdInt = parseInt(employee_id, 10);
 
     if (isNaN(empIdInt)) {
       return res.status(400).json({
@@ -941,7 +941,7 @@ exports.getEducationInfo = async (req, res) => {
     const { rows } = await db.query(
       `
       SELECT
-        emp_id,
+        employee_id,
         degree,
         degree_id,
         field_of_study,
@@ -953,7 +953,7 @@ exports.getEducationInfo = async (req, res) => {
         updated_at,
         marksheet_url
       FROM education
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       ORDER BY passing_year DESC NULLS LAST, id DESC
       `,
       [empIdInt]
@@ -983,7 +983,7 @@ exports.updateEducationInfo = async (req, res) => {
   const client = await db.connect();
 
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     if (!req.body.education) {
       return res.status(400).json({
@@ -1041,7 +1041,7 @@ exports.updateEducationInfo = async (req, res) => {
             `
             SELECT id
             FROM education
-            WHERE emp_id = $1
+            WHERE employee_id = $1
               AND degree_id = $2
               AND passing_year = $3
             LIMIT 1
@@ -1093,7 +1093,7 @@ exports.updateEducationInfo = async (req, res) => {
             marksheet_url = COALESCE($8, marksheet_url),
             updated_at = NOW()
           WHERE id = $9
-            AND emp_id = $10
+            AND employee_id = $10
           RETURNING *
           `,
           [
@@ -1106,7 +1106,7 @@ exports.updateEducationInfo = async (req, res) => {
             edu.passing_year || null,
             finalPath,
             edu.id,
-            emp_id
+            employee_id
           ]
         );
 
@@ -1123,7 +1123,7 @@ exports.updateEducationInfo = async (req, res) => {
         await client.query(
           `
           INSERT INTO education (
-            emp_id,
+            employee_id,
             degree,
             degree_id,
             field_of_study,
@@ -1140,7 +1140,7 @@ exports.updateEducationInfo = async (req, res) => {
           )
           `,
           [
-            emp_id,
+            employee_id,
             edu.degree || null,
             edu.degree_id || null,
             edu.field_of_study || null,
@@ -1178,7 +1178,7 @@ exports.updateEducationInfo = async (req, res) => {
 
 exports.deleteEducationInfo = async (req, res) => {
   try {
-    const { emp_id, id } = req.params;
+    const { employee_id, id } = req.params;
 
     const educationId = Number(id);
 
@@ -1203,10 +1203,10 @@ exports.deleteEducationInfo = async (req, res) => {
       `
       DELETE FROM education
       WHERE id = $1
-        AND emp_id = $2
+        AND employee_id = $2
       RETURNING id
       `,
-      [educationId, emp_id]
+      [educationId, employee_id]
     );
 
     if (result.rowCount === 0) {
@@ -1236,7 +1236,7 @@ exports.deleteEducationInfo = async (req, res) => {
 
 exports.addExperienceInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
     const {
       company_name,
       designation,
@@ -1281,11 +1281,11 @@ exports.addExperienceInfo = async (req, res) => {
     const result = await db.query(
       `
       INSERT INTO experience 
-        (emp_id, company_name, designation, start_date, end_date, total_years, location) 
+        (employee_id, company_name, designation, start_date, end_date, total_years, location) 
       VALUES ($1, $2, $3, $4, $5, $6, $7) 
       RETURNING *
       `,
-      [emp_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim()]
+      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim()]
     );
 
     // Send Notification
@@ -1303,9 +1303,9 @@ exports.addExperienceInfo = async (req, res) => {
 
 exports.getExperienceInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
-    if (!emp_id) {
+    if (!employee_id) {
       return res.status(400).json({
         message: "Employee ID is required"
       });
@@ -1315,7 +1315,7 @@ exports.getExperienceInfo = async (req, res) => {
       `
       SELECT
         id,
-        emp_id,
+        employee_id,
         company_name,
         designation,
         designation_id,
@@ -1324,10 +1324,10 @@ exports.getExperienceInfo = async (req, res) => {
         total_years,
         location
       FROM experience
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       ORDER BY start_date DESC NULLS LAST, id DESC
       `,
-      [emp_id]
+      [employee_id]
     );
 
     // Always return 200 so frontend can safely handle []
@@ -1347,7 +1347,7 @@ exports.getExperienceInfo = async (req, res) => {
 
 exports.updateExperienceInfo = async (req, res) => {
   try {
-    const { emp_id, id } = req.params;
+    const { employee_id, id } = req.params;
 
     const {
       company_name,
@@ -1403,7 +1403,7 @@ exports.updateExperienceInfo = async (req, res) => {
         total_years = $6,
         location = $7
       WHERE id = $8
-        AND emp_id = $9
+        AND employee_id = $9
       RETURNING *
       `,
       [
@@ -1415,7 +1415,7 @@ exports.updateExperienceInfo = async (req, res) => {
         total_years,
         location.trim(),
         id,
-        emp_id
+        employee_id
       ]
     );
 
@@ -1442,7 +1442,7 @@ exports.updateExperienceInfo = async (req, res) => {
 
 exports.deleteExperienceInfo = async (req, res) => {
   try {
-    const { emp_id, id } = req.params;
+    const { employee_id, id } = req.params;
 
     const experienceId = Number(id);
 
@@ -1456,10 +1456,10 @@ exports.deleteExperienceInfo = async (req, res) => {
       `
       DELETE FROM experience
       WHERE id = $1
-        AND emp_id = $2
+        AND employee_id = $2
       RETURNING *
       `,
-      [experienceId, emp_id]
+      [experienceId, employee_id]
     );
 
     if (result.rows.length === 0) {
@@ -1485,9 +1485,9 @@ exports.deleteExperienceInfo = async (req, res) => {
 
 exports.getContactInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
-    if (!emp_id) {
+    if (!employee_id) {
       return res.status(400).json({
         success: false,
         message: "Employee ID is required"
@@ -1497,7 +1497,7 @@ exports.getContactInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        emp_id,
+        employee_id,
         contact_type,
         contact_type_id,
         phone,
@@ -1507,10 +1507,10 @@ exports.getContactInfo = async (req, res) => {
         created_at,
         id
       FROM contact
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       ORDER BY is_primary DESC, id ASC
       `,
-      [emp_id]
+      [employee_id]
     );
 
     return res.status(200).json({
@@ -1529,7 +1529,7 @@ exports.getContactInfo = async (req, res) => {
   }
 };
 exports.addContactInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const newContact = req.body;
 
   const client = await db.connect();
@@ -1548,9 +1548,9 @@ exports.addContactInfo = async (req, res) => {
         relation,
         is_primary
       FROM contact
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       `,
-      [emp_id]
+      [employee_id]
     );
 
     const existingContacts = currentContactsRes.rows;
@@ -1601,8 +1601,8 @@ exports.addContactInfo = async (req, res) => {
 
     // Delete existing records
     await client.query(
-      `DELETE FROM contact WHERE emp_id = $1`,
-      [emp_id]
+      `DELETE FROM contact WHERE employee_id = $1`,
+      [employee_id]
     );
 
     // ------------------------------------------------
@@ -1616,7 +1616,7 @@ exports.addContactInfo = async (req, res) => {
           const offset = i * 7;
 
           values.push(
-            emp_id,
+            employee_id,
             contact.contact_type || null,
             contact.contact_type_id || null,
             contact.phone || null,
@@ -1641,7 +1641,7 @@ exports.addContactInfo = async (req, res) => {
       await client.query(
         `
         INSERT INTO contact (
-          emp_id,
+          employee_id,
           contact_type,
           contact_type_id,
           phone,
@@ -1679,7 +1679,7 @@ exports.addContactInfo = async (req, res) => {
   }
 };
 exports.updateContactInfo = async (req, res) => {
-  const { emp_id } = req.params;
+  const { employee_id } = req.params;
   const contacts = req.body;
 
   if (!Array.isArray(contacts)) {
@@ -1731,9 +1731,9 @@ exports.updateContactInfo = async (req, res) => {
         SELECT email
         FROM contact
         WHERE LOWER(email) = ANY($1)
-          AND emp_id != $2
+          AND employee_id != $2
         `,
-        [emailsInRequest, emp_id]
+        [emailsInRequest, employee_id]
       );
 
       if (globalCheck.rowCount > 0) {
@@ -1750,8 +1750,8 @@ exports.updateContactInfo = async (req, res) => {
     // Delete Existing Contacts
     // ------------------------------------------------
     await client.query(
-      `DELETE FROM contact WHERE emp_id = $1`,
-      [emp_id]
+      `DELETE FROM contact WHERE employee_id = $1`,
+      [employee_id]
     );
 
     // ------------------------------------------------
@@ -1765,7 +1765,7 @@ exports.updateContactInfo = async (req, res) => {
           const offset = i * 7;
 
           values.push(
-            emp_id,
+            employee_id,
             contact.contact_type || null,
             contact.contact_type_id || null,
             contact.phone || null,
@@ -1790,7 +1790,7 @@ exports.updateContactInfo = async (req, res) => {
       await client.query(
         `
         INSERT INTO contact (
-          emp_id,
+          employee_id,
           contact_type,
           contact_type_id,
           phone,
@@ -1829,7 +1829,7 @@ exports.updateContactInfo = async (req, res) => {
 };
 
 exports.deleteContactInfo = async (req, res) => {
-  const { emp_id, id } = req.params;
+  const { employee_id, id } = req.params;
 
   try {
     const contactId = Number(id);
@@ -1851,9 +1851,9 @@ exports.deleteContactInfo = async (req, res) => {
         is_primary
       FROM contact
       WHERE id = $1
-        AND emp_id = $2
+        AND employee_id = $2
       `,
-      [contactId, emp_id]
+      [contactId, employee_id]
     );
 
     if (result.rows.length === 0) {
@@ -1873,9 +1873,9 @@ exports.deleteContactInfo = async (req, res) => {
         `
         SELECT COUNT(*)::int AS total
         FROM contact
-        WHERE emp_id = $1
+        WHERE employee_id = $1
         `,
-        [emp_id]
+        [employee_id]
       );
 
       const totalContacts = countResult.rows[0].total;
@@ -1896,10 +1896,10 @@ exports.deleteContactInfo = async (req, res) => {
       `
       DELETE FROM contact
       WHERE id = $1
-        AND emp_id = $2
+        AND employee_id = $2
       RETURNING *
       `,
-      [contactId, emp_id]
+      [contactId, employee_id]
     );
 
     return res.status(200).json({
@@ -1921,17 +1921,17 @@ exports.deleteContactInfo = async (req, res) => {
 
 exports.getNomineeInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // console.log("getNominee:", emp_id);
 
     //  Ensure integer (important if column type integer hai)
-    const empIdInt = parseInt(emp_id);
+    const empIdInt = parseInt(employee_id);
 
     const query = `
       SELECT *
       FROM nominee
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       
     `;
 
@@ -2006,8 +2006,8 @@ exports.getNomineeInfo = async (req, res) => {
 exports.addNomineeInfo = async (req, res) => {
   try {
     const { nominees } = req.body;
-    const { emp_id } = req.params;
-    const empId = emp_id || req.user.emp_id;
+    const { employee_id } = req.params;
+    const empId = employee_id || req.user.emp_id;
 
     // 1. Basic Validation
     if (!nominees || !Array.isArray(nominees) || nominees.length === 0) {
@@ -2016,7 +2016,7 @@ exports.addNomineeInfo = async (req, res) => {
 
     // 2. Fetch Existing Total Percentage from DB
     const percentageCheck = await db.query(
-      `SELECT SUM(nominee_percentage) as total_pct FROM nominee WHERE emp_id = $1`,
+      `SELECT SUM(nominee_percentage) as total_pct FROM nominee WHERE employee_id = $1`,
       [empId]
     );
     const existingTotal = Number(percentageCheck.rows[0].total_pct || 0);
@@ -2059,7 +2059,7 @@ exports.addNomineeInfo = async (req, res) => {
     // 5. Duplicate Contact Check
     const contacts = nominees.map(n => n.nominee_contact.toString());
     const existingContact = await db.query(
-      `SELECT nominee_contact FROM nominee WHERE emp_id = $1 AND nominee_contact = ANY($2)`,
+      `SELECT nominee_contact FROM nominee WHERE employee_id = $1 AND nominee_contact = ANY($2)`,
       [empId, contacts]
     );
 
@@ -2153,8 +2153,8 @@ exports.updateNomineeInfo = async (req, res) => {
     // 3. Percentage Calculation Logic
     // We fetch all nominees for this employee EXCEPT the one we are currently updating
     const otherNominees = await db.query(
-      `SELECT nominee_percentage FROM nominee WHERE emp_id = $1 AND id != $2`,
-      [emp_id, id]
+      `SELECT nominee_percentage FROM nominee WHERE employee_id = $1 AND id != $2`,
+      [employee_id, id]
     );
 
     const existingTotal = otherNominees.rows.reduce(
@@ -2179,7 +2179,7 @@ exports.updateNomineeInfo = async (req, res) => {
         nominee_relation = $2,
         nominee_contact = $3,
         nominee_percentage = $4
-      WHERE id = $5 AND emp_id = $6
+      WHERE id = $5 AND employee_id = $6
       RETURNING *;
     `;
 
@@ -2189,7 +2189,7 @@ exports.updateNomineeInfo = async (req, res) => {
       contactStr, // Stored as string to avoid "Integer out of range"
       newPercentage,
       id,
-      emp_id
+      employee_id
     ]);
 
     if (result.rowCount === 0) {
@@ -2217,19 +2217,19 @@ exports.deleteNomineeInfo = async (req, res) => {
 
     console.log("req.params",req.params);
 
-    const {emp_id,id } = req.params; 
+    const {employee_id,id } = req.params; 
     // const emp_id = req.user.emp_id; 
 
     console.log("Delete id",id);
-    console.log("Delete emp_id",emp_id);
+    console.log("Delete employee_id",employee_id);
 
     const query = `
       DELETE FROM nominee
-      WHERE id = $1 AND emp_id = $2
+      WHERE id = $1 AND employee_id = $2
       RETURNING *;
     `;
 
-    const result = await db.query(query, [id, emp_id]);
+    const result = await db.query(query, [id, employee_id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Nominee not found or not authorized" });
@@ -2249,7 +2249,7 @@ exports.deleteNomineeInfo = async (req, res) => {
 
 exports.addBankInfo = async (req, res) => {
   try {
-    const emp_id = req.params.emp_id;
+    const employee_id = req.params.emp_id;
     const {
       account_holder_name,
       bank_name,
@@ -2291,7 +2291,7 @@ exports.addBankInfo = async (req, res) => {
       RETURNING *
       `,
       [
-        emp_id,
+        employee_id,
         account_holder_name,
         bank_name,
         account_number,
@@ -2319,11 +2319,11 @@ exports.addBankInfo = async (req, res) => {
 
 exports.getBankInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     const result = await db.query(
       `SELECT * FROM bank_accounts WHERE employee_id = $1`,
-      [emp_id]
+      [employee_id]
     );
 
     res.status(200).json({
@@ -2337,7 +2337,7 @@ exports.getBankInfo = async (req, res) => {
 
 exports.updateBankInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
     // console.log("req.body bank update ",req.body);
     const {
       account_holder_name,
@@ -2368,7 +2368,7 @@ exports.updateBankInfo = async (req, res) => {
 
 const recordCheck = await db.query(
       `SELECT id FROM bank_accounts WHERE employee_id = $1`, 
-      [emp_id]
+      [employee_id]
     ); 
 
     if (recordCheck.rowCount === 0) {
@@ -2410,7 +2410,7 @@ const recordCheck = await db.query(
         pan_number,
         is_active ?? true,
         account_type_id || null,
-        emp_id
+        employee_id
       ]
     );
 
@@ -2530,7 +2530,7 @@ const recordCheck = await db.query(
 // }
 exports.addBankDocInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
     const { documentType, documentNumber, documentTypeId } = req.body;
     const file = req.file;
 
@@ -2544,15 +2544,15 @@ exports.addBankDocInfo = async (req, res) => {
 
     //  Get old file BEFORE update
     const { rows: existing } = await db.query(
-      "SELECT file_path FROM bank_documents WHERE emp_id = $1 AND document_type = $2",
-      [emp_id, documentType]
+      "SELECT file_path FROM bank_documents WHERE employee_id = $1 AND document_type = $2",
+      [employee_id, documentType]
     );
 
     //  Insert or Update
     const result = await db.query(
       `
       INSERT INTO bank_documents (
-        emp_id,
+        employee_id,
         document_type,
         document_number,
         documentTypeId,
@@ -2563,7 +2563,7 @@ exports.addBankDocInfo = async (req, res) => {
         updated_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-      ON CONFLICT (emp_id, document_type)
+      ON CONFLICT (employee_id, document_type)
       DO UPDATE SET
         document_number = EXCLUDED.document_number,
         file_name = EXCLUDED.file_name,
@@ -2573,7 +2573,7 @@ exports.addBankDocInfo = async (req, res) => {
       RETURNING *;
       `,
       [
-        emp_id,
+        employee_id,
         documentType,
         documentNumber,
         documentTypeId,
@@ -2620,14 +2620,14 @@ exports.addBankDocInfo = async (req, res) => {
 
 exports.deleteDocument = async (req, res) => {
   try {
-    const { id, emp_id } = req.params;
+    const { id, employee_id } = req.params;
 
     const queryDelete = `
       DELETE FROM bank_documents
-      WHERE id = $1 AND emp_id = $2
+      WHERE id = $1 AND employee_id = $2
     `;
 
-    const result = await db.query(queryDelete, [id, emp_id]);
+    const result = await db.query(queryDelete, [id, employee_id]);
 
     if (result.rowCount === 0) {
       return res.status(404).json({ message: "Document not found" });
@@ -2643,17 +2643,17 @@ exports.deleteDocument = async (req, res) => {
 
 exports.getAllBankDoc = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
     // Fetch documents from DB
     const result = await db.query(
       `
-      SELECT id,emp_id, document_type,document_number, documentTypeId, file_name, file_path, file_size, created_at, updated_at
+      SELECT id,employee_id, document_type,document_number, documentTypeId, file_name, file_path, file_size, created_at, updated_at
       FROM bank_documents
-      WHERE emp_id = $1
+      WHERE employee_id = $1
       ORDER BY created_at ASC
       `,
-      [emp_id]
+      [employee_id]
     );
 
     if (result.rowCount === 0) {
@@ -2661,7 +2661,7 @@ exports.getAllBankDoc = async (req, res) => {
     }
 
     res.status(200).json({
-      emp_id,
+      employee_id,
       documents: result.rows,
     });
   } catch (error) {
@@ -2767,14 +2767,14 @@ exports.getProfileImage = async (req, res) => {
 };
 exports.addAddressInfo = async (req, res) => {
   try {
-    const { emp_id, permanent_address, current_address } = req.params;
+    const { employee_id, permanent_address, current_address } = req.params;
 
     // console.log("Education",req.body);
     
     // console.log("emp_id Add Education", emp_id)
 
-    if(!emp_id){
-      return res.status(400).json({message:"emp_id required"});
+    if(!employee_id){
+      return res.status(400).json({message:"employee_id required"});
     }
 
 
@@ -2786,11 +2786,11 @@ exports.addAddressInfo = async (req, res) => {
 
     
     const query = `
-      INSERT INTO address (emp_id, permanent_address, current_address)
+      INSERT INTO address (employee_id, permanent_address, current_address)
       VALUES ($1, $2, $3)
-      ON CONFLICT (emp_id) DO UPDATE SET permanent_address = EXCLUDED.permanent_address, current_address = EXCLUDED.current_address
+      ON CONFLICT (employee_id) DO UPDATE SET permanent_address = EXCLUDED.permanent_address, current_address = EXCLUDED.current_address
     `;
-    await db.query(query, [emp_id, permanent_address, current_address]);
+    await db.query(query, [employee_id, permanent_address, current_address]);
 
     res.status(201).json({
       message: "Address info added successfully",
@@ -2805,14 +2805,14 @@ exports.addAddressInfo = async (req, res) => {
 
 exports.updateAddressInfo = async (req, res) => {
   try {
-    const { emp_id, permanent_address, current_address} = req.params;
+    const { employee_id, permanent_address, current_address} = req.params;
 
     // console.log("Education",req.body);
     
     // console.log("emp_id Add Education", emp_id)
 
     if(!emp_id){
-      return res.status(400).json({message:"emp_id required"});
+      return res.status(400).json({message:"employee_id required"});
     }
 
 
@@ -2822,8 +2822,8 @@ exports.updateAddressInfo = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized" });
     }
 
-    const query = `Update address set permanent_address=$1,current_address=$2 where emp_id=$3`;
-    await db.query(query, [permanent_address, current_address, emp_id]);
+    const query = `Update address set permanent_address=$1,current_address=$2 where employee_id=$3`;
+    await db.query(query, [permanent_address, current_address, employee_id]);
 
     res.status(201).json({
       message: "Address info updated successfully",
@@ -2839,15 +2839,15 @@ exports.updateAddressInfo = async (req, res) => {
 
 exports.getAddressInfo = async (req, res) => {
   try {
-    const { emp_id } = req.params;
+    const { employee_id } = req.params;
 
-    if(!emp_id){
-      return res.status(400).json({message:"emp_id required"});
+    if(!employee_id){
+      return res.status(400).json({message:"employee_id required"});
     }
 
     const result = await db.query(
-      `SELECT permanent_address, current_address FROM address WHERE emp_id = $1`,
-      [emp_id]
+      `SELECT permanent_address, current_address FROM address WHERE employee_id = $1`,
+      [employee_id]
     );
 
     if (result.rows.length === 0) {
