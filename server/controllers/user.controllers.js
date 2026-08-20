@@ -43,6 +43,9 @@ const loginController = async (req, res) => {
 
     const user = result.rows[0];
 
+    if (!user.is_active) {
+      return res.status(403).json({ message: "User account is inactive" });
+    }
 
     // console.log("user",user);
     
@@ -691,7 +694,6 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       UPDATE users
       SET
         is_active = $1,
-        "UpdatedBy" = COALESCE($2, "UpdatedBy"),
         "UpdatedAt" = CURRENT_TIMESTAMP
       WHERE id = $3
       RETURNING *
@@ -699,7 +701,6 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
 
     const result = await db.query(query, [
       IsActive,
-      UpdatedBy || null,
       id
     ]);
 

@@ -592,9 +592,7 @@ exports.getPersonalInfo = async (req, res) => {
         u.is_active,
         u.profile_image,
         u.shift_id,
-
-        TO_CHAR(p.dob, 'DD-MM-YYYY') AS dob,
-
+        p.dob,
         p.gender,
         p.gender_id,
 
@@ -615,11 +613,11 @@ exports.getPersonalInfo = async (req, res) => {
 
         p.department,
 
-        TO_CHAR(p.joining_date, 'DD-MM-YYYY') AS joining_date,
+       p.joining_date,
 
         p.designation,
 
-        TO_CHAR(p.leaving_date, 'DD-MM-YYYY') AS leaving_date,
+        p.leaving_date,
 
         p.employee_type,
         p.reporting_location,
@@ -2666,15 +2664,15 @@ exports.addProfileImage = async (req, res) => {
     const userRole = req.user.role;
 
    
-    if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
-      return res.status(403).json({ message: "Unauthorized access" });
-    }
+    // if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
+    //   return res.status(403).json({ message: "Unauthorized access" });
+    // }
 
     const imagePath = `/uploads/profile-images/${req.file.filename}`;
 
     // Get old image
     const oldImageResult = await db.query(
-      `SELECT profile_image FROM users WHERE emp_id = $1`,
+      `SELECT profile_image FROM users WHERE id = $1`,
       [requestedEmpId]
     );
 
@@ -2693,7 +2691,7 @@ exports.addProfileImage = async (req, res) => {
 
     // Update DB
     await db.query(
-      `UPDATE users SET profile_image = $1 WHERE emp_id = $2`,
+      `UPDATE users SET profile_image = $1 WHERE id = $2`,
       [imagePath, requestedEmpId]
     );
 
@@ -2716,13 +2714,13 @@ exports.getProfileImage = async (req, res) => {
     const loggedInEmpId = req.user.emp_id;    
     const userRole = req.user.role;
 
-    // If normal employee → only allow own image
-    if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
-      return res.status(403).json({ message: "Unauthorized access" });
-    }
+    // // If normal employee → only allow own image
+    // if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
+    //   return res.status(403).json({ message: "Unauthorized access" });
+    // }
 
     const result = await db.query(
-      `SELECT profile_image FROM users WHERE emp_id = $1`,
+      `SELECT profile_image FROM users WHERE id = $1`,
       [requestedEmpId]
     );
 
