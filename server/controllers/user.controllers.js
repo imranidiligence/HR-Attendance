@@ -43,6 +43,9 @@ const loginController = async (req, res) => {
 
     const user = result.rows[0];
 
+    if (!user.is_active) {
+      return res.status(403).json({ message: "User account is inactive" });
+    }
 
     // console.log("user",user);
     
