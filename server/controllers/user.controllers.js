@@ -694,7 +694,6 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       UPDATE users
       SET
         is_active = $1,
-        "UpdatedAt" = CURRENT_TIMESTAMP
       WHERE id = $3
       RETURNING *
     `;
