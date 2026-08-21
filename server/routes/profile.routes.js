@@ -48,7 +48,7 @@ router.get("/organization/:employee_id", auth, getOrganizationInfo)
 
 //  Only Admin Can Update Organization
 
-router.put("/organization/:empId", auth, isAdmin, updateOrganizationInfo)
+router.put("/organization/:employee_id", auth, isAdmin, updateOrganizationInfo)
 
 
 
@@ -70,7 +70,7 @@ router.put("/personal/:employee_id", auth, updatePersonalInfo);
 router.get("/education/:employee_id", auth, getEducationInfo);
 router.post("/education/:employee_id", auth,  upload.any(),addEducationInfo);
 router.put(
-  "/education/:employee_id/:id", 
+  "/education/:employee_id", 
   auth, 
   upload.any(),
   updateEducationInfo
@@ -121,7 +121,7 @@ router.put("/bank/:employee_id", auth, updateBankInfo);
 
 router.post("/profile/address", auth, addAddressInfo);
 router.get("/profile/address/:employee_id", auth, getAddressInfo);
-router.put("/profile/address/:employee_id", auth, updateAddressInfo);
+router.put("/profile/address", auth, updateAddressInfo);
 
 
 // Document Upload Api 
