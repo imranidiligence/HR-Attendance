@@ -253,7 +253,7 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     if (status !== undefined && status !== "") {
       conditions.push(`
-        o.is_active = $${paramIndex}
+        u.is_active = $${paramIndex}
       `);
 
       values.push(status === "true");
