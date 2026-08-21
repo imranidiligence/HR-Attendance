@@ -1443,9 +1443,15 @@ exports.getMyAttendance = async (req, res) => {
 
 exports.getMyHolidays = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT * FROM holidays ORDER BY holiday_date ASC`,
-    );
+    const { rows } = await db.query(`
+      SELECT
+        h.*,
+        htm.holiday_type_name
+      FROM holidays h
+      LEFT JOIN holiday_type_master htm
+        ON h.holiday_type_id = htm.holiday_type_id
+      ORDER BY h.holiday_date ASC
+    `);
 
     res.status(200).json(rows);
   } catch (err) {
