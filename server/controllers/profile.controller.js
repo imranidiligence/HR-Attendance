@@ -272,7 +272,7 @@ exports.getOrganizationInfo = async (req, res) => {
 exports.updateOrganizationInfo = async (req, res) => {
   const { employee_id } = req.params;
   const client = await db.connect();
-
+console.log(employee_id, "id");
   try {
     const {
       organization_name,
@@ -284,7 +284,6 @@ exports.updateOrganizationInfo = async (req, res) => {
       country,
 
       employee_type_id,
-      employee_id,
       reporting_location_id,
 
       organization_email,
@@ -756,11 +755,9 @@ exports.updatePersonalInfo = async (req, res) => {
         department = $18,
         joining_date = $19,
         designation = $20,
-        leaving_date = $21,
-        employee_type = $22,
-        reporting_location = $23
+        leaving_date = $21
 
-      WHERE emp_id = $24
+      WHERE employee_id = $22
 
       RETURNING *
       `,
@@ -786,8 +783,7 @@ exports.updatePersonalInfo = async (req, res) => {
         formattedJoiningDate,
         designation,
         formattedLeavingDate,
-        employee_type,
-        reporting_location,
+        // reporting_location,
         employee_id
       ]
     );
@@ -1024,7 +1020,7 @@ exports.updateEducationInfo = async (req, res) => {
             LIMIT 1
             `,
             [
-              emp_id,
+              employee_id,
               edu.degree_id,
               edu.passing_year || null
             ]
@@ -2112,7 +2108,7 @@ exports.addNomineeInfo = async (req, res) => {
 // };
 exports.updateNomineeInfo = async (req, res) => {
   try {
-    const { id } = req.params; 
+    const { employee_id, id } = req.params; 
     const { nominee_name, nominee_relation, nominee_contact, nominee_percentage } = req.body;
     const emp_id = req.user.emp_id;
     const newPercentage = Number(nominee_percentage);
@@ -2361,7 +2357,7 @@ const recordCheck = await db.query(
         is_active = $9,
         account_type_id = $10,
         updated_at = NOW()
-      WHERE employee_id = $10
+      WHERE employee_id = $11
       RETURNING *
       `,
       [
