@@ -7,7 +7,7 @@ const {
   getPaginatedVendorTypes,
   updateVendorType,
   deleteVendorType,
-} = require('../controllers/vendorTypeController');
+} = require('../controllers/vendorMasterController');
 
 router.post('/', createVendorType);
 router.get('/paginated', getPaginatedVendorTypes); // must precede '/:id'
