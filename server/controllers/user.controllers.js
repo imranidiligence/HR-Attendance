@@ -527,14 +527,14 @@ const getAllEmployeesPaginated = async (req, res) => {
       -- =====================================
 
       LEFT JOIN public.personal p
-        ON u.emp_id = p.emp_id
+        ON u.id = p.employee_id
 
       -- =====================================
       -- ORGANIZATION
       -- =====================================
 
       LEFT JOIN public.organizations o
-        ON u.emp_id = o.employeeidoforganisation
+        ON u.id = o.employee_id
 
       -- =====================================
       -- MASTER TABLES
