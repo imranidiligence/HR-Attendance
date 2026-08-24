@@ -2630,7 +2630,7 @@ exports.getAllBankDoc = async (req, res) => {
     // Fetch documents from DB
     const result = await db.query(
       `
-      SELECT id,employee_id, document_type,document_number, documentTypeId, file_name, file_path, file_size, created_at, updated_at
+      SELECT id,employee_id, document_type,document_number, document_type_id, file_name, file_path, file_size, created_at, updated_at
       FROM bank_documents
       WHERE employee_id = $1
       ORDER BY created_at ASC

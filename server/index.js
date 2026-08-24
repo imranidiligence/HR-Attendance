@@ -30,7 +30,7 @@ const stateRoutes = require('./routes/stateRoutes');
 const cityRoutes = require('./routes/cityRoutes');
 const branchRoutes = require('./routes/branchRoutes');
 const branchLocationRoutes = require('./routes/branchLocationRoutes');
-const vendorTypeRoutes = require('./routes/vendorTypeRoutes');
+const vendorTypeRoutes = require('./routes/vendorMasterRoutes');
 const cronRoutes = require("./routes/cron.routes");
 const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
 const dashboardRoutes = require("./routes/DashboardRoutes");
@@ -129,7 +129,7 @@ app.use('/api/blood-groups', bloodGroupRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/branch-locations', branchLocationRoutes);
 app.use('/vendor-details', vendorDetailsRoutes);
-app.use('/api/vendor-types', vendorTypeRoutes);
+app.use('/api/vendor-master', vendorTypeRoutes);
 app.use('/api/degrees', degreeRoutes);
 app.use('/api/bank-account-types', bankAccountTypeRoutes);
 // Leaves
