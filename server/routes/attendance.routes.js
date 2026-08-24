@@ -1033,14 +1033,15 @@ SELECT
   CASE
     WHEN a.first_in IS NULL THEN 'Absent'
 
+     WHEN a.first_in > (
+        c.date_only + time '10:30:00' + interval '30 minutes'
+    )
+    THEN 'Late Come'
+    
     WHEN a.first_in IS NOT NULL
          AND a.last_out IS NULL
     THEN 'Working'
 
-    WHEN a.first_in > (
-        c.date_only + time '10:30:00' + interval '30 minutes'
-    )
-    THEN 'Late Come'
 
     WHEN a.last_out IS NOT NULL
          AND a.last_out < (
