@@ -46,7 +46,8 @@
 console.log("DB FILE LOADED");
 
 require("dotenv").config();
-const { Pool } = require("pg"); // 1. Change Client to Pool
+const { Pool, types } = require("pg"); // 1. Change Client to Pool
+types.setTypeParser(1082, (value) => value);
 console.log({
   host: process.env.PSQL_HOST,
   port: process.env.PSQL_USER,
