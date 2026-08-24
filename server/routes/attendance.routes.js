@@ -1037,7 +1037,7 @@ SELECT
          AND a.last_out IS NULL 
          AND a.first_in::time < time '10:00:00' THEN 'Working'
 
-    WHEN a.first_in > (c.date_only + time '09:30:00' + interval '30 minutes') THEN 'Late Come'
+    WHEN a.first_in > (c.date_only + time '10:30:00' + interval '30 minutes') THEN 'Late Come'
 
     WHEN a.last_out IS NOT NULL AND a.last_out < (
         a.first_in + 
