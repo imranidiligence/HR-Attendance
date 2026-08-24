@@ -135,6 +135,7 @@ END AS status,
         ON p.emp_id = u.emp_id
     LEFT JOIN holidays hd
         ON hd.holiday_date = cal.date_only
+        WHERE u.is_active = true
     GROUP BY 
         u.emp_id, 
         u.name, 
