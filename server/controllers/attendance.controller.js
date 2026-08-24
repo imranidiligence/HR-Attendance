@@ -1635,7 +1635,7 @@ LEFT JOIN attendance_summary a
        ON a.emp_id = u.emp_id
 
 WHERE u.role IN ('employee', 'admin')
-
+AND u.is_active = true
 ORDER BY
     u.role DESC,
     u.is_active DESC,
