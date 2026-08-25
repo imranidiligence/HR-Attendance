@@ -917,6 +917,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         u.name,
         u.role,
         u.is_active,
+        org.official_email_id AS official_email,
+        org.organization_email AS organization_email,
         COALESCE(a.attendance_date, CURRENT_DATE) AS attendance_date,
         a.first_punch AS punch_in,
         a.last_punch AS punch_out,
@@ -930,6 +932,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         COALESCE(a.total_hours, INTERVAL '0 hours') AS total_hours
       FROM users u
       LEFT JOIN attendance_summary a ON u.emp_id = a.emp_id
+      LEFT JOIN organizations org ON org.employee_id = u.id
       WHERE u.role IN ('employee', 'admin')  -- Include both employees and admins
     `;
 
@@ -1635,7 +1638,7 @@ LEFT JOIN attendance_summary a
        ON a.emp_id = u.emp_id
 
 WHERE u.role IN ('employee', 'admin')
-
+AND u.is_active = true
 ORDER BY
     u.role DESC,
     u.is_active DESC,

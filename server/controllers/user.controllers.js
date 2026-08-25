@@ -527,14 +527,14 @@ const getAllEmployeesPaginated = async (req, res) => {
       -- =====================================
 
       LEFT JOIN public.personal p
-        ON u.emp_id = p.emp_id
+        ON u.id = p.employee_id
 
       -- =====================================
       -- ORGANIZATION
       -- =====================================
 
       LEFT JOIN public.organizations o
-        ON u.emp_id = o.employeeidoforganisation
+        ON u.id = o.employee_id
 
       -- =====================================
       -- MASTER TABLES
@@ -577,7 +577,10 @@ const getAllEmployeesPaginated = async (req, res) => {
       -- SORT
       -- =====================================
 
-      ORDER BY u.created_at DESC, u.id DESC
+      ORDER BY
+      u.is_active DESC,
+      u.created_at DESC,
+      u.id DESC
 
       -- =====================================
       -- PAGINATION
