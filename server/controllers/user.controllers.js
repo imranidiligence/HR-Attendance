@@ -577,7 +577,10 @@ const getAllEmployeesPaginated = async (req, res) => {
       -- SORT
       -- =====================================
 
-      ORDER BY u.created_at DESC, u.id DESC
+      ORDER BY
+      u.is_active DESC,
+      u.created_at DESC,
+      u.id DESC
 
       -- =====================================
       -- PAGINATION
