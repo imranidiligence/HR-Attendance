@@ -722,5 +722,9 @@ const result = await db.query(query, [
   }
 };
 
+const resetPassword = async (req,res) =>{
+  
+}
 
-module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };
+
+module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees, resetPassword };
