@@ -16,92 +16,184 @@ const sendNotification = require("../services/notification.services");
 
 const loginController = async (req, res) => {
   try {
-    let { email:identifier, password } = req.body;
+    let {
+      email: identifier,
+      password
+    } = req.body;
 
-    // console.log(email,password);
-
-    
     if (!identifier || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({
+        message: "All fields are required"
+      });
     }
 
-    
-    identifier = identifier.trim().toLowerCase();
-    password = String(password).trim()
+    identifier = String(identifier).trim().toLowerCase();
+    password = String(password).trim();
 
-  
+    /*
+     * Find user by:
+     * 1. Personal Email
+     * 2. Employee ID
+     * 3. Organization Email
+     *
+     * After finding the user, get:
+     * personal.Pr_Id
+     * login.Lg_Password
+     */
     const result = await db.query(
-      `SELECT id, name, email, password, role, emp_id,profile_image, is_active 
-       FROM users 
-       WHERE email = $1 OR emp_id = $2`,
-      [identifier,identifier]
+      `
+      SELECT
+          p.pr_id,
+          p.pr_name,
+          p.pr_email,
+          p.pr_emp_id,
+          p.pr_first_name,
+          p.pr_last_name,
+          p.pr_profile_image,
+          p.pr_is_active,
+
+          o.or_id,
+          o.or_organization_name,
+          o.or_organization_email,
+
+          l.lg_password
+
+      FROM personal p
+
+      INNER JOIN login l
+          ON l.pr_id = p.pr_id
+
+      LEFT JOIN organizations o
+          ON o.pr_id = p.pr_id
+
+      WHERE
+          LOWER(p.pr_email) = $1
+          OR LOWER(p.pr_emp_id) = $1
+          OR LOWER(o.or_organization_email) = $1
+
+      LIMIT 1
+      `,
+      [identifier]
     );
-    // console.log(result, "result");
+
+    /*
+     * User not found
+     */
     if (result.rows.length === 0) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        message: "Invalid email or password"
+      });
     }
 
     const user = result.rows[0];
 
-    if (!user.is_active) {
-      return res.status(401).json({ message: "User account is inactive" });
+    /*
+     * Check active user
+     */
+    if (!user.pr_is_active) {
+      return res.status(401).json({
+        message: "User account is inactive"
+      });
     }
 
-    // console.log("user",user);
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    // console.log("isMatch",isMatch);
+    /*
+     * Compare password
+     */
+    const isMatch = await bcrypt.compare(
+      password,
+      user.lg_password
+    );
+
     if (!isMatch) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({
+        message: "Invalid email or password"
+      });
     }
-      const roleResult = await db.query(
-        `
-        SELECT r.role_id, r.role_name
-        FROM user_role ur
-        INNER JOIN role_master r ON r.role_id = ur.role_id
-        WHERE ur.user_id = $1
-        `,
-        [user.id]
-      );
 
-      const roles = roleResult.rows;
+    /*
+     * Get user roles
+     */
+    const roleResult = await db.query(
+      `
+      SELECT
+          rm.rm_role_id AS role_id,
+          rm.rm_role_name AS role_name
 
+      FROM user_role_relation urr
 
+      INNER JOIN usr_role_master rm
+          ON rm.rm_role_id = urr.rl_role_id
+
+      WHERE urr.pr_id = $1
+
+      ORDER BY rm.rm_role_id
+      `,
+      [user.pr_id]
+    );
+
+    const roles = roleResult.rows;
+
+    /*
+     * Generate JWT
+     */
     const token = jwt.sign(
       {
-        id: user.id,
-        // email:user.email,
-        role: roles.map((r) => r.role_name), // Array of role names
-        emp_id: user.emp_id
+        id: user.pr_id,
+        emp_id: user.pr_emp_id,
+        role: roles.map((r) => r.role_name)
       },
       process.env.JWT_SECRET,
-      { expiresIn: "1h" } // token 1 ghante ke liye valid
+      {
+        expiresIn: "1h"
+      }
     );
-    
-    // Decode token to get exact expiry timestamp (optional)
-    const decoded = jwt.decode(token); // decoded.exp gives expiry in seconds
-    
-    res.status(200).json({
+
+    /*
+     * Get token expiry
+     */
+    const decoded = jwt.decode(token);
+
+    /*
+     * Response
+     */
+    return res.status(200).json({
       message: "Login successful",
+
       token,
-      expiresAt: decoded.exp * 1000, // expiry in milliseconds
+
+      expiresAt: decoded.exp * 1000,
+
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: roles.map((r) => r.role_name), // Array of role names
-        emp_id: user.emp_id,
-        profile_image:user.profile_image
+        id: user.pr_id,
+
+        name: user.pr_name,
+
+        first_name: user.pr_first_name,
+
+        last_name: user.pr_last_name,
+
+        email: user.pr_email,
+
+        emp_id: user.pr_emp_id,
+
+        organization_email: user.or_organization_email,
+
+        organization_name: user.or_organization_name,
+
+        profile_image: user.pr_profile_image,
+
+        role: roles.map((r) => r.role_name)
       }
     });
-    
 
   } catch (error) {
     console.error("Login Error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+
+    return res.status(500).json({
+      message: "Internal Server Error"
+    });
   }
 };
-
 
 
 const changeMyPassword = async (req, res) => {

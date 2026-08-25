@@ -1449,24 +1449,48 @@ function formatLocalDateTime(date) {
 async function getDeviceAttendance() {
   const deviceSN = "EUF7251400009";
   const deviceIP = "60.254.61.177";
-  const zk = new ZKLib(deviceIP, 4370, 10000, 4000);
+
+  const zk = new ZKLib(
+    deviceIP,
+    4370,
+    10000,
+    4000
+  );
 
   function formatISTWithOffset(date) {
-    if (!(date instanceof Date) || isNaN(date.getTime())) return null;
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      return null;
+    }
 
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const dd = String(date.getDate()).padStart(2, "0");
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(date);
 
-    const hh = String(date.getHours()).padStart(2, "0");
-    const min = String(date.getMinutes()).padStart(2, "0");
-    const ss = String(date.getSeconds()).padStart(2, "0");
+    const get = (type) =>
+      parts.find((p) => p.type === type)?.value;
 
-    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}+05:30`;
+    return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}+05:30`;
+  }
+
+  function getISTDate(date) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(date);
   }
 
   try {
     console.log("[SYNC] Connecting device...");
+
     await zk.createSocket();
     await zk.enableDevice();
 
@@ -1477,105 +1501,303 @@ async function getDeviceAttendance() {
       return [];
     }
 
+    /*
+     * ---------------------------------------------------------
+     * GET LAST SYNC
+     * ---------------------------------------------------------
+     */
+
     const { rows: trackerRows } = await db.query(
-      `SELECT last_sync FROM attendance_tracker WHERE device_sn=$1`,
-      [deviceSN],
+      `
+      SELECT last_sync
+      FROM attendance_tracker
+      WHERE device_sn = $1
+      `,
+      [deviceSN]
     );
 
-    let lastSync = trackerRows[0]?.last_sync || "1970-01-01 00:00:00";
-    let lastSyncDate = new Date(lastSync);
+    let lastSync =
+      trackerRows[0]?.last_sync ||
+      "1970-01-01 00:00:00+05:30";
+
+    const lastSyncDate = new Date(lastSync);
+
+    /*
+     * ---------------------------------------------------------
+     * FILTER NEW DEVICE LOGS
+     * ---------------------------------------------------------
+     */
 
     const newLogs = logs.data.filter((log) => {
-      const punch = new Date(normalizePunchTime(log.recordTime));
-      return punch > lastSyncDate;
+      const punchString = normalizePunchTime(log.recordTime);
+
+      if (!punchString) {
+        return false;
+      }
+
+      const punchDate = new Date(punchString);
+
+      if (isNaN(punchDate.getTime())) {
+        return false;
+      }
+
+      return punchDate > lastSyncDate;
     });
 
     console.log("New Logs:", newLogs.length);
 
     let latestPunch = lastSyncDate;
 
+    /*
+     * ---------------------------------------------------------
+     * PROCESS EACH PUNCH
+     * ---------------------------------------------------------
+     */
+
     for (const log of newLogs) {
-      const punchTimeStr = normalizePunchTime(log.recordTime);
-      if (!punchTimeStr) continue;
-
-      const punchDate = new Date(punchTimeStr);
-      if (isNaN(punchDate.getTime())) continue;
-
-      const { rows: userRows } = await db.query(
-        `SELECT emp_id,name,email FROM users WHERE emp_id=$1`,
-        [String(log.deviceUserId)],
+      const punchTimeStr = normalizePunchTime(
+        log.recordTime
       );
 
-      if (!userRows.length) continue;
-
-      const employee = userRows[0];
-      const formattedPunch = formatISTWithOffset(punchDate);
-
-      // ---------- attendance_logs ----------
-      await db.query(
-        `INSERT INTO attendance_logs 
-                (emp_id,punch_time,device_ip,device_sn,raw_log)
-                VALUES($1,$2,$3,$4,$5)
-                ON CONFLICT(emp_id,punch_time) DO NOTHING`,
-        [
-          employee.emp_id,
-          formattedPunch,
-          deviceIP,
-          deviceSN,
-          JSON.stringify(log),
-        ],
-      );
-
-      // ---------- activity_log ----------
-      const insertRes = await db.query(
-        `INSERT INTO activity_log
-                (emp_id,punch_time,device_ip,device_sn)
-                VALUES($1,$2,$3,$4)
-                ON CONFLICT(emp_id,punch_time) DO NOTHING`,
-        [employee.emp_id, formattedPunch, deviceIP, deviceSN],
-      );
-
-      // DUPLICATE PUNCH → skip
-      if (insertRes.rowCount === 0) {
-        console.log("Duplicate punch ignored");
+      if (!punchTimeStr) {
         continue;
       }
 
-      if (punchDate > latestPunch) latestPunch = punchDate;
+      const punchDate = new Date(punchTimeStr);
 
-      const dayStr = punchDate.toLocaleDateString("en-CA", {
-        timeZone: "Asia/Kolkata",
-      });
+      if (isNaN(punchDate.getTime())) {
+        continue;
+      }
+
+      /*
+       * -------------------------------------------------------
+       * FIND EMPLOYEE
+       *
+       * Old:
+       * SELECT ... FROM users WHERE emp_id=$1
+       *
+       * New:
+       * personal.Pr_Emp_Id
+       * -------------------------------------------------------
+       */
+
+      const deviceEmployeeId = String(
+        log.deviceUserId
+      ).trim();
+
+      const { rows: userRows } = await db.query(
+        `
+        SELECT
+            p.pr_id,
+            p.pr_name,
+            p.pr_email,
+            p.pr_emp_id,
+            p.pr_first_name,
+            p.pr_last_name,
+            p.pr_profile_image,
+            p.pr_is_active,
+
+            o.or_id,
+            o.or_organization_name,
+            o.or_organization_email
+
+        FROM personal p
+
+        LEFT JOIN organizations o
+            ON o.pr_id = p.pr_id
+
+        WHERE
+            LOWER(p.pr_emp_id) = LOWER($1)
+
+        LIMIT 1
+        `,
+        [deviceEmployeeId]
+      );
+
+      /*
+       * Employee not found
+       */
+      if (!userRows.length) {
+        console.log(
+          `[SYNC] Employee not found for device ID: ${deviceEmployeeId}`
+        );
+
+        continue;
+      }
+
+      const employee = userRows[0];
+
+      /*
+       * Employee inactive
+       */
+      if (!employee.pr_is_active) {
+        console.log(
+          `[SYNC] Employee inactive: ${employee.pr_emp_id}`
+        );
+
+        continue;
+      }
+
+      const formattedPunch =
+        formatISTWithOffset(punchDate);
+
+      /*
+       * -------------------------------------------------------
+       * ATTENDANCE LOGS
+       * -------------------------------------------------------
+       */
+
+      await db.query(
+        `
+        INSERT INTO attendance_logs
+        (
+            emp_id,
+            punch_time,
+            device_ip,
+            device_sn,
+            raw_log
+        )
+        VALUES
+        (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+        )
+        ON CONFLICT(emp_id, punch_time)
+        DO NOTHING
+        `,
+        [
+          employee.pr_emp_id,
+          formattedPunch,
+          deviceIP,
+          deviceSN,
+          JSON.stringify(log)
+        ]
+      );
+
+      /*
+       * -------------------------------------------------------
+       * ACTIVITY LOG
+       * -------------------------------------------------------
+       */
+
+      const insertRes = await db.query(
+        `
+        INSERT INTO activity_log
+        (
+            emp_id,
+            punch_time,
+            device_ip,
+            device_sn
+        )
+        VALUES
+        (
+            $1,
+            $2,
+            $3,
+            $4
+        )
+        ON CONFLICT(emp_id, punch_time)
+        DO NOTHING
+        `,
+        [
+          employee.pr_emp_id,
+          formattedPunch,
+          deviceIP,
+          deviceSN
+        ]
+      );
+
+      /*
+       * Duplicate punch
+       */
+      if (insertRes.rowCount === 0) {
+        console.log(
+          `[SYNC] Duplicate punch ignored: ${employee.pr_emp_id} - ${formattedPunch}`
+        );
+
+        continue;
+      }
+
+      /*
+       * Update latest punch
+       */
+      if (punchDate > latestPunch) {
+        latestPunch = punchDate;
+      }
+
+      /*
+       * -------------------------------------------------------
+       * ATTENDANCE DATE
+       * -------------------------------------------------------
+       */
+
+      const dayStr = getISTDate(punchDate);
 
       let durationStr = "Initial Punch";
       let emailNeeded = false;
 
+      /*
+       * -------------------------------------------------------
+       * FIND DAILY ATTENDANCE
+       * -------------------------------------------------------
+       */
+
       const { rows: dailyRow } = await db.query(
-        `SELECT * FROM daily_attendance
-                 WHERE emp_id=$1 AND attendance_date=$2`,
-        [employee.emp_id, dayStr],
+        `
+        SELECT *
+        FROM daily_attendance
+        WHERE emp_id = $1
+          AND attendance_date = $2
+        `,
+        [
+          employee.pr_emp_id,
+          dayStr
+        ]
       );
 
       let firstPunch;
       let lastPunch;
 
-      // ---------- UPDATE ----------
+      /*
+       * -------------------------------------------------------
+       * UPDATE EXISTING ATTENDANCE
+       * -------------------------------------------------------
+       */
+
       if (dailyRow.length > 0) {
         const existing = dailyRow[0];
 
-        firstPunch = new Date(existing.punch_in);
-        lastPunch = existing.punch_out ? new Date(existing.punch_out) : null;
+        firstPunch = existing.punch_in
+          ? new Date(existing.punch_in)
+          : null;
+
+        lastPunch = existing.punch_out
+          ? new Date(existing.punch_out)
+          : null;
 
         let needsUpdate = false;
 
-        // Earlier punch
-        if (punchDate < firstPunch) {
+        /*
+         * Earlier punch becomes Punch In
+         */
+        if (
+          !firstPunch ||
+          punchDate < firstPunch
+        ) {
           firstPunch = punchDate;
           needsUpdate = true;
         }
 
-        // Later punch
-        if (!lastPunch || punchDate > lastPunch) {
+        /*
+         * Later punch becomes Punch Out
+         */
+        if (
+          !lastPunch ||
+          punchDate > lastPunch
+        ) {
           lastPunch = punchDate;
           needsUpdate = true;
         }
@@ -1584,76 +1806,194 @@ async function getDeviceAttendance() {
           continue;
         }
 
-        const diff = lastPunch - firstPunch;
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
+        /*
+         * Calculate working duration
+         */
+        if (firstPunch && lastPunch) {
+          const diff =
+            lastPunch.getTime() -
+            firstPunch.getTime();
 
-        durationStr = `${hours}h ${minutes}m`;
+          const hours = Math.floor(
+            diff / 3600000
+          );
+
+          const minutes = Math.floor(
+            (diff % 3600000) / 60000
+          );
+
+          durationStr =
+            `${hours}h ${minutes}m`;
+        }
+
         emailNeeded = true;
 
+        /*
+         * UPDATE DAILY ATTENDANCE
+         */
+
         await db.query(
-          `UPDATE daily_attendance
-     SET punch_in = $1,
-         punch_out = $2,
-         total_hours = $3,
-         status = 'Present'
-     WHERE emp_id = $4
-       AND attendance_date = $5`,
+          `
+          UPDATE daily_attendance
+          SET
+              punch_in = $1,
+              punch_out = $2,
+              total_hours = $3,
+              status = 'Present'
+          WHERE emp_id = $4
+            AND attendance_date = $5
+          `,
           [
             formatISTWithOffset(firstPunch),
-            formatISTWithOffset(lastPunch),
+
+            lastPunch
+              ? formatISTWithOffset(lastPunch)
+              : null,
+
             durationStr,
-            employee.emp_id,
-            dayStr,
-          ],
+
+            employee.pr_emp_id,
+
+            dayStr
+          ]
         );
-      } else {
-        // ---------- FIRST PUNCH ----------
+      }
+
+      /*
+       * -------------------------------------------------------
+       * FIRST PUNCH
+       * -------------------------------------------------------
+       */
+
+      else {
         firstPunch = punchDate;
         lastPunch = null;
+
         durationStr = "Initial Punch";
         emailNeeded = true;
 
         await db.query(
-          `INSERT INTO daily_attendance
-      (emp_id, attendance_date, punch_in, punch_out, total_hours, status)
-      VALUES ($1, $2, $3, $4, $5, $6)`,
-          [employee.emp_id, dayStr, formattedPunch, null, null, "Working"],
+          `
+          INSERT INTO daily_attendance
+          (
+              emp_id,
+              attendance_date,
+              punch_in,
+              punch_out,
+              total_hours,
+              status
+          )
+          VALUES
+          (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6
+          )
+          `,
+          [
+            employee.pr_emp_id,
+            dayStr,
+            formattedPunch,
+            null,
+            null,
+            "Working"
+          ]
         );
       }
 
-      // ---------- EMAIL ----------
-      if (emailNeeded) {
-        const punchInTimeStr = firstPunch.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-          timeZone: "Asia/Kolkata",
-        });
+      /*
+       * -------------------------------------------------------
+       * EMAIL
+       * -------------------------------------------------------
+       */
 
-        const punchOutTimeStr = lastPunch
-          ? lastPunch.toLocaleTimeString("en-IN", {
+      if (emailNeeded) {
+        const punchInTimeStr =
+          firstPunch.toLocaleTimeString(
+            "en-IN",
+            {
               hour: "2-digit",
               minute: "2-digit",
               hour12: true,
-              timeZone: "Asia/Kolkata",
-            })
+              timeZone: "Asia/Kolkata"
+            }
+          );
+
+        const punchOutTimeStr = lastPunch
+          ? lastPunch.toLocaleTimeString(
+              "en-IN",
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+                timeZone: "Asia/Kolkata"
+              }
+            )
           : "Initial Punch";
 
-        const formattedDate = `${String(firstPunch.getDate()).padStart(2, "0")}-${String(firstPunch.getMonth() + 1).padStart(2, "0")}-${firstPunch.getFullYear()}`;
+        /*
+         * Format date DD-MM-YYYY using IST
+         */
+        const dateParts =
+          new Intl.DateTimeFormat("en-GB", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric"
+          }).formatToParts(firstPunch);
 
-        const dayName = firstPunch.toLocaleDateString("en-IN", {
-          weekday: "long",
-          timeZone: "Asia/Kolkata",
-        });
-        console.log("Process.env.NODE_ENV", process.env.NODE_ENV);
+        const day = dateParts.find(
+          (p) => p.type === "day"
+        )?.value;
+
+        const month = dateParts.find(
+          (p) => p.type === "month"
+        )?.value;
+
+        const year = dateParts.find(
+          (p) => p.type === "year"
+        )?.value;
+
+        const formattedDate =
+          `${day}-${month}-${year}`;
+
+        const dayName =
+          firstPunch.toLocaleDateString(
+            "en-IN",
+            {
+              weekday: "long",
+              timeZone: "Asia/Kolkata"
+            }
+          );
+
+        /*
+         * -----------------------------------------------------
+         * EMAIL ADDRESS
+         *
+         * Production:
+         * personal.pr_email
+         *
+         * Development:
+         * LOCAL_ADMIN_EMAILS
+         * -----------------------------------------------------
+         */
+
         const empEmail =
           process.env.NODE_ENV === "production"
-            ? employee.email
+            ? employee.pr_email
             : process.env.LOCAL_ADMIN_EMAILS;
 
-        console.log("empEmail", empEmail);
-        const action = lastPunch ? "Punch Out" : "Punch In";
+        console.log(
+          "[SYNC] Employee Email:",
+          empEmail
+        );
+
+        const action = lastPunch
+          ? "Punch Out"
+          : "Punch In";
 
         try {
           await sendEmail(
@@ -1661,49 +2001,90 @@ async function getDeviceAttendance() {
             `Attendance Notification: ${action}`,
             "punch_in_out",
             {
-              name: employee.name,
-              emp_id: employee.emp_id,
-              action: action,
+              name: employee.pr_name,
+              emp_id: employee.pr_emp_id,
+
+              action,
+
               date: formattedDate,
+
               day: dayName,
+
               time: formattedPunch,
+
               punch_in: punchInTimeStr,
+
               punch_out: punchOutTimeStr,
-              duration: durationStr,
-            },
+
+              duration: durationStr
+            }
           );
 
-          console.log("Email sent:", employee.email);
+          console.log(
+            "[SYNC] Email sent:",
+            empEmail
+          );
         } catch (err) {
-          console.error("Email error:", err);
+          console.error(
+            "[SYNC] Email error:",
+            err
+          );
         }
       }
     }
 
-    // ---------- UPDATE SYNC ----------
-    if (newLogs.length) {
-      const finalSync = formatISTWithOffset(latestPunch);
+    /*
+     * ---------------------------------------------------------
+     * UPDATE ATTENDANCE TRACKER
+     * ---------------------------------------------------------
+     */
+
+    if (newLogs.length > 0) {
+      const finalSync =
+        formatISTWithOffset(latestPunch);
 
       await db.query(
-        `INSERT INTO attendance_tracker(device_sn,last_sync)
-                 VALUES($1,$2)
-                 ON CONFLICT(device_sn)
-                 DO UPDATE SET last_sync=EXCLUDED.last_sync`,
-        [deviceSN, finalSync],
+        `
+        INSERT INTO attendance_tracker
+        (
+            device_sn,
+            last_sync
+        )
+        VALUES
+        (
+            $1,
+            $2
+        )
+        ON CONFLICT(device_sn)
+        DO UPDATE
+        SET last_sync = EXCLUDED.last_sync
+        `,
+        [
+          deviceSN,
+          finalSync
+        ]
       );
     }
 
-    console.log("SYNC COMPLETED");
+    console.log("[SYNC] SYNC COMPLETED");
 
     return newLogs;
+
   } catch (err) {
-    console.error("SYNC ERROR:", err);
+    console.error(
+      "[SYNC] SYNC ERROR:",
+      err
+    );
+
     throw err;
+
   } finally {
     try {
       await zk.disconnect();
     } catch {
-      console.log("Device disconnect error");
+      console.log(
+        "[SYNC] Device disconnect error"
+      );
     }
   }
 }
