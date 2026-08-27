@@ -1,5 +1,6 @@
 const fs = require("fs");
 const multer = require("multer");
+const bcrypt = require('bcrypt');
 const path = require("path");
 const auth = require("../middlewares/authMiddleware");
 const { db } = require("../db/connectDB");
@@ -339,6 +340,254 @@ exports.addPersonInfo = async (req, res) => {
   const client = await db.connect();
 
   try {
+    const { employee_id } = req.params;
+
+    const {
+      gender,
+      dob,
+      first_name,
+      last_name,
+      email,
+      nationality_id,
+      gender_id,
+      marital_status_id,
+      blood_group_id,
+      password,
+    } = req.body;
+
+    console.log("Processing employee data...");
+
+    if (!first_name || !last_name || !email || !password) {
+      return res.status(400).json({
+        message: "First name, last name, email, and password are required fields",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters long",
+      });
+    }
+
+    const parseDob = (dateStr) => {
+      if (!dateStr) return null;
+
+      const parts = dateStr.split("-");
+      if (parts[0].length === 2) {
+        const [day, month, year] = parts;
+        return `${year}-${month}-${day}`;
+      }
+      return dateStr;
+    };
+
+    let formattedDob;
+    try {
+      formattedDob = parseDob(dob);
+    } catch (err) {
+      return res.status(400).json({ message: "Invalid DOB format" });
+    }
+
+    const client = await db.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      let newEmployeeId = employee_id;
+      
+      if (!newEmployeeId) {
+        const seqResult = await client.query(
+          "SELECT nextval('personal_pr_id_seq'::regclass) as next_id"
+        );
+        newEmployeeId = seqResult.rows[0].next_id;
+      } else {
+        const existsCheck = await client.query(
+          "SELECT 1 FROM personal WHERE Pr_Id = $1",
+          [employee_id]
+        );
+        if (existsCheck.rowCount > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            message: `Employee ID ${employee_id} already exists`,
+          });
+        }
+      }
+
+      const result = await client.query(
+        `
+        INSERT INTO personal (
+          Pr_Id,
+          Pr_Email,
+          Pr_First_Name,
+          Pr_Last_Name,
+          Pr_Dob,
+          Pr_Gender_Id,
+          Pr_Blood_Group_Id,
+          Pr_Marital_Status_Id,
+          Pr_Nationality_Id,
+          Pr_Is_Active,
+          Pr_Created_At,
+          Pr_Created_By
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, $11)
+        RETURNING *
+        `,
+        [
+          newEmployeeId,
+          email,
+          first_name,
+          last_name,
+          formattedDob,
+          gender_id,
+          blood_group_id,
+          marital_status_id,
+          nationality_id,
+          true,
+          newEmployeeId
+        ]
+      );
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const loginResult = await client.query(
+        `
+        INSERT INTO Login (
+          Pr_Id,
+          Lg_Password,
+          Lg_Created_By,
+          Lg_Created_At
+        )
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        RETURNING *
+        `,
+        [
+          newEmployeeId,
+          hashedPassword,
+          newEmployeeId
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      res.status(201).json({
+        message: "Personal details and login credentials created successfully",
+        employee_id: newEmployeeId,
+        personalDetails: result.rows[0],
+        loginDetails: {
+          login_id: loginResult.rows[0].lg_id,
+          employee_id: loginResult.rows[0].pr_id,
+          created_at: loginResult.rows[0].lg_created_at,
+        }
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+  } catch (error) {
+    console.error("Personal POST error:", error);
+    
+    if (error.code === '23505') {
+      if (error.constraint === 'personal_pr_id_pkey' || error.constraint === 'login_pkey') {
+        return res.status(409).json({
+          message: "Employee ID or Login ID conflict. Please try again.",
+          error: error.detail
+        });
+      }
+      return res.status(409).json({
+        message: "Email already exists in the system",
+        error: error.detail
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Server error while creating personal details",
+      error: error.message 
+    });
+  }
+};
+
+exports.getPersonalInfo = async (req, res) => {
+  try {
+    const { employee_id } = req.params;
+
+    const result = await db.query(
+      `
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.role,
+        u.is_active,
+        u.profile_image,
+        u.shift_id,
+        p.dob,
+        p.gender,
+        p.gender_id,
+
+        p.bloodgroup,
+        p.blood_group_id,
+        p.contact,
+        p.maritalstatus,
+        p.marital_status_id,
+
+        p.nationality,
+        p.nationality_id,
+
+        p.current_address,
+        p.permanent_address,
+
+        p.aadharnumber,
+        p.nominee,
+
+        p.department,
+
+       p.joining_date,
+
+        p.designation,
+
+        p.leaving_date,
+
+        p.employee_type,
+        p.reporting_location,
+        p.contact,
+
+        p.first_name,
+        p.last_name,
+        p.email AS personal_email
+
+      FROM users u
+      LEFT JOIN personal p
+        ON u.id = p.employee_id
+      WHERE u.id = $1
+      `,
+      [employee_id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        message: "Employee not found"
+      });
+    }
+
+    res.status(200).json(result.rows[0]);
+
+  } catch (error) {
+    console.error("Get Personal Info error:", error);
+
+    res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
+  }
+};
+
+exports.updatePersonalInfo = async (req, res) => {
+  try {
+    const { employee_id } = req.params;
+
     const {
       first_name,
       last_name,
