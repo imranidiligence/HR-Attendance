@@ -40,161 +40,193 @@ state
 */
 
 exports.addOrganizationInfo = async (req, res) => {
-  const { employee_id } = req.params;
-  const client = await db.connect();
-
   try {
+    const { employee_id } = req.params;
+
     const {
       organization_name,
-      organization_code,
-      industry_type,
       organization_location,
-      city,
-      state,
-      country,
-
+      emp_id,
+      is_active,
       employee_type_id,
       reporting_location_id,
-
       organization_email,
+      reporting_to_id,
       department_id,
       designation_id,
-
       joining_date,
-      leaving_date,
-
-      official_email_id,
-      official_contact_no,
-
-      reporting_to_id,
-      employeeidoforganisation
+      leaving_date
     } = req.body;
 
-    // ---------- Validation ----------
-    // if (
-    //   !organization_name ||
-    //   !organization_code ||
-    //   !industry_type ||
-    //   !department_id ||
-    //   !designation_id
-    // ) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Required fields are missing"
-    //   });
-    // }
+    const createdBy = req.user?.id;
 
-    await client.query("BEGIN");
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
 
-    // Leaving date determines active status
-    const isActive = leaving_date ? false : true;
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
 
-    // ---------- Organization ----------
-    const orgResult = await client.query(
+    const personalResult = await db.query(
+      `
+      SELECT
+        pr_id,
+        pr_first_name,
+        pr_last_name,
+        pr_email
+      FROM personal
+      WHERE pr_id = $1
+      `,
+      [employee_id]
+    );
+
+    if (personalResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with Pr_Id ${employee_id} not found in personal table`
+      });
+    }
+
+    const existingOrganization = await db.query(
+      `
+      SELECT or_id
+      FROM organizations
+      WHERE pr_id = $1
+      `,
+      [employee_id]
+    );
+
+    if (existingOrganization.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Organization information already exists for employee Pr_Id ${employee_id}`
+      });
+    }
+
+    if (emp_id) {
+      const employeeCodeCheck = await db.query(
+        `
+        SELECT or_id
+        FROM organizations
+        WHERE or_emp_id = $1
+        `,
+        [emp_id]
+      );
+
+      if (employeeCodeCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `Employee organization ID ${emp_id} already exists`
+        });
+      }
+    }
+
+    const activeStatus =
+      is_active !== undefined
+        ? is_active
+        : !leaving_date;
+
+    const organizationResult = await db.query(
       `
       INSERT INTO organizations (
-        organization_name,
-        organization_code,
-        industry_type,
-        organization_location,
-        city,
-        state,
-        country,
-        is_active,
-        employee_type_id,
-        employee_id,
-        reporting_location_id,
-        organization_email,
-        department_id,
-        designation_id,
-        joining_date,
-        leaving_date,
-        official_email_id,
-        official_contact_no,
-        reporting_to_id,
-        employeeidoforganisation
+        pr_id,
+        or_organization_name,
+        or_organization_location,
+        or_emp_id,
+        or_is_active,
+        or_created_at,
+        or_employee_type_id,
+        or_reporting_location_id,
+        or_organization_email,
+        or_reporting_to_id,
+        or_department_id,
+        or_designation_id,
+        or_joining_date,
+        or_leaving_date,
+        or_created_by
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        CURRENT_TIMESTAMP,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14
       )
       RETURNING *
       `,
       [
-        organization_name,
-        organization_code,
-        industry_type,
-        organization_location,
-        city,
-        state,
-        country,
-        isActive,
-        employee_type_id,
         employee_id,
-        reporting_location_id,
-        organization_email,
-        department_id,
-        designation_id,
+        organization_name || null,
+        organization_location || null,
+        emp_id || null,
+        activeStatus,
+        employee_type_id || null,
+        reporting_location_id || null,
+        organization_email || null,
+        reporting_to_id || null,
+        department_id || null,
+        designation_id || null,
         joining_date || null,
         leaving_date || null,
-        official_email_id,
-        official_contact_no,
-        reporting_to_id || null,
-        employeeidoforganisation
+        createdBy
       ]
     );
 
-    // ---------- Reporting ----------
-    const reportingResult = await client.query(
-      `
-      INSERT INTO employee_reporting (
-        emp_id,
-        reports_to
-      )
-      VALUES ($1, $2)
-      ON CONFLICT (emp_id)
-      DO UPDATE SET
-        reports_to = EXCLUDED.reports_to
-      RETURNING *
-      `,
-      [
-        employee_id,
-        reporting_to_id || null
-      ]
-    );
-
-    // ---------- Update users active status ----------
-    await client.query(
-      `
-      UPDATE users
-      SET is_active = $1
-      WHERE emp_id = $2
-      `,
-      [isActive, employee_id]
-    );
-
-    await client.query("COMMIT");
-
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
-      message: "Organization information updated successfully",
-      organizationData: orgResult.rows[0],
-      reportingData: reportingResult.rows[0]
+      message: "Organization information created successfully",
+      data: organizationResult.rows[0]
     });
 
   } catch (error) {
-    await client.query("ROLLBACK");
-
     console.error("Organization POST error:", error);
+
+    if (error.code === "23505") {
+      if (error.constraint === "organizations_or_emp_id_key") {
+        return res.status(409).json({
+          success: false,
+          message: "Organization employee ID already exists",
+          error: error.detail
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "Organization record already exists",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid related employee or master record",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: "Server error while creating organization information",
       error: error.message
     });
-
-  } finally {
-    client.release();
   }
 };
 
@@ -202,61 +234,91 @@ exports.getOrganizationInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    // ---------- Organization ----------
-    const orgResult = await db.query(
-      `
-      SELECT
-        organization_name,
-        organization_code,
-        industry_type,
-        organization_location,
-        city,
-        state,
-        country,
-        is_active,
-        created_at,
-        id,
-        employee_type_id,
-        employee_id,
-        reporting_location_id,
-        organization_email,
-        department_id,
-        designation_id,
-        joining_date,
-        leaving_date,
-        official_email_id,
-        official_contact_no,
-        reporting_to_id,
-        employeeidoforganisation
-      FROM organizations
-      WHERE employee_id = $1
-      `,
-      [employee_id]
-    );
-
-    // ---------- Reporting ----------
-    const reportingResult = await db.query(
-      `
-      SELECT
-        emp_id,
-        reports_to
-      FROM employee_reporting
-      WHERE emp_id = $1
-      `,
-      [employee_id]
-    );
-
-    if (!orgResult.rows.length) {
-      return res.status(404).json({
+    if (!employee_id) {
+      return res.status(400).json({
         success: false,
-        message: "Organization information not found"
+        message: "Employee ID is required"
       });
     }
 
+    const result = await db.query(
+      `
+      SELECT
+        o.or_id,
+        o.pr_id,
+        o.or_organization_name,
+        o.or_organization_location,
+        o.or_emp_id,
+        o.or_is_active,
+        o.or_created_at,
+        o.or_updated_at,
+        o.or_employee_type_id,
+        o.or_reporting_location_id,
+        o.or_organization_email,
+        o.or_reporting_to_id,
+        o.or_department_id,
+        o.or_designation_id,
+        o.or_joining_date,
+        o.or_leaving_date,
+        o.or_created_by,
+        o.or_updated_by,
+
+        p.pr_first_name,
+        p.pr_last_name,
+        p.pr_email
+
+      FROM organizations o
+
+      INNER JOIN personal p
+        ON p.pr_id = o.pr_id
+
+      WHERE o.pr_id = $1
+      `,
+      [employee_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Organization information not found for employee Pr_Id ${employee_id}`
+      });
+    }
+
+    const row = result.rows[0];
+
     return res.status(200).json({
       success: true,
-      organizationData: orgResult.rows[0],
-      reportingData: reportingResult.rows[0] || {}
+      organizationData: {
+        or_id: row.or_id,
+        pr_id: row.pr_id,
+
+        organization_name: row.or_organization_name,
+        organization_location: row.or_organization_location,
+        emp_id: row.or_emp_id,
+        is_active: row.or_is_active,
+
+        employee_type_id: row.or_employee_type_id,
+        reporting_location_id: row.or_reporting_location_id,
+        organization_email: row.or_organization_email,
+
+        reporting_to_id: row.or_reporting_to_id,
+        department_id: row.or_department_id,
+        designation_id: row.or_designation_id,
+
+        joining_date: row.or_joining_date,
+        leaving_date: row.or_leaving_date,
+
+        created_at: row.or_created_at,
+        updated_at: row.or_updated_at,
+        created_by: row.or_created_by,
+        updated_by: row.or_updated_by,
+
+        employee: {
+          first_name: row.pr_first_name,
+          last_name: row.pr_last_name,
+          email: row.pr_email
+        }
+      }
     });
 
   } catch (error) {
@@ -264,173 +326,166 @@ exports.getOrganizationInfo = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error while fetching organization information",
       error: error.message
     });
   }
 };
 
+
 exports.updateOrganizationInfo = async (req, res) => {
   const { employee_id } = req.params;
   const client = await db.connect();
-console.log(employee_id, "id");
+
   try {
     const {
       organization_name,
-      organization_code,
-      industry_type,
       organization_location,
-      city,
-      state,
-      country,
-
+      emp_id,
+      is_active,
       employee_type_id,
       reporting_location_id,
-
       organization_email,
+      reporting_to_id,
       department_id,
       designation_id,
-
       joining_date,
-      leaving_date,
-
-      official_email_id,
-      official_contact_no,
-
-      reporting_to_id,
-      employeeidoforganisation
+      leaving_date
     } = req.body;
 
-    // ---------- Validation ----------
-    // if (
-    //   !organization_name ||
-    //   !organization_code ||
-    //   !industry_type ||
-    //   !department_id ||
-    //   !designation_id
-    // ) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "Required fields are missing"
-    //   });
-    // }
+    const updatedBy = req.user?.id;
 
-    await client.query("BEGIN");
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
 
-    // ---------- Active Status ----------
-    const isActive = leaving_date ? false : true;
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
 
-    // ---------- Update Organization ----------
+    const employeeId = parseInt(employee_id, 10);
+
+    if (isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Employee ID"
+      });
+    }
+
+    const personalCheck = await client.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (personalCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with Pr_Id ${employeeId} not found`
+      });
+    }
+
+    const existingOrganization = await client.query(
+      `
+      SELECT Or_Id
+      FROM organizations
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (existingOrganization.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Organization information not found for Pr_Id ${employeeId}`
+      });
+    }
+
+    const finalIsActive =
+      is_active !== undefined
+        ? is_active
+        : leaving_date
+          ? false
+          : true;
+
     const orgResult = await client.query(
       `
       UPDATE organizations
       SET
-        organization_name = $1,
-        organization_code = $2,
-        industry_type = $3,
-        organization_location = $4,
-        city = $5,
-        state = $6,
-        country = $7,
-        is_active = $8,
-        employee_type_id = $9,
-        employee_id = $10,
-        reporting_location_id = $11,
-        organization_email = $12,
-        department_id = $13,
-        designation_id = $14,
-        joining_date = $15,
-        leaving_date = $16,
-        official_email_id = $17,
-        official_contact_no = $18,
-        reporting_to_id = $19,
-        employeeidoforganisation = $20
-      WHERE employee_id = $21
+        Or_Organization_Name = $1,
+        Or_Organization_Location = $2,
+        Or_Emp_Id = $3,
+        Or_Is_Active = $4,
+        Or_Employee_Type_Id = $5,
+        Or_Reporting_Location_Id = $6,
+        Or_Organization_Email = $7,
+        Or_Reporting_To_Id = $8,
+        Or_Department_Id = $9,
+        Or_Designation_Id = $10,
+        Or_Joining_Date = $11,
+        Or_Leaving_Date = $12,
+        Or_Updated_At = CURRENT_TIMESTAMP,
+        Or_Updated_By = $13
+      WHERE Pr_Id = $14
       RETURNING *
       `,
       [
         organization_name,
-        organization_code,
-        industry_type,
         organization_location,
-        city,
-        state,
-        country,
-        isActive,
-        employee_type_id,
-        employee_id || employee_id,
-        reporting_location_id,
+        emp_id,
+        finalIsActive,
+        employee_type_id || null,
+        reporting_location_id || null,
         organization_email,
-        department_id,
-        designation_id,
+        reporting_to_id || null,
+        department_id || null,
+        designation_id || null,
         joining_date || null,
         leaving_date || null,
-        official_email_id,
-        official_contact_no,
-        reporting_to_id || null,
-        employeeidoforganisation,
-        employee_id
+        updatedBy,
+        employeeId
       ]
     );
-
-    if (orgResult.rowCount === 0) {
-      await client.query("ROLLBACK");
-
-      return res.status(404).json({
-        success: false,
-        message: "Organization information not found"
-      });
-    }
-
-    // ---------- Update Users Active Status ----------
-    await client.query(
-      `
-      UPDATE users
-      SET is_active = $1
-      WHERE emp_id = $2
-      `,
-      [isActive, employee_id]
-    );
-
-    // ---------- Update Reporting ----------
-    const reportingResult = await client.query(
-      `
-      INSERT INTO employee_reporting (
-        emp_id,
-        reports_to
-      )
-      VALUES ($1, $2)
-      ON CONFLICT (emp_id)
-      DO UPDATE SET
-        reports_to = EXCLUDED.reports_to
-      RETURNING *
-      `,
-      [
-        employee_id,
-        reporting_to_id || null
-      ]
-    );
-
-    await client.query("COMMIT");
 
     return res.status(200).json({
       success: true,
       message: "Organization information updated successfully",
-      organizationData: orgResult.rows[0],
-      reportingData: reportingResult.rows[0]
+      organizationData: orgResult.rows[0]
     });
 
   } catch (error) {
-    await client.query("ROLLBACK");
-
     console.error("Update Organization Error:", error);
+
+    if (error.code === "23505") {
+      if (error.constraint === "organizations_or_emp_id_key") {
+        return res.status(409).json({
+          success: false,
+          message: "Employee organization ID already exists",
+          error: error.detail
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message: "Duplicate value already exists",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
       error: error.message
     });
-
   } finally {
     client.release();
   }
@@ -454,10 +509,8 @@ const parseDob = (dob) => {
 
 exports.addPersonInfo = async (req, res) => {
   try {
-    const { employee_id } = req.params;
-
     const {
-      gender,
+      employee_id,
       dob,
       first_name,
       last_name,
@@ -466,183 +519,271 @@ exports.addPersonInfo = async (req, res) => {
       gender_id,
       marital_status_id,
       blood_group_id,
-      password,
+      password
     } = req.body;
 
-    console.log("Processing employee data...");
+    const createdBy = req.user?.id;
 
-    if (!first_name || !last_name || !email || !password) {
-      return res.status(400).json({
-        message: "First name, last name, email, and password are required fields",
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
       });
     }
 
-    if (password.length < 6) {
+    if (!first_name || !last_name || !email || !password) {
       return res.status(400).json({
-        message: "Password must be at least 6 characters long",
+        success: false,
+        message: "First name, last name, email, and password are required fields"
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters long"
       });
     }
 
     const parseDob = (dateStr) => {
-      if (!dateStr) return null;
+      if (!dateStr) {
+        return null;
+      }
 
-      const parts = dateStr.split("-");
-      if (parts[0].length === 2) {
+      const value = String(dateStr).trim();
+      const parts = value.split("-");
+
+      if (
+        parts.length === 3 &&
+        parts[0].length === 2 &&
+        parts[1].length === 2 &&
+        parts[2].length === 4
+      ) {
         const [day, month, year] = parts;
         return `${year}-${month}-${day}`;
       }
-      return dateStr;
+
+      return value;
     };
 
     let formattedDob;
+
     try {
       formattedDob = parseDob(dob);
-    } catch (err) {
-      return res.status(400).json({ message: "Invalid DOB format" });
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid DOB format"
+      });
     }
 
-    const client = await db.connect();
+    const emailCheck = await db.query(
+      `
+      SELECT pr_id
+      FROM personal
+      WHERE LOWER(pr_email) = LOWER($1)
+      `,
+      [email.trim()]
+    );
 
-    try {
-      await client.query('BEGIN');
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists in the system"
+      });
+    }
 
-      let newEmployeeId = employee_id;
+    let newEmployeeId;
 
-      if (!newEmployeeId) {
-        // No ID supplied: let the identity sequence generate one
-        const seqResult = await client.query(
-          "SELECT nextval('personal_pr_id_seq'::regclass) as next_id"
-        );
-        newEmployeeId = seqResult.rows[0].next_id;
-      } else {
-        // Caller supplied an explicit ID: check it's free
-        const existsCheck = await client.query(
-          "SELECT 1 FROM personal WHERE Pr_Id = $1",
-          [employee_id]
-        );
-        if (existsCheck.rowCount > 0) {
-          await client.query('ROLLBACK');
-          return res.status(409).json({
-            message: `Employee ID ${employee_id} already exists`,
-          });
-        }
+    if (employee_id) {
+      const existsCheck = await db.query(
+        `
+        SELECT pr_id
+        FROM personal
+        WHERE pr_id = $1
+        `,
+        [employee_id]
+      );
 
-        // IMPORTANT: resync the identity sequence so future auto-generated
-        // IDs never collide with this manually-supplied one.
-        await client.query(
-          `SELECT setval(
-             'personal_pr_id_seq',
-             GREATEST((SELECT COALESCE(MAX(Pr_Id), 0) FROM personal), $1)
-           )`,
-          [newEmployeeId]
-        );
+      if (existsCheck.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `Employee ID ${employee_id} already exists`
+        });
       }
 
-      const result = await client.query(
+      newEmployeeId = employee_id;
+
+      await db.query(
         `
-        INSERT INTO personal (
-          Pr_Id,
-          Pr_Email,
-          Pr_First_Name,
-          Pr_Last_Name,
-          Pr_Dob,
-          Pr_Gender_Id,
-          Pr_Blood_Group_Id,
-          Pr_Marital_Status_Id,
-          Pr_Nationality_Id,
-          Pr_Is_Active,
-          Pr_Created_At,
-          Pr_Created_By
+        SELECT setval(
+          'personal_pr_id_seq'::regclass,
+          GREATEST(
+            (SELECT COALESCE(MAX(pr_id), 0) FROM personal),
+            $1
+          )
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, $11)
-        RETURNING *
         `,
-        [
-          newEmployeeId,
-          email,
-          first_name,
-          last_name,
-          formattedDob,
-          gender_id,
-          blood_group_id,
-          marital_status_id,
-          nationality_id,
-          true,
-          newEmployeeId
-        ]
+        [newEmployeeId]
+      );
+    } else {
+      const sequenceResult = await db.query(
+        `
+        SELECT nextval('personal_pr_id_seq'::regclass) AS next_id
+        `
       );
 
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      const loginResult = await client.query(
-        `
-        INSERT INTO Login (
-          Pr_Id,
-          Lg_Password,
-          Lg_Created_By,
-          Lg_Created_At
-        )
-        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
-        RETURNING *
-        `,
-        [
-          newEmployeeId,
-          hashedPassword,
-          newEmployeeId
-        ]
-      );
-
-      await client.query('COMMIT');
-
-      res.status(201).json({
-        message: "Personal details and login credentials created successfully",
-        employee_id: newEmployeeId,
-        personalDetails: result.rows[0],
-        loginDetails: {
-          login_id: loginResult.rows[0].lg_id,
-          employee_id: loginResult.rows[0].pr_id,
-          created_at: loginResult.rows[0].lg_created_at,
-        }
-      });
-
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      newEmployeeId = sequenceResult.rows[0].next_id;
     }
+
+    const personalResult = await db.query(
+      `
+      INSERT INTO personal (
+        pr_id,
+        pr_email,
+        pr_first_name,
+        pr_last_name,
+        pr_dob,
+        pr_gender_id,
+        pr_blood_group_id,
+        pr_marital_status_id,
+        pr_nationality_id,
+        pr_is_active,
+        pr_created_at,
+        pr_created_by
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        CURRENT_TIMESTAMP,
+        $11
+      )
+      RETURNING
+        pr_id,
+        pr_email,
+        pr_first_name,
+        pr_last_name,
+        pr_dob,
+        pr_gender_id,
+        pr_blood_group_id,
+        pr_marital_status_id,
+        pr_nationality_id,
+        pr_is_active,
+        pr_created_at,
+        pr_created_by
+      `,
+      [
+        newEmployeeId,
+        email.trim().toLowerCase(),
+        first_name.trim(),
+        last_name.trim(),
+        formattedDob,
+        gender_id || null,
+        blood_group_id || null,
+        marital_status_id || null,
+        nationality_id || null,
+        true,
+        createdBy
+      ]
+    );
+
+    const hashedPassword = await bcrypt.hash(
+      String(password),
+      10
+    );
+
+    const loginResult = await db.query(
+      `
+      INSERT INTO login (
+        pr_id,
+        lg_password,
+        lg_created_by,
+        lg_created_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING
+        lg_id,
+        pr_id,
+        lg_created_at
+      `,
+      [
+        newEmployeeId,
+        hashedPassword,
+        createdBy
+      ]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Personal details and login credentials created successfully",
+      employee_id: newEmployeeId,
+      created_by: createdBy,
+      personalDetails: personalResult.rows[0],
+      loginDetails: {
+        login_id: loginResult.rows[0].lg_id,
+        employee_id: loginResult.rows[0].pr_id,
+        created_at: loginResult.rows[0].lg_created_at
+      }
+    });
 
   } catch (error) {
     console.error("Personal POST error:", error);
 
-    if (error.code === '23505') {
-      // Postgres default naming: <table>_pkey for primary keys
-      if (error.constraint === 'personal_pkey') {
+    if (error.code === "23505") {
+      if (error.constraint === "personal_pkey") {
         return res.status(409).json({
-          message: `Employee ID conflict. Please try again.`,
+          success: false,
+          message: "Employee ID already exists",
           error: error.detail
         });
       }
-      if (error.constraint === 'login_pkey') {
+
+      if (error.constraint === "personal_pr_email_key") {
         return res.status(409).json({
-          message: "Login ID conflict. Please try again.",
-          error: error.detail
-        });
-      }
-      if (error.constraint === 'personal_pr_email_key') {
-        return res.status(409).json({
+          success: false,
           message: "Email already exists in the system",
           error: error.detail
         });
       }
-      // Fallback for any other unique-constraint violation
+
+      if (error.constraint === "login_pkey") {
+        return res.status(409).json({
+          success: false,
+          message: "Login ID already exists",
+          error: error.detail
+        });
+      }
+
       return res.status(409).json({
+        success: false,
         message: "A record with this value already exists",
         error: error.detail
       });
     }
 
-    res.status(500).json({
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid related record",
+        error: error.detail
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
       message: "Server error while creating personal details",
       error: error.message
     });
@@ -653,76 +794,101 @@ exports.getPersonalInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    const result = await db.query(
-      `
-      SELECT
-        u.id,
-        u.name,
-        u.email,
-        u.role,
-        u.is_active,
-        u.profile_image,
-        u.shift_id,
-        p.dob,
-        p.gender,
-        p.gender_id,
-
-        p.bloodgroup,
-        p.blood_group_id,
-        p.contact,
-        p.maritalstatus,
-        p.marital_status_id,
-
-        p.nationality,
-        p.nationality_id,
-
-        p.current_address,
-        p.permanent_address,
-
-        p.aadharnumber,
-        p.nominee,
-
-        p.department,
-
-       p.joining_date,
-
-        p.designation,
-
-        p.leaving_date,
-
-        p.employee_type,
-        p.reporting_location,
-        p.contact,
-
-        p.first_name,
-        p.last_name,
-        p.email AS personal_email
-
-      FROM users u
-      LEFT JOIN personal p
-        ON u.id = p.employee_id
-      WHERE u.id = $1
-      `,
-      [employee_id]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({
-        message: "Employee not found"
+    // Validate employee_id
+    if (!employee_id) {
+      return res.status(400).json({
+        message: "Employee ID is required"
       });
     }
 
-    res.status(200).json(result.rows[0]);
+    const query = `
+      SELECT 
+        p.pr_id,
+        p.pr_email,
+        p.pr_first_name,
+        p.pr_last_name,
+        p.pr_dob,
+        p.pr_gender_id,
+        p.pr_blood_group_id,
+        p.pr_marital_status_id,
+        p.pr_nationality_id,
+        p.pr_is_active,
+        p.pr_created_at,
+        p.pr_created_by,
+        p.pr_updated_at,
+        p.pr_updated_by,
+        l.lg_id,
+        l.lg_password,
+        l.lg_created_by,
+        l.lg_updated_by,
+        l.lg_created_at,
+        l.lg_updated_at
+      FROM personal p
+      LEFT JOIN login l ON p.pr_id = l.pr_id
+      WHERE p.pr_id = $1
+    `;
+
+    const result = await db.query(query, [employee_id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        message: `Employee with ID ${employee_id} not found`
+      });
+    }
+
+    // Format the response with proper field names
+    const employeeData = {
+      employee_id: result.rows[0].pr_id,
+      email: result.rows[0].pr_email,
+      first_name: result.rows[0].pr_first_name,
+      last_name: result.rows[0].pr_last_name,
+      date_of_birth: result.rows[0].pr_dob,
+      gender_id: result.rows[0].pr_gender_id,
+      blood_group_id: result.rows[0].pr_blood_group_id,
+      marital_status_id: result.rows[0].pr_marital_status_id,
+      nationality_id: result.rows[0].pr_nationality_id,
+      is_active: result.rows[0].pr_is_active,
+      created_at: result.rows[0].pr_created_at,
+      created_by: result.rows[0].pr_created_by,
+      updated_at: result.rows[0].pr_updated_at,
+      updated_by: result.rows[0].pr_updated_by,
+      login: result.rows[0].lg_id ? {
+        login_id: result.rows[0].lg_id,
+        login_created_at: result.rows[0].lg_created_at,
+        login_updated_at: result.rows[0].lg_updated_at,
+        login_created_by: result.rows[0].lg_created_by,
+        login_updated_by: result.rows[0].lg_updated_by
+      } : null
+    };
+
+    // Format date of birth if it exists
+    if (employeeData.date_of_birth) {
+      const dob = new Date(employeeData.date_of_birth);
+      employeeData.date_of_birth = dob.toISOString().split('T')[0];
+    }
+
+    res.status(200).json({
+      success: true,
+      data: employeeData
+    });
 
   } catch (error) {
     console.error("Get Personal Info error:", error);
 
+    if (error.code === '22P02') {
+      return res.status(400).json({
+        message: "Invalid employee ID format",
+        error: error.message
+      });
+    }
+
     res.status(500).json({
-      message: "Server error",
+      message: "Server error while fetching personal details",
       error: error.message
     });
   }
 };
+
 
 exports.updatePersonalInfo = async (req, res) => {
   try {
@@ -732,150 +898,287 @@ exports.updatePersonalInfo = async (req, res) => {
       first_name,
       last_name,
       email,
-      contact,
       dob,
-      gender,
       gender_id,
-      maritalstatus,
       marital_status_id,
-      nationality,
       nationality_id,
-      bloodgroup,
       blood_group_id,
-      current_address,
-      permanent_address,
-      aadharnumber,
-      nominee,
-      department,
-      joining_date,
-      designation,
-      leaving_date,
-      employee_type,
-      reporting_location
+      password,
+      is_active
     } = req.body;
 
-    // ---------- Date Parser ----------
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
+
+    if (!first_name || !last_name || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "First name, last name and email are required"
+      });
+    }
+
+    const updatedBy = req.user?.id;
+
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
     const parseDate = (dateStr) => {
       if (!dateStr) return null;
 
-      const parts = dateStr.split("-");
+      const value = String(dateStr).trim();
+      const parts = value.split("-");
 
-      // DD-MM-YYYY -> YYYY-MM-DD
-      if (parts.length === 3 && parts[0].length === 2) {
+      if (
+        parts.length === 3 &&
+        parts[0].length === 2 &&
+        parts[1].length === 2 &&
+        parts[2].length === 4
+      ) {
         const [day, month, year] = parts;
         return `${year}-${month}-${day}`;
       }
 
-      return dateStr;
+      return value;
     };
 
     const formattedDob = parseDate(dob);
-    const formattedJoiningDate = parseDate(joining_date);
-    const formattedLeavingDate = parseDate(leaving_date);
 
-    // ---------- Validation ----------
-    // if (!first_name || !last_name || !email) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "First name, last name and email are required"
-    //   });
-    // }
-
-    // ---------- Update users table ----------
-    const fullName = `${first_name || ""} ${last_name || ""}`.trim();
-
-    await db.query(
+    const employeeCheck = await db.query(
       `
-      UPDATE users
-      SET
-        name = $1,
-        email = $2
-      WHERE emp_id = $3
+      SELECT pr_id
+      FROM personal
+      WHERE pr_id = $1
       `,
-      [
-        fullName,
-        email,
-        employee_id
-      ]
+      [employee_id]
     );
 
-    // ---------- Update personal table ----------
-    const result = await db.query(
-      `
-      UPDATE personal
-      SET
-        first_name = $1,
-        last_name = $2,
-        email = $3,
-        contact = $4,
-        dob = $5,
-        gender = $6,
-        gender_id = $7,
-        maritalstatus = $8,
-        marital_status_id = $9,
-        nationality = $10,
-        nationality_id = $11,
-        bloodgroup = $12,
-        blood_group_id = $13,
-        current_address = $14,
-        permanent_address = $15,
-        aadharnumber = $16,
-        nominee = $17,
-        department = $18,
-        joining_date = $19,
-        designation = $20,
-        leaving_date = $21
-
-      WHERE employee_id = $22
-
-      RETURNING *
-      `,
-      [
-        first_name,
-        last_name,
-        email,
-        contact,
-        formattedDob,
-        gender,
-        gender_id,
-        maritalstatus,
-        marital_status_id,
-        nationality,
-        nationality_id,
-        bloodgroup,
-        blood_group_id,
-        current_address,
-        permanent_address,
-        aadharnumber,
-        nominee,
-        department,
-        formattedJoiningDate,
-        designation,
-        formattedLeavingDate,
-        // reporting_location,
-        employee_id
-      ]
-    );
-
-    if (!result.rows.length) {
+    if (employeeCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Personal details not found"
+        message: `Employee with ID ${employee_id} not found`
       });
     }
 
-    res.status(200).json({
+    const emailCheck = await db.query(
+      `
+      SELECT pr_id
+      FROM personal
+      WHERE LOWER(pr_email) = LOWER($1)
+        AND pr_id <> $2
+      `,
+      [email.trim(), employee_id]
+    );
+
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists in the system"
+      });
+    }
+
+    const personalResult = await db.query(
+      `
+      UPDATE personal
+      SET
+        pr_first_name = $1,
+        pr_last_name = $2,
+        pr_email = $3,
+        pr_dob = $4,
+        pr_gender_id = $5,
+        pr_marital_status_id = $6,
+        pr_nationality_id = $7,
+        pr_blood_group_id = $8,
+        pr_is_active = COALESCE($9, pr_is_active),
+        pr_updated_at = CURRENT_TIMESTAMP,
+        pr_updated_by = $10
+      WHERE pr_id = $11
+      RETURNING
+        pr_id,
+        pr_email,
+        pr_first_name,
+        pr_last_name,
+        pr_dob,
+        pr_gender_id,
+        pr_blood_group_id,
+        pr_marital_status_id,
+        pr_nationality_id,
+        pr_profile_image,
+        pr_is_active,
+        pr_created_at,
+        pr_updated_at,
+        pr_created_by,
+        pr_updated_by
+      `,
+      [
+        first_name.trim(),
+        last_name.trim(),
+        email.trim().toLowerCase(),
+        formattedDob,
+        gender_id || null,
+        marital_status_id || null,
+        nationality_id || null,
+        blood_group_id || null,
+        is_active !== undefined ? is_active : null,
+        updatedBy,
+        employee_id
+      ]
+    );
+
+    let passwordUpdated = false;
+    let loginData = null;
+
+    if (
+      password !== undefined &&
+      password !== null &&
+      String(password).trim() !== ""
+    ) {
+      if (String(password).length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: "Password must be at least 6 characters long"
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(
+        String(password),
+        10
+      );
+
+      const loginCheck = await db.query(
+        `
+        SELECT lg_id, pr_id
+        FROM login
+        WHERE pr_id = $1
+        `,
+        [employee_id]
+      );
+
+      if (loginCheck.rows.length > 0) {
+        const loginResult = await db.query(
+          `
+          UPDATE login
+          SET
+            lg_password = $1,
+            lg_updated_by = $2,
+            lg_updated_at = CURRENT_TIMESTAMP
+          WHERE pr_id = $3
+          RETURNING
+            lg_id,
+            pr_id,
+            lg_updated_at
+          `,
+          [
+            hashedPassword,
+            updatedBy,
+            employee_id
+          ]
+        );
+
+        loginData = loginResult.rows[0];
+      } else {
+        const loginResult = await db.query(
+          `
+          INSERT INTO login (
+            pr_id,
+            lg_password,
+            lg_created_by,
+            lg_updated_by,
+            lg_created_at,
+            lg_updated_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $3,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+          )
+          RETURNING
+            lg_id,
+            pr_id,
+            lg_created_at,
+            lg_updated_at
+          `,
+          [
+            employee_id,
+            hashedPassword,
+            updatedBy
+          ]
+        );
+
+        loginData = loginResult.rows[0];
+      }
+
+      passwordUpdated = true;
+    }
+
+    const employee = personalResult.rows[0];
+
+    const response = {
       success: true,
-      message: "Profile updated successfully",
-      data: result.rows[0]
-    });
+      message: "Personal details updated successfully",
+      data: {
+        employee_id: employee.pr_id,
+        email: employee.pr_email,
+        first_name: employee.pr_first_name,
+        last_name: employee.pr_last_name,
+        date_of_birth: employee.pr_dob,
+        gender_id: employee.pr_gender_id,
+        blood_group_id: employee.pr_blood_group_id,
+        marital_status_id: employee.pr_marital_status_id,
+        nationality_id: employee.pr_nationality_id,
+        profile_image: employee.pr_profile_image,
+        is_active: employee.pr_is_active,
+        created_at: employee.pr_created_at,
+        updated_at: employee.pr_updated_at,
+        created_by: employee.pr_created_by,
+        updated_by: employee.pr_updated_by
+      },
+      password_updated: passwordUpdated,
+      updated_by: updatedBy
+    };
+
+    if (passwordUpdated && loginData) {
+      response.login = {
+        login_id: loginData.lg_id,
+        employee_id: loginData.pr_id,
+        updated_at: loginData.lg_updated_at
+      };
+    }
+
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error("Update Personal Info Error:", error);
 
-    res.status(500).json({
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists in the system",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid related record",
+        error: error.detail
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error while updating personal details",
       error: error.message
     });
   }
