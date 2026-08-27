@@ -1,5 +1,6 @@
 const fs = require("fs");
 const multer = require("multer");
+const bcrypt = require('bcrypt');
 const path = require("path");
 const auth = require("../middlewares/authMiddleware");
 const { db } = require("../db/connectDB");
@@ -458,127 +459,169 @@ exports.addPersonInfo = async (req, res) => {
     const {
       gender,
       dob,
-      bloodgroup,
-      maritalstatus,
-      nationality,
-      aadharnumber,
-      nominee,
-      department,
-      designation,
       first_name,
       last_name,
       email,
-      nationality_id, 
-      gender_id, 
-      marital_status_id, 
+      nationality_id,
+      gender_id,
+      marital_status_id,
       blood_group_id,
-      contact,
+      password,
     } = req.body;
 
-    console.log("employ id",employee_id)
+    console.log("Processing employee data...");
 
-    // console.log("department",department);
-    // ---------- Validation ----------
-    // if (
-    //  !first_name || !last_name || !email
-    // ) {
-    //   return res.status(400).json({
-    //     message: "All required fields must be filled",
-    //   });
-    // }
+    if (!first_name || !last_name || !email || !password) {
+      return res.status(400).json({
+        message: "First name, last name, email, and password are required fields",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters long",
+      });
+    }
 
     const parseDob = (dateStr) => {
       if (!dateStr) return null;
 
-      // Agar frontend se DD-MM-YYYY aa raha hai (e.g. 11-12-2000)
       const parts = dateStr.split("-");
-
       if (parts[0].length === 2) {
-        // DD-MM-YYYY -> YYYY-MM-DD
         const [day, month, year] = parts;
         return `${year}-${month}-${day}`;
       }
-
-      return dateStr; // Agar pehle se YYYY-MM-DD hai
+      return dateStr;
     };
 
-    // Usage in Controller
     let formattedDob;
     try {
-      formattedDob = parseDob(req.body.dob); // Ab ye SQL ke liye "2000-12-11" return karega
+      formattedDob = parseDob(dob);
     } catch (err) {
       return res.status(400).json({ message: "Invalid DOB format" });
     }
 
-    // ---------- Prevent Duplicate ----------
-    const exists = await db.query(
-      "SELECT 1 FROM personal WHERE employee_id = $1",
-      [employee_id]
-    );
+    const client = await db.connect();
 
-    if (exists.rowCount > 0) {
-      return res
-        .status(409)
-        .json({ message: "Personal details already exist" });
+    try {
+      await client.query('BEGIN');
+
+      let newEmployeeId = employee_id;
+      
+      if (!newEmployeeId) {
+        const seqResult = await client.query(
+          "SELECT nextval('personal_pr_id_seq'::regclass) as next_id"
+        );
+        newEmployeeId = seqResult.rows[0].next_id;
+      } else {
+        const existsCheck = await client.query(
+          "SELECT 1 FROM personal WHERE Pr_Id = $1",
+          [employee_id]
+        );
+        if (existsCheck.rowCount > 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            message: `Employee ID ${employee_id} already exists`,
+          });
+        }
+      }
+
+      const result = await client.query(
+        `
+        INSERT INTO personal (
+          Pr_Id,
+          Pr_Email,
+          Pr_First_Name,
+          Pr_Last_Name,
+          Pr_Dob,
+          Pr_Gender_Id,
+          Pr_Blood_Group_Id,
+          Pr_Marital_Status_Id,
+          Pr_Nationality_Id,
+          Pr_Is_Active,
+          Pr_Created_At,
+          Pr_Created_By
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, $11)
+        RETURNING *
+        `,
+        [
+          newEmployeeId,
+          email,
+          first_name,
+          last_name,
+          formattedDob,
+          gender_id,
+          blood_group_id,
+          marital_status_id,
+          nationality_id,
+          true,
+          newEmployeeId
+        ]
+      );
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      const loginResult = await client.query(
+        `
+        INSERT INTO Login (
+          Pr_Id,
+          Lg_Password,
+          Lg_Created_By,
+          Lg_Created_At
+        )
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+        RETURNING *
+        `,
+        [
+          newEmployeeId,
+          hashedPassword,
+          newEmployeeId
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      res.status(201).json({
+        message: "Personal details and login credentials created successfully",
+        employee_id: newEmployeeId,
+        personalDetails: result.rows[0],
+        loginDetails: {
+          login_id: loginResult.rows[0].lg_id,
+          employee_id: loginResult.rows[0].pr_id,
+          created_at: loginResult.rows[0].lg_created_at,
+        }
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // ---------- Insert ----------
-    const result = await db.query(
-      `
-      INSERT INTO personal (
-        gender,
-        dob,
-        bloodgroup,
-        maritalstatus,
-        nationality,
-        aadharnumber,
-        nominee,
-        department,
-        designation,
-        first_name,
-        last_name,
-        email,
-        nationality_id, 
-        gender_id, 
-        marital_status_id, 
-        blood_group_id,
-        employee_id,
-        contact
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, $12,$13,$14,$15,$16,$17,$18)
-      RETURNING *
-      `,
-      [
-        gender,
-        formattedDob,
-        bloodgroup,
-        maritalstatus,
-        nationality,
-        aadharnumber,
-        nominee || null,
-        department,
-        designation,
-        first_name,
-        last_name,
-        email,
-        nationality_id, 
-        gender_id, 
-        marital_status_id, 
-        blood_group_id,
-        employee_id,
-        contact
-      ]
-    );
-
-    res.status(201).json({
-      message: "Personal details created successfully",
-      personalDetails: result.rows[0],
-    });
   } catch (error) {
     console.error("Personal POST error:", error);
-    res.status(500).json({ message: "Server error" });
+    
+    if (error.code === '23505') {
+      if (error.constraint === 'personal_pr_id_pkey' || error.constraint === 'login_pkey') {
+        return res.status(409).json({
+          message: "Employee ID or Login ID conflict. Please try again.",
+          error: error.detail
+        });
+      }
+      return res.status(409).json({
+        message: "Email already exists in the system",
+        error: error.detail
+      });
+    }
+    
+    res.status(500).json({ 
+      message: "Server error while creating personal details",
+      error: error.message 
+    });
   }
-}
+};
 
 exports.getPersonalInfo = async (req, res) => {
   try {

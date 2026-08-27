@@ -56,7 +56,8 @@ router.put("/organization/:employee_id", auth, isAdmin, updateOrganizationInfo)
 
 router.get("/personal/:employee_id", auth, getPersonalInfo);
 
-router.post("/personal/:employee_id", auth, addPersonInfo);
+//router.post("/personal/:employee_id", auth, addPersonInfo);
+router.post("/personal", auth, addPersonInfo);
 router.put("/personal/:employee_id", auth, updatePersonalInfo);
 
 
