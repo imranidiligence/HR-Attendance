@@ -1191,46 +1191,83 @@ exports.addEducationInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    // console.log("Education",req.body);
-    
-    // console.log("emp_id Add Education", emp_id)
+    const createdBy = req.user?.id;
 
-    if(!employee_id){
-      return res.status(400).json({message:"employee_id required"});
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
     }
 
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
 
-    // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
+    // Check whether employee exists in personal table
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employee_id]
+    );
 
-    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-    //   return res.status(403).json({ message: "Unauthorized" });
-    // }
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employee_id} not found`
+      });
+    }
 
     let educationArray = [];
 
-    // --- FIX STARTS HERE ---
-    if (typeof req.body.education === 'string') {
-      // If it's a string (from FormData), parse it back into an array
-      educationArray = JSON.parse(req.body.education);
-    } else if (Array.isArray(req.body.education)) {
+    // Handle FormData
+    if (typeof req.body.education === "string") {
+      try {
+        educationArray = JSON.parse(req.body.education);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid education JSON format"
+        });
+      }
+    }
+
+    // Handle JSON array
+    else if (Array.isArray(req.body.education)) {
       educationArray = req.body.education;
-    } else if (Array.isArray(req.body)) {
+    }
+
+    // Handle direct array
+    else if (Array.isArray(req.body)) {
       educationArray = req.body;
-    } else if (typeof req.body === "object" && Object.keys(req.body).length > 0) {
+    }
+
+    // Handle single education object
+    else if (
+      req.body &&
+      typeof req.body === "object" &&
+      Object.keys(req.body).length > 0
+    ) {
       educationArray = [req.body];
     }
-    // --- FIX ENDS HERE ---
 
     if (!educationArray.length) {
-      return res.status(400).json({ message: "Education data is required" });
+      return res.status(400).json({
+        success: false,
+        message: "Education data is required"
+      });
     }
 
     const inserted = [];
 
     for (const edu of educationArray) {
-      // Now 'edu' will be an object like { degree: "Degress", ... }
       const {
-        // degree,
         field_of_study,
         institution_name,
         university,
@@ -1239,11 +1276,30 @@ exports.addEducationInfo = async (req, res) => {
         degree_id
       } = edu;
 
-      const { rows } = await db.query(
+      const result = await db.query(
         `
-        INSERT INTO education
-          (employee_id, field_of_study, institution_name, university, passing_year, percentage_or_grade, degree_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        INSERT INTO education (
+          Pr_Id,
+          Ed_Field_Of_Study,
+          Ed_Institution_Name,
+          Ed_University,
+          Ed_Percentage_Or_Grade,
+          Ed_Passing_Year,
+          Ed_Degree_Id,
+          Ed_Created_By,
+          Ed_Created_At
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          CURRENT_TIMESTAMP
+        )
         RETURNING *
         `,
         [
@@ -1251,23 +1307,32 @@ exports.addEducationInfo = async (req, res) => {
           field_of_study || null,
           institution_name || null,
           university || null,
-          passing_year || null,
           percentage_or_grade || null,
-          degree_id || null,  
+          passing_year || null,
+          degree_id || null,
+          createdBy
         ]
       );
 
-      inserted.push(rows[0]);
+      inserted.push(result.rows[0]);
     }
 
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "Education added successfully",
-      education: inserted,
+      employee_id: Number(employee_id),
+      created_by: createdBy,
+      education: inserted
     });
 
   } catch (error) {
-    console.error("[ERROR] /education POST:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Add Education Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while adding education",
+      error: error.message
+    });
   }
 };
 
@@ -1279,245 +1344,347 @@ exports.getEducationInfo = async (req, res) => {
 
     if (isNaN(empIdInt)) {
       return res.status(400).json({
+        success: false,
         message: "Invalid employee ID"
+      });
+    }
+
+    // Check employee exists in personal table
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [empIdInt]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${empIdInt} not found`
       });
     }
 
     const { rows } = await db.query(
       `
       SELECT
-        employee_id,
-        degree,
-        degree_id,
-        field_of_study,
-        institution_name,
-        university,
-        percentage_or_grade,
-        passing_year,
-        id,
-        updated_at,
-        marksheet_url
+        Ed_Id AS id,
+        Pr_Id AS employee_id,
+        Ed_Field_Of_Study AS field_of_study,
+        Ed_Institution_Name AS institution_name,
+        Ed_University AS university,
+        Ed_Percentage_Or_Grade AS percentage_or_grade,
+        Ed_Passing_Year AS passing_year,
+        Ed_Degree_Id AS degree_id,
+        Ed_Created_By AS created_by,
+        Ed_Updated_By AS updated_by,
+        Ed_Created_At AS created_at,
+        Ed_Updated_At AS updated_at
       FROM education
-      WHERE employee_id = $1
-      ORDER BY passing_year DESC NULLS LAST, id DESC
+      WHERE Pr_Id = $1
+      ORDER BY Ed_Passing_Year DESC NULLS LAST, Ed_Id DESC
       `,
       [empIdInt]
     );
 
     if (!rows.length) {
       return res.status(404).json({
-        message: "No education records found"
+        success: false,
+        message: "No education records found",
+        employee_id: empIdInt,
+        education: []
       });
     }
 
     return res.status(200).json({
+      success: true,
+      employee_id: empIdInt,
       total: rows.length,
       education: rows
     });
 
   } catch (error) {
-    console.error("[ERROR] /education/:emp_id GET:", error);
+    console.error("Get Education Info Error:", error);
 
     return res.status(500).json({
-      message: "Internal Server Error"
+      success: false,
+      message: "Server error while fetching education information",
+      error: error.message
     });
   }
 };
 
 exports.updateEducationInfo = async (req, res) => {
-  const client = await db.connect();
-
   try {
     const { employee_id } = req.params;
 
-    if (!req.body.education) {
+    const employeeId = parseInt(employee_id, 10);
+    const updatedBy = req.user?.id;
+
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
-        message: "Education data is required"
+        success: false,
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
       });
     }
 
     let educationEntries;
 
-    try {
-      educationEntries = JSON.parse(req.body.education);
-    } catch (error) {
+    // FormData:
+    // education = "[{...}]"
+    if (typeof req.body.education === "string") {
+      try {
+        educationEntries = JSON.parse(req.body.education);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid education JSON format"
+        });
+      }
+    }
+
+    // JSON:
+    // education = [{...}]
+    else if (Array.isArray(req.body.education)) {
+      educationEntries = req.body.education;
+    }
+
+    // JSON body directly as array:
+    // [{...}]
+    else if (Array.isArray(req.body)) {
+      educationEntries = req.body;
+    }
+
+    else {
       return res.status(400).json({
-        message: "Invalid education JSON format"
+        success: false,
+        message: "Education data is required"
       });
     }
 
-    if (!Array.isArray(educationEntries)) {
+    if (
+      !Array.isArray(educationEntries) ||
+      educationEntries.length === 0
+    ) {
       return res.status(400).json({
-        message: "Education data must be an array"
+        success: false,
+        message: "Education data must contain at least one record"
       });
     }
 
-    await client.query("BEGIN");
+    const processedEducation = [];
 
     for (let i = 0; i < educationEntries.length; i++) {
       const edu = educationEntries[i];
 
-      let finalPath = edu.marksheet_url || null;
-
-      // Check file upload for this education row
-      const file = req.files?.find(
-        (f) => f.fieldname === `file_${i}`
-      );
-
-      if (file) {
-        finalPath = `/uploads/education/${file.filename}`;
+      if (!edu || typeof edu !== "object") {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid education data at row ${i + 1}`
+        });
       }
 
-      // ------------------------------------------------
-      // Check required fields
-      // ------------------------------------------------
-      if (!edu.degree && !edu.degree_id) {
-        throw new Error(`Degree is required for education row ${i + 1}`);
+      const {
+        Ed_Id,
+        id,
+        degree_id,
+        field_of_study,
+        institution_name,
+        university,
+        percentage_or_grade,
+        passing_year
+      } = edu;
+
+      if (!degree_id) {
+        return res.status(400).json({
+          success: false,
+          message: `Degree ID is required for education row ${i + 1}`
+        });
       }
 
-      // ------------------------------------------------
-      // If no ID, check whether record already exists
-      // ------------------------------------------------
-      if (!edu.id) {
-        let checkExist;
+      // Support both Ed_Id and old id
+      let educationId = Ed_Id || id
+        ? parseInt(Ed_Id || id, 10)
+        : null;
 
-        if (edu.degree_id) {
-          checkExist = await client.query(
-            `
-            SELECT id
-            FROM education
-            WHERE employee_id = $1
-              AND degree_id = $2
-              AND passing_year = $3
-            LIMIT 1
-            `,
-            [
-              employee_id,
-              edu.degree_id,
-              edu.passing_year || null
-            ]
-          );
-        } else {
-          checkExist = await client.query(
-            `
-            SELECT id
-            FROM education
-            WHERE employee_id = $1
-              AND degree = $2
-              AND passing_year = $3
-            LIMIT 1
-            `,
-            [
-              employee_id,
-              edu.degree,
-              edu.passing_year || null
-            ]
-          );
-        }
+      if ((Ed_Id || id) && isNaN(educationId)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid education ID at row ${i + 1}`
+        });
+      }
 
-        if (checkExist.rows.length > 0) {
-          edu.id = checkExist.rows[0].id;
+      // If Ed_Id is not provided, find existing record
+      if (!educationId) {
+        const existingResult = await db.query(
+          `
+          SELECT Ed_Id
+          FROM education
+          WHERE Pr_Id = $1
+            AND Ed_Degree_Id = $2
+            AND Ed_Passing_Year IS NOT DISTINCT FROM $3
+          ORDER BY Ed_Id DESC
+          LIMIT 1
+          `,
+          [
+            employeeId,
+            degree_id,
+            passing_year || null
+          ]
+        );
+
+        if (existingResult.rowCount > 0) {
+          educationId = existingResult.rows[0].ed_id;
         }
       }
 
-      // ------------------------------------------------
-      // UPDATE existing education
-      // ------------------------------------------------
-      if (edu.id) {
-        const updateResult = await client.query(
+      // UPDATE
+      if (educationId) {
+        const updateResult = await db.query(
           `
           UPDATE education
           SET
-            degree = $1,
-            degree_id = $2,
-            field_of_study = $3,
-            institution_name = $4,
-            university = $5,
-            percentage_or_grade = $6,
-            passing_year = $7,
-            marksheet_url = COALESCE($8, marksheet_url),
-            updated_at = NOW()
-          WHERE id = $9
-            AND employee_id = $10
+            Ed_Degree_Id = $1,
+            Ed_Field_Of_Study = $2,
+            Ed_Institution_Name = $3,
+            Ed_University = $4,
+            Ed_Percentage_Or_Grade = $5,
+            Ed_Passing_Year = $6,
+            Ed_Updated_By = $7,
+            Ed_Updated_At = CURRENT_TIMESTAMP
+          WHERE Ed_Id = $8
+            AND Pr_Id = $9
           RETURNING *
           `,
           [
-            edu.degree || null,
-            edu.degree_id || null,
-            edu.field_of_study || null,
-            edu.institution_name || null,
-            edu.university || null,
-            edu.percentage_or_grade || null,
-            edu.passing_year || null,
-            finalPath,
-            edu.id,
-            employee_id
+            degree_id,
+            field_of_study || null,
+            institution_name || null,
+            university || null,
+            percentage_or_grade || null,
+            passing_year || null,
+            updatedBy,
+            educationId,
+            employeeId
           ]
         );
 
         if (updateResult.rowCount === 0) {
-          throw new Error(
-            `Education record with ID ${edu.id} was not found for employee ${employee_id}`
-          );
+          return res.status(404).json({
+            success: false,
+            message: `Education record with ID ${educationId} was not found for employee ${employeeId}`
+          });
         }
 
-      } else {
-        // ------------------------------------------------
-        // INSERT new education
-        // ------------------------------------------------
-        await client.query(
+        processedEducation.push({
+          action: "updated",
+          data: updateResult.rows[0]
+        });
+      }
+
+      // INSERT
+      else {
+        const insertResult = await db.query(
           `
           INSERT INTO education (
-            employee_id,
-            degree,
-            degree_id,
-            field_of_study,
-            institution_name,
-            university,
-            percentage_or_grade,
-            passing_year,
-            marksheet_url,
-            updated_at
+            Pr_Id,
+            Ed_Field_Of_Study,
+            Ed_Institution_Name,
+            Ed_University,
+            Ed_Percentage_Or_Grade,
+            Ed_Passing_Year,
+            Ed_Degree_Id,
+            Ed_Created_By,
+            Ed_Created_At
           )
           VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9, NOW()
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            CURRENT_TIMESTAMP
           )
+          RETURNING *
           `,
           [
-            employee_id,
-            edu.degree || null,
-            edu.degree_id || null,
-            edu.field_of_study || null,
-            edu.institution_name || null,
-            edu.university || null,
-            edu.percentage_or_grade || null,
-            edu.passing_year || null,
-            finalPath
+            employeeId,
+            field_of_study || null,
+            institution_name || null,
+            university || null,
+            percentage_or_grade || null,
+            passing_year || null,
+            degree_id,
+            updatedBy
           ]
         );
+
+        processedEducation.push({
+          action: "created",
+          data: insertResult.rows[0]
+        });
       }
     }
 
-    await client.query("COMMIT");
-
     return res.status(200).json({
       success: true,
-      message: "Education information processed successfully"
+      message: "Education information processed successfully",
+      employee_id: employeeId,
+      updated_by: updatedBy,
+      education: processedEducation
     });
 
   } catch (error) {
-    await client.query("ROLLBACK");
-
     console.error("Education Update Error:", error);
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reference value. Please check employee or degree ID.",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Duplicate education record.",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
-      message: error.message || "Internal Server Error"
+      message: "Server error while updating education information",
+      error: error.message
     });
-
-  } finally {
-    client.release();
   }
 };
 
