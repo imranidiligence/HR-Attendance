@@ -30,28 +30,17 @@ const loginController = async (req, res) => {
     identifier = String(identifier).trim().toLowerCase();
     password = String(password).trim();
 
-    /*
-     * Find user by:
-     * 1. Personal Email
-     * 2. Employee ID
-     * 3. Organization Email
-     *
-     * After finding the user, get:
-     * personal.Pr_Id
-     * login.Lg_Password
-     */
+    
     const result = await db.query(
       `
       SELECT
           p.pr_id,
-          p.pr_name,
           p.pr_email,
           p.pr_emp_id,
           p.pr_first_name,
           p.pr_last_name,
           p.pr_profile_image,
           p.pr_is_active,
-
           o.or_id,
           o.or_organization_name,
           o.or_organization_email,
@@ -76,9 +65,7 @@ const loginController = async (req, res) => {
       [identifier]
     );
 
-    /*
-     * User not found
-     */
+  
     if (result.rows.length === 0) {
       return res.status(401).json({
         message: "Invalid email or password"
@@ -87,18 +74,14 @@ const loginController = async (req, res) => {
 
     const user = result.rows[0];
 
-    /*
-     * Check active user
-     */
+    
     if (!user.pr_is_active) {
       return res.status(401).json({
         message: "User account is inactive"
       });
     }
 
-    /*
-     * Compare password
-     */
+    
     const isMatch = await bcrypt.compare(
       password,
       user.lg_password
@@ -110,9 +93,7 @@ const loginController = async (req, res) => {
       });
     }
 
-    /*
-     * Get user roles
-     */
+    
     const roleResult = await db.query(
       `
       SELECT
@@ -133,9 +114,7 @@ const loginController = async (req, res) => {
 
     const roles = roleResult.rows;
 
-    /*
-     * Generate JWT
-     */
+  
     const token = jwt.sign(
       {
         id: user.pr_id,
@@ -148,14 +127,10 @@ const loginController = async (req, res) => {
       }
     );
 
-    /*
-     * Get token expiry
-     */
+  
     const decoded = jwt.decode(token);
 
-    /*
-     * Response
-     */
+  
     return res.status(200).json({
       message: "Login successful",
 
@@ -166,7 +141,7 @@ const loginController = async (req, res) => {
       user: {
         id: user.pr_id,
 
-        name: user.pr_name,
+        name: user.pr_first_name + user.pr_last_name,
 
         first_name: user.pr_first_name,
 

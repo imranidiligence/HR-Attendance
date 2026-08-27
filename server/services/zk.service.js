@@ -1589,14 +1589,11 @@ async function getDeviceAttendance() {
         `
         SELECT
             p.pr_id,
-            p.pr_name,
             p.pr_email,
             p.pr_emp_id,
-            p.pr_first_name,
-            p.pr_last_name,
+            CONCAT_WS(' ', p.pr_first_name, p.pr_last_name) AS name,
             p.pr_profile_image,
             p.pr_is_active,
-
             o.or_id,
             o.or_organization_name,
             o.or_organization_email
@@ -1721,29 +1718,19 @@ async function getDeviceAttendance() {
         continue;
       }
 
-      /*
-       * Update latest punch
-       */
+     
       if (punchDate > latestPunch) {
         latestPunch = punchDate;
       }
 
-      /*
-       * -------------------------------------------------------
-       * ATTENDANCE DATE
-       * -------------------------------------------------------
-       */
+      
 
       const dayStr = getISTDate(punchDate);
 
       let durationStr = "Initial Punch";
       let emailNeeded = false;
 
-      /*
-       * -------------------------------------------------------
-       * FIND DAILY ATTENDANCE
-       * -------------------------------------------------------
-       */
+     
 
       const { rows: dailyRow } = await db.query(
         `
@@ -1761,12 +1748,7 @@ async function getDeviceAttendance() {
       let firstPunch;
       let lastPunch;
 
-      /*
-       * -------------------------------------------------------
-       * UPDATE EXISTING ATTENDANCE
-       * -------------------------------------------------------
-       */
-
+      
       if (dailyRow.length > 0) {
         const existing = dailyRow[0];
 
@@ -1780,9 +1762,7 @@ async function getDeviceAttendance() {
 
         let needsUpdate = false;
 
-        /*
-         * Earlier punch becomes Punch In
-         */
+        
         if (
           !firstPunch ||
           punchDate < firstPunch
@@ -1791,9 +1771,7 @@ async function getDeviceAttendance() {
           needsUpdate = true;
         }
 
-        /*
-         * Later punch becomes Punch Out
-         */
+       
         if (
           !lastPunch ||
           punchDate > lastPunch
@@ -1806,9 +1784,7 @@ async function getDeviceAttendance() {
           continue;
         }
 
-        /*
-         * Calculate working duration
-         */
+       
         if (firstPunch && lastPunch) {
           const diff =
             lastPunch.getTime() -
@@ -1828,9 +1804,7 @@ async function getDeviceAttendance() {
 
         emailNeeded = true;
 
-        /*
-         * UPDATE DAILY ATTENDANCE
-         */
+       
 
         await db.query(
           `
@@ -1859,11 +1833,7 @@ async function getDeviceAttendance() {
         );
       }
 
-      /*
-       * -------------------------------------------------------
-       * FIRST PUNCH
-       * -------------------------------------------------------
-       */
+     
 
       else {
         firstPunch = punchDate;
@@ -1904,11 +1874,7 @@ async function getDeviceAttendance() {
         );
       }
 
-      /*
-       * -------------------------------------------------------
-       * EMAIL
-       * -------------------------------------------------------
-       */
+      
 
       if (emailNeeded) {
         const punchInTimeStr =
@@ -1934,9 +1900,7 @@ async function getDeviceAttendance() {
             )
           : "Initial Punch";
 
-        /*
-         * Format date DD-MM-YYYY using IST
-         */
+        
         const dateParts =
           new Intl.DateTimeFormat("en-GB", {
             timeZone: "Asia/Kolkata",
@@ -1969,17 +1933,7 @@ async function getDeviceAttendance() {
             }
           );
 
-        /*
-         * -----------------------------------------------------
-         * EMAIL ADDRESS
-         *
-         * Production:
-         * personal.pr_email
-         *
-         * Development:
-         * LOCAL_ADMIN_EMAILS
-         * -----------------------------------------------------
-         */
+   
 
         const empEmail =
           process.env.NODE_ENV === "production"
@@ -2001,7 +1955,7 @@ async function getDeviceAttendance() {
             `Attendance Notification: ${action}`,
             "punch_in_out",
             {
-              name: employee.pr_name,
+              name: employee.name,
               emp_id: employee.pr_emp_id,
 
               action,
