@@ -507,13 +507,15 @@ exports.addPersonInfo = async (req, res) => {
       await client.query('BEGIN');
 
       let newEmployeeId = employee_id;
-      
+
       if (!newEmployeeId) {
+        // No ID supplied: let the identity sequence generate one
         const seqResult = await client.query(
           "SELECT nextval('personal_pr_id_seq'::regclass) as next_id"
         );
         newEmployeeId = seqResult.rows[0].next_id;
       } else {
+        // Caller supplied an explicit ID: check it's free
         const existsCheck = await client.query(
           "SELECT 1 FROM personal WHERE Pr_Id = $1",
           [employee_id]
@@ -524,6 +526,16 @@ exports.addPersonInfo = async (req, res) => {
             message: `Employee ID ${employee_id} already exists`,
           });
         }
+
+        // IMPORTANT: resync the identity sequence so future auto-generated
+        // IDs never collide with this manually-supplied one.
+        await client.query(
+          `SELECT setval(
+             'personal_pr_id_seq',
+             GREATEST((SELECT COALESCE(MAX(Pr_Id), 0) FROM personal), $1)
+           )`,
+          [newEmployeeId]
+        );
       }
 
       const result = await client.query(
@@ -602,23 +614,37 @@ exports.addPersonInfo = async (req, res) => {
 
   } catch (error) {
     console.error("Personal POST error:", error);
-    
+
     if (error.code === '23505') {
-      if (error.constraint === 'personal_pr_id_pkey' || error.constraint === 'login_pkey') {
+      // Postgres default naming: <table>_pkey for primary keys
+      if (error.constraint === 'personal_pkey') {
         return res.status(409).json({
-          message: "Employee ID or Login ID conflict. Please try again.",
+          message: `Employee ID conflict. Please try again.`,
           error: error.detail
         });
       }
+      if (error.constraint === 'login_pkey') {
+        return res.status(409).json({
+          message: "Login ID conflict. Please try again.",
+          error: error.detail
+        });
+      }
+      if (error.constraint === 'personal_pr_email_key') {
+        return res.status(409).json({
+          message: "Email already exists in the system",
+          error: error.detail
+        });
+      }
+      // Fallback for any other unique-constraint violation
       return res.status(409).json({
-        message: "Email already exists in the system",
+        message: "A record with this value already exists",
         error: error.detail
       });
     }
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       message: "Server error while creating personal details",
-      error: error.message 
+      error: error.message
     });
   }
 };
