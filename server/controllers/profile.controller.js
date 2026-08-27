@@ -336,9 +336,6 @@ const parseDob = (dob) => {
 };
 
 exports.addPersonInfo = async (req, res) => {
-  const { employee_id } = req.params; // Or_Emp_Id
-  const client = await db.connect();
-
   try {
     const { employee_id } = req.params;
 
