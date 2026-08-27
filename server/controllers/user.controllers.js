@@ -31,40 +31,42 @@ const loginController = async (req, res) => {
     password = String(password).trim();
 
     
-    const result = await db.query(
-      `
-      SELECT
-          p.pr_id,
-          p.pr_email,
-          p.pr_emp_id,
-          p.pr_first_name,
-          p.pr_last_name,
-          p.pr_profile_image,
-          p.pr_is_active,
-          o.or_id,
-          o.or_organization_name,
-          o.or_organization_email,
+const result = await db.query(
+  `
+  SELECT
+      p.pr_id,
+      p.pr_email,
 
-          l.lg_password
+      o.or_emp_id,
 
-      FROM personal p
+      p.pr_first_name,
+      p.pr_last_name,
+      p.pr_profile_image,
+      p.pr_is_active,
 
-      INNER JOIN login l
-          ON l.pr_id = p.pr_id
+      o.or_id,
+      o.or_organization_name,
+      o.or_organization_email,
 
-      LEFT JOIN organizations o
-          ON o.pr_id = p.pr_id
+      l.lg_password
 
-      WHERE
-          LOWER(p.pr_email) = $1
-          OR LOWER(p.pr_emp_id) = $1
-          OR LOWER(o.or_organization_email) = $1
+  FROM personal p
 
-      LIMIT 1
-      `,
-      [identifier]
-    );
+  INNER JOIN login l
+      ON l.pr_id = p.pr_id
 
+  LEFT JOIN organizations o
+      ON o.pr_id = p.pr_id
+
+  WHERE
+      LOWER(p.pr_email) = $1
+      OR LOWER(o.or_emp_id) = $1
+      OR LOWER(o.or_organization_email) = $1
+
+  LIMIT 1
+  `,
+  [identifier]
+);
   
     if (result.rows.length === 0) {
       return res.status(401).json({
@@ -173,60 +175,100 @@ const loginController = async (req, res) => {
 
 const changeMyPassword = async (req, res) => {
   try {
-    const employeeId = req.user.id; 
+    const employeeId = req.user.id;
+
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required"
+      });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters"
+      });
     }
 
-    
+    // Get current password from LOGIN table
     const result = await db.query(
-      "SELECT password, emp_id, name FROM users WHERE id = $1",
+      `
+      SELECT
+        l.pr_id,
+        l.lg_password,
+        p.pr_emp_id,
+        p.pr_first_name,
+        p.pr_last_name
+      FROM login l
+      INNER JOIN personal p
+        ON p.pr_id = l.pr_id
+      WHERE l.pr_id = $1
+      `,
       [employeeId]
     );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Employee not found" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee login not found"
+      });
     }
 
     const user = result.rows[0];
 
-    
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    // Check current password
+    const isMatch = await bcrypt.compare(
+      String(currentPassword),
+      user.lg_password
+    );
 
     if (!isMatch) {
-      return res.status(401).json({ message: "Current password is incorrect" });
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect"
+      });
     }
 
-   
-    const saltRounds = 10;
-    const newHashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    // Hash new password
+    const newHashedPassword = await bcrypt.hash(
+      String(newPassword),
+      10
+    );
 
+    // Update password in LOGIN table
     await db.query(
-      `UPDATE users SET password = $1 WHERE id = $2`,
+      `
+      UPDATE login
+      SET lg_password = $1
+      WHERE pr_id = $2
+      `,
       [newHashedPassword, employeeId]
     );
 
-    
-    sendNotification(user.emp_id, `Security Password :-  ${newPassword} `, user.name);
+    // Notification
+    await sendNotification(
+      user.pr_emp_id,
+      "Your password has been changed successfully.",
+      `${user.pr_first_name || ""} ${user.pr_last_name || ""}`.trim()
+    );
 
     return res.status(200).json({
+      success: true,
       message: "Password changed successfully"
     });
 
   } catch (error) {
     console.error("Change Password Error:", error);
-    if (!res.headersSent) {
-      return res.status(500).json({ message: "Internal Server Error" });
-    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
   }
 };
-
 
 const getAllEmployees = async (req, res) => {
   try {

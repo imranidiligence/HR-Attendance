@@ -1590,7 +1590,7 @@ async function getDeviceAttendance() {
         SELECT
             p.pr_id,
             p.pr_email,
-            p.pr_emp_id,
+            o.pr_emp_id,
             CONCAT_WS(' ', p.pr_first_name, p.pr_last_name) AS name,
             p.pr_profile_image,
             p.pr_is_active,
@@ -1604,7 +1604,7 @@ async function getDeviceAttendance() {
             ON o.pr_id = p.pr_id
 
         WHERE
-            LOWER(p.pr_emp_id) = LOWER($1)
+            LOWER(o.pr_emp_id) = LOWER($1)
 
         LIMIT 1
         `,
