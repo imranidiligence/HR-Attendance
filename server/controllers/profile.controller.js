@@ -20,6 +20,8 @@ exports.addOrganizationInfo = async (req, res) => {
       employee_type_id,
       reporting_location_id,
       organization_email,
+      official_email,
+      official_contact,
       reporting_to_id,
       department_id,
       designation_id,
@@ -114,6 +116,8 @@ exports.addOrganizationInfo = async (req, res) => {
         or_employee_type_id,
         or_reporting_location_id,
         or_organization_email,
+        or_official_email,
+        or_official_contact,
         or_reporting_to_id,
         or_department_id,
         or_designation_id,
@@ -136,7 +140,9 @@ exports.addOrganizationInfo = async (req, res) => {
         $11,
         $12,
         $13,
-        $14
+        $14,
+        $15,
+        $16
       )
       RETURNING *
       `,
@@ -149,6 +155,8 @@ exports.addOrganizationInfo = async (req, res) => {
         employee_type_id || null,
         reporting_location_id || null,
         organization_email || null,
+        official_email || null,
+        official_contact || null,
         reporting_to_id || null,
         department_id || null,
         designation_id || null,
@@ -224,6 +232,8 @@ exports.getOrganizationInfo = async (req, res) => {
         o.or_employee_type_id,
         o.or_reporting_location_id,
         o.or_organization_email,
+        o.or_official_email,
+        o.or_official_contact,
         o.or_reporting_to_id,
         o.or_department_id,
         o.or_designation_id,
@@ -269,6 +279,8 @@ exports.getOrganizationInfo = async (req, res) => {
         employee_type_id: row.or_employee_type_id,
         reporting_location_id: row.or_reporting_location_id,
         organization_email: row.or_organization_email,
+        official_email: row.or_official_email,
+        official_contact: row.or_official_contact,
 
         reporting_to_id: row.or_reporting_to_id,
         department_id: row.or_department_id,
@@ -314,6 +326,8 @@ exports.updateOrganizationInfo = async (req, res) => {
       employee_type_id,
       reporting_location_id,
       organization_email,
+      official_email,
+      official_contact,
       reporting_to_id,
       department_id,
       designation_id,
@@ -396,14 +410,16 @@ exports.updateOrganizationInfo = async (req, res) => {
         Or_Employee_Type_Id = $5,
         Or_Reporting_Location_Id = $6,
         Or_Organization_Email = $7,
-        Or_Reporting_To_Id = $8,
-        Or_Department_Id = $9,
-        Or_Designation_Id = $10,
-        Or_Joining_Date = $11,
-        Or_Leaving_Date = $12,
+        Or_Official_Email = $8,
+        Or_Official_Contact = $9,
+        Or_Reporting_To_Id = $10,
+        Or_Department_Id = $11,
+        Or_Designation_Id = $12,
+        Or_Joining_Date = $13,
+        Or_Leaving_Date = $14,
         Or_Updated_At = CURRENT_TIMESTAMP,
-        Or_Updated_By = $13
-      WHERE Pr_Id = $14
+        Or_Updated_By = $15
+      WHERE Pr_Id = $16
       RETURNING *
       `,
       [
@@ -414,6 +430,8 @@ exports.updateOrganizationInfo = async (req, res) => {
         employee_type_id || null,
         reporting_location_id || null,
         organization_email,
+        official_email,
+        official_contact,
         reporting_to_id || null,
         department_id || null,
         designation_id || null,
