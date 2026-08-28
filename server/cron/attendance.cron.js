@@ -226,49 +226,121 @@ const { db } = require("../db/connectDB");
 const { syncMachineToActivityLog } = require("../services/activity.log.service");
 const { syncActivityToAttendanceLogs } = require("../services/attendance.log.service");
 const { generateDailyAttendance } = require("../services/daily.attendance.service");
+const { generateWeeklyAttendance } = require("../services/weekly.attendance.service");
+const { generateMonthlyAttendance } = require("../services/monthly.attendance.service");
 
 const TIMEZONE = "Asia/Kolkata";
 
-async function runPipelineWithLock() {
+/*
+  Generic advisory-lock runner, reused by every job below.
+  Each job gets its own connection + its own lock name, so
+  jobs never block each other — only overlapping runs of the
+  SAME job get skipped.
+*/
+async function runWithLock(jobName, jobFunction) {
   const client = await db.connect();
   let locked = false;
 
   try {
     const lockResult = await client.query(
       `SELECT pg_try_advisory_lock(hashtext($1)) AS locked`,
-      ["attendance_pipeline"]
+      [jobName]
     );
+
     locked = lockResult.rows[0]?.locked === true;
 
     if (!locked) {
-      console.log("[CRON] attendance_pipeline skipped - previous run still in progress");
+      console.log(`[CRON] ${jobName} skipped - previous run still in progress`);
       return;
     }
 
-    // Sequential, same connection, so each stage sees the prior stage's commits
-    const machineResult = await syncMachineToActivityLog(client);
-    console.log("[CRON] Stage 1 (machine -> activity_log):", machineResult);
-
-    const activityResult = await syncActivityToAttendanceLogs(client);
-    console.log("[CRON] Stage 2 (activity_log -> attendance_logs):", activityResult);
-
-    const dailyResult = await generateDailyAttendance(client);
-    console.log("[CRON] Stage 3 (attendance_logs -> daily_attendance):", dailyResult);
+    const result = await jobFunction(client);
+    console.log(`[CRON] ${jobName} completed:`, result);
 
   } catch (error) {
-    console.error("[CRON] attendance_pipeline failed:", error.message);
+    console.error(`[CRON] ${jobName} failed:`, error.message);
   } finally {
     try {
       if (locked) {
-        await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, ["attendance_pipeline"]);
+        await client.query(`SELECT pg_advisory_unlock(hashtext($1))`, [jobName]);
       }
     } catch (unlockError) {
-      console.error("[CRON] attendance_pipeline unlock error:", unlockError.message);
+      console.error(`[CRON] ${jobName} unlock error:`, unlockError.message);
     }
     client.release();
   }
 }
 
-cron.schedule("* * * * *", runPipelineWithLock, { timezone: TIMEZONE });
+/* =====================================================
+   EXISTING PIPELINE: machine -> activity_log ->
+   attendance_logs -> daily_attendance, every minute
+===================================================== */
+
+async function runPipeline(client) {
+  const machineResult = await syncMachineToActivityLog(client);
+  console.log("[CRON] Stage 1 (machine -> activity_log):", machineResult);
+
+  const activityResult = await syncActivityToAttendanceLogs(client);
+  console.log("[CRON] Stage 2 (activity_log -> attendance_logs):", activityResult);
+
+  const dailyResult = await generateDailyAttendance(client);
+  console.log("[CRON] Stage 3 (attendance_logs -> daily_attendance):", dailyResult);
+
+  return { machineResult, activityResult, dailyResult };
+}
+
+cron.schedule(
+  "* * * * *",
+  async () => {
+    await runWithLock("attendance_pipeline", runPipeline);
+  },
+  { timezone: TIMEZONE }
+);
+
+/* =====================================================
+   WEEKLY AGGREGATION: attendance_logs -> weekly table
+   Runs once daily at 11:00 AM IST
+===================================================== */
+
+cron.schedule(
+  "0 11 * * *",
+  async () => {
+    await runWithLock("weekly_attendance", generateWeeklyAttendance);
+  },
+  { timezone: TIMEZONE }
+);
+
+/* =====================================================
+   MONTHLY AGGREGATION: attendance_logs -> monthly table
+   Runs once daily at 11:00 AM IST
+===================================================== */
+
+cron.schedule(
+  "0 11 * * *",
+  async () => {
+    await runWithLock("monthly_attendance", generateMonthlyAttendance);
+  },
+  { timezone: TIMEZONE }
+);
+
+/* =====================================================
+   STARTUP RUNS
+
+   Weekly and monthly tables are currently empty, so run
+   both once immediately on app start/deploy (in addition
+   to their 11 AM schedule). Same lock names as above, so
+   if you restart the app right before/after 11 AM, the
+   lock still prevents a double-run.
+===================================================== */
+
+(async () => {
+  console.log("[CRON] Running weekly_attendance once on startup...");
+  await runWithLock("weekly_attendance", generateWeeklyAttendance);
+
+  console.log("[CRON] Running monthly_attendance once on startup...");
+  await runWithLock("monthly_attendance", generateMonthlyAttendance);
+})();
+
+module.exports = {};
 
 
