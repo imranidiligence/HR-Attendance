@@ -623,12 +623,10 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate User ID
     if (!id || isNaN(id)) {
       return errorResponse(res, 400, 'Valid User ID is required', null);
     }
 
-    // Check whether user exists
     const existing = await db.query(
       `SELECT * FROM organizations WHERE pr_id = $1`,
       [id]
@@ -638,9 +636,8 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       return errorResponse(res, 404, 'User not found', null);
     }
 
-    const { UpdatedBy, IsActive } = req.body;
+    const { IsActive } = req.body;
 
-    // Validate IsActive
     if (typeof IsActive !== 'boolean') {
       return errorResponse(
         res,
@@ -650,19 +647,23 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       );
     }
 
-   // Update user status
-const query = `
-  UPDATE organizations
-  SET
-    is_active = $1
-  WHERE pr_id = $2
-  RETURNING *
-`;
+    const updatedBy = req.user?.id || null;
 
-const result = await db.query(query, [
-  IsActive,
-  id
-]);
+    const query = `
+      UPDATE organizations
+      SET
+        or_is_active = $1,
+        or_updated_by = $2,
+        or_updated_at = CURRENT_TIMESTAMP
+      WHERE pr_id = $3
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [
+      IsActive,
+      updatedBy,
+      id
+    ]);
 
     return successResponse(
       res,
