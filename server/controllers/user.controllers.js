@@ -61,7 +61,8 @@ const result = await db.query(
   WHERE
       LOWER(p.pr_email) = $1
       OR LOWER(o.or_emp_id) = $1
-      OR LOWER(o.or_organization_email) = $1
+      OR LOWER(o.or_official_email) = $1
+      OR LOWER(o.or_official_contact) = $1
 
   LIMIT 1
   `,
