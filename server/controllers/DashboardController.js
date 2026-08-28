@@ -39,7 +39,7 @@ const getActive_Present_EmployeeCount = async (req, res) => {
       INNER JOIN organizations u ON u.or_emp_id = a.emp_id
       WHERE a.created_at >= CURRENT_DATE
         AND a.created_at < CURRENT_DATE + INTERVAL '1 day'
-        AND u.is_active = TRUE
+        AND u.or_is_active = TRUE
     `;
 
     const result = await db.query(query);
