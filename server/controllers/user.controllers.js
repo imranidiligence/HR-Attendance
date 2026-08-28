@@ -629,7 +629,7 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
 
     // Check whether user exists
     const existing = await db.query(
-      `SELECT * FROM users WHERE id = $1`,
+      `SELECT * FROM organizations WHERE pr_id = $1`,
       [id]
     );
 
@@ -651,10 +651,10 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
 
    // Update user status
 const query = `
-  UPDATE users
+  UPDATE organizations
   SET
     is_active = $1
-  WHERE id = $2
+  WHERE pr_id = $2
   RETURNING *
 `;
 
