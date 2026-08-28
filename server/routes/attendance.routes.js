@@ -60,221 +60,372 @@ router.get("/all-attendance", auth, async (req, res) => {
     let { month, year } = req.query;
 
     const today = new Date();
-    const filterMonth = parseInt(month) || today.getMonth() + 1;
-    const filterYear = parseInt(year) || today.getFullYear();
 
-    // console.log("filterMonth",filterMonth);
-    // console.log("filterYear",filterYear);
+    const filterMonth =
+      parseInt(month) || today.getMonth() + 1;
 
-    const fromDate = new Date(filterYear, filterMonth - 1, 1)
+    const filterYear =
+      parseInt(year) || today.getFullYear();
+
+    /*
+     * =========================================================
+     * MONTH DATE RANGE
+     * =========================================================
+     */
+    const fromDate = new Date(
+      filterYear,
+      filterMonth - 1,
+      1
+    )
       .toISOString()
       .slice(0, 10);
-    const toDate = new Date(filterYear, filterMonth, 1)
+
+    const toDate = new Date(
+      filterYear,
+      filterMonth,
+      1
+    )
       .toISOString()
       .slice(0, 10);
 
-    // console.log("fromDate",fromDate);
-    // console.log("toDate",toDate);
+    const values = [
+      fromDate,
+      toDate,
+    ];
 
-    const values = [fromDate, toDate];
-
+    /*
+     * =========================================================
+     * MONTHLY ATTENDANCE
+     * =========================================================
+     *
+     * Employee:
+     * organizations + personal
+     *
+     * Department:
+     * department_master
+     *
+     * Attendance:
+     * monthly_attendance
+     *
+     * Status:
+     * attendence_status
+     */
     const query = `
-   WITH calendar AS (
-    SELECT generate_series($1::date, $2::date, '1 day')::date AS date_only
-),
-daily AS (
-    SELECT 
-        u.emp_id,
-        u.name,
-        u.is_active,  
-        p.department,
-        cal.date_only,
+      WITH calendar AS
+      (
+        SELECT
+          generate_series(
+            $1::DATE,
+            ($2::DATE - INTERVAL '1 day'),
+            INTERVAL '1 day'
+          )::DATE AS date_only
+      ),
 
-    MIN(al.punch_time) AS first_in,
+      employees AS
+      (
+        SELECT DISTINCT
 
-    CASE 
-        WHEN COUNT(al.punch_time) > 1 
-        THEN MAX(al.punch_time)
-        ELSE NULL
-    END AS last_out,
+          /*
+           * ===================================================
+           * EMPLOYEE ID
+           * ===================================================
+           */
+          TRIM(o.or_emp_id) AS emp_id,
 
-      CASE
-    WHEN hd.holiday_date IS NOT NULL THEN 'Holiday'
+          /*
+           * ===================================================
+           * EMPLOYEE NAME
+           * ===================================================
+           */
+          COALESCE(
+            NULLIF(
+              TRIM(p.pr_name),
+              ''
+            ),
 
-    WHEN cal.date_only = CURRENT_DATE AND COUNT(al.punch_time) = 1 
-        THEN 'Working'
+            NULLIF(
+              TRIM(
+                CONCAT_WS(
+                  ' ',
+                  p.pr_first_name,
+                  p.pr_last_name
+                )
+              ),
+              ''
+            ),
 
-    WHEN COUNT(al.punch_time) = 1 
-        THEN 'Punch Miss'
+            '-'
+          ) AS name,
 
-    WHEN COUNT(al.punch_time) = 0 
-        THEN 'Absent'
+          /*
+           * ===================================================
+           * DEPARTMENT NAME
+           * ===================================================
+           */
+          COALESCE(
+            dm."DepartmentName",
+            '-'
+          ) AS department,
 
-    ELSE 'Present'
-END AS status,
+          /*
+           * ===================================================
+           * ACTIVE STATUS
+           * ===================================================
+           */
+          COALESCE(
+            o.or_is_active,
+            FALSE
+          ) AS is_active
 
+        FROM public.organizations o
+
+        /*
+         * =====================================================
+         * PERSONAL
+         * =====================================================
+         */
+        INNER JOIN public.personal p
+          ON p.pr_id = o.pr_id
+
+        /*
+         * =====================================================
+         * DEPARTMENT
+         * =====================================================
+         */
+        LEFT JOIN public.department_master dm
+          ON dm."DepartmentId" =
+             o.or_department_id
+
+        WHERE o.or_emp_id IS NOT NULL
+
+          AND TRIM(o.or_emp_id) <> ''
+
+          AND COALESCE(
+            o.or_is_active,
+            FALSE
+          ) = TRUE
+
+        ORDER BY
+          TRIM(o.or_emp_id)
+      )
+
+      SELECT
+
+        /*
+         * =====================================================
+         * EMPLOYEE
+         * =====================================================
+         */
+        e.emp_id,
+
+        e.name,
+
+        e.department,
+
+        e.is_active,
+
+        /*
+         * =====================================================
+         * DATE
+         * =====================================================
+         */
+        c.date_only,
+
+        /*
+         * =====================================================
+         * MONTHLY ATTENDANCE
+         * =====================================================
+         */
+        ma.id AS attendance_id,
+
+        ma.attendance_date,
+
+        /*
+         * =====================================================
+         * PUNCH IN
+         * =====================================================
+         */
+        ma.punch_in AS first_in,
+
+        /*
+         * =====================================================
+         * PUNCH OUT
+         * =====================================================
+         */
+        ma.punch_out AS last_out,
+
+        /*
+         * =====================================================
+         * TOTAL HOURS
+         * =====================================================
+         */
         COALESCE(
           ROUND(
             EXTRACT(
-              EPOCH FROM 
-              MAX(al.punch_time) - MIN(al.punch_time)
-            ) / 3600.0, 
+              EPOCH FROM ma.total_hours
+            ) / 3600.0,
             2
-          ), 
+          ),
           0.00
-        ) AS hours_worked
+        ) AS hours_worked,
 
-    FROM users u
-    CROSS JOIN calendar cal
-    LEFT JOIN attendance_logs al
-        ON al.emp_id = u.emp_id
-        AND (
-            (al.punch_time)::date = cal.date_only
+        /*
+         * =====================================================
+         * STATUS ID
+         * =====================================================
+         */
+        ma.status_id,
+
+        /*
+         * =====================================================
+         * STATUS NAME
+         * =====================================================
+         */
+        COALESCE(
+          ast.status_name,
+          CASE
+            WHEN ma.id IS NULL
+              THEN 'Absent'
+            ELSE 'Unknown'
+          END
+        ) AS status
+
+      FROM employees e
+
+      /*
+       * =======================================================
+       * EVERY EMPLOYEE × EVERY DAY
+       * =======================================================
+       */
+      CROSS JOIN calendar c
+
+      /*
+       * =======================================================
+       * MONTHLY ATTENDANCE
+       * =======================================================
+       */
+      LEFT JOIN public.monthly_attendance ma
+
+        ON TRIM(
+          ma.emp_id
+        ) = TRIM(
+          e.emp_id
         )
-    LEFT JOIN personal p
-        ON p.emp_id = u.emp_id
-    LEFT JOIN holidays hd
-        ON hd.holiday_date = cal.date_only
-        WHERE u.is_active = true
-    GROUP BY 
-        u.emp_id, 
-        u.name, 
-        u.is_active,   
-        p.department, 
-        cal.date_only, 
-        hd.holiday_date
-)
-SELECT 
-    emp_id,
-    name,
-    department,
-    is_active,   
-    JSON_AGG(
-        JSON_BUILD_OBJECT(
-            'date', date_only,
-            'first_in', first_in,
-            'last_out', last_out,
-            'hours_worked', hours_worked,
-            'status', status
-        )
-        ORDER BY date_only
-    ) AS attendance
-FROM daily
-GROUP BY emp_id, name, department, is_active   
-ORDER BY emp_id;
-`;
 
-//     const query = `
-//     WITH calendar AS (
-//     SELECT generate_series($1::date, $2::date, '1 day')::date AS date_only
-// ),
-// daily AS (
-//     SELECT 
-//         u.emp_id,
-//         u.name,
-//         u.is_active,  
-//         p.department,
-//         cal.date_only,
+        AND ma.attendance_date =
+            c.date_only
 
-//         MIN(al.punch_time) AS first_in,
+      /*
+       * =======================================================
+       * ATTENDANCE STATUS
+       * =======================================================
+       */
+      LEFT JOIN public.attendence_status ast
 
-//         CASE 
-//             WHEN COUNT(al.punch_time) > 1 
-//             THEN MAX(al.punch_time)
-//             ELSE NULL
-//         END AS last_out,
+        ON ast.id =
+           ma.status_id
 
-//         COALESCE(
-//           ROUND(
-//             EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600.0, 
-//             2
-//           ), 
-//           0.00
-//         ) AS hours_worked,
+        AND COALESCE(
+          ast.is_active,
+          TRUE
+        ) = TRUE
 
-//         -- Advanced status logic
-//         CASE
-//             -- Holiday
-//             WHEN hd.holiday_date IS NOT NULL THEN 'Holiday'
+      ORDER BY
+        c.date_only,
+        e.emp_id;
+    `;
 
-//             -- Absent
-//             WHEN MIN(al.punch_time) IS NULL THEN 'Absent'
+    const { rows } =
+      await db.query(
+        query,
+        values
+      );
 
-//             -- Working: punched in but not punched out, before 10:00 AM
-//             WHEN MIN(al.punch_time) IS NOT NULL
-//                  AND (CASE WHEN COUNT(al.punch_time) > 1 THEN MAX(al.punch_time) ELSE NULL END) IS NULL
-//                  AND MIN(al.punch_time)::time < time '10:00:00' THEN 'Working'
+    /*
+     * =========================================================
+     * GROUP BY EMPLOYEE
+     * =========================================================
+     */
+    const employeeMap = {};
 
-//             -- Late Coming: punch-in after 9:30 + 30 min buffer
-//             WHEN MIN(al.punch_time) > (cal.date_only + time '09:30:00' + interval '30 minutes') THEN 'Late Come'
+    rows.forEach((row) => {
 
-//             -- Early Go: left before minimum expected hours
-//             WHEN (CASE WHEN COUNT(al.punch_time) > 1 THEN MAX(al.punch_time) ELSE NULL END) IS NOT NULL
-//                  AND ROUND(EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600.0, 2) < 8
-//                  AND (CASE WHEN COUNT(al.punch_time) > 1 THEN MAX(al.punch_time) ELSE NULL END) <
-//                      (MIN(al.punch_time) + interval '7:30 hours' * (CASE WHEN EXTRACT(DOW FROM cal.date_only) = 6 THEN 5.0/8 ELSE 1 END))
-//             THEN 'Early Go'
+      if (!employeeMap[row.emp_id]) {
 
-//             -- Present: worked enough hours (Saturday 5h, weekday 8h)
-//             WHEN ROUND(EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600.0, 2) >=
-//                  (CASE WHEN EXTRACT(DOW FROM cal.date_only) = 6 THEN 5 ELSE 8 END)
-//             THEN 'Present'
+        employeeMap[row.emp_id] = {
+          emp_id:
+            row.emp_id,
 
-//             ELSE 'Absent'
-//         END AS status
+          name:
+            row.name,
 
-//     FROM users u
-//     CROSS JOIN calendar cal
-//     LEFT JOIN attendance_logs al
-//         ON al.emp_id = u.emp_id
-//         AND (al.punch_time::date = cal.date_only)
-//     LEFT JOIN personal p
-//         ON p.emp_id = u.emp_id
-//     LEFT JOIN holidays hd
-//         ON hd.holiday_date = cal.date_only
+          department:
+            row.department,
 
-//     GROUP BY 
-//         u.emp_id, 
-//         u.name, 
-//         u.is_active,   
-//         p.department, 
-//         cal.date_only, 
-//         hd.holiday_date
-// )
-// SELECT 
-//     emp_id,
-//     name,
-//     department,
-//     is_active,   
-//     JSON_AGG(
-//         JSON_BUILD_OBJECT(
-//             'date', date_only,
-//             'first_in', first_in,
-//             'last_out', last_out,
-//             'hours_worked', hours_worked,
-//             'status', status
-//         )
-//         ORDER BY date_only
-//     ) AS attendance
-// FROM daily
-// GROUP BY emp_id, name, department, is_active   
-// ORDER BY emp_id;
-//     `
-    const { rows } = await db.query(query, values);
+          is_active:
+            row.is_active,
 
+          attendance: [],
+        };
+      }
+
+      employeeMap[row.emp_id].attendance.push({
+
+        date:
+          row.date_only,
+
+        first_in:
+          row.first_in,
+
+        last_out:
+          row.last_out,
+
+        hours_worked:
+          row.hours_worked,
+
+        status_id:
+          row.status_id,
+
+        status:
+          row.status,
+      });
+    });
+
+    const attendance =
+      Object.values(employeeMap);
+
+    /*
+     * =========================================================
+     * RESPONSE
+     * =========================================================
+     */
     return res.status(200).json({
+
       success: true,
-      month: filterMonth,
-      year: filterYear,
-      total_records: rows.length,
-      attendance: rows,
+
+      month:
+        filterMonth,
+
+      year:
+        filterYear,
+
+      total_records:
+        attendance.length,
+
+      attendance,
     });
 
   } catch (error) {
-    console.error("All Attendance Report Error:", error);
+
+    console.error(
+      "All Attendance Report Error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message:
+        "Internal Server Error",
     });
   }
 });
@@ -974,180 +1125,586 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
   try {
     const { search, page = 1, limit = 10 } = req.query;
 
-    const pageInt = parseInt(page);
-    const limitInt = parseInt(limit);
+    const pageInt = Math.max(parseInt(page) || 1, 1);
+    const limitInt = Math.max(parseInt(limit) || 10, 1);
     const offset = (pageInt - 1) * limitInt;
 
-    const searchTerm = search ? search.trim() : null;
-    const isTimeSearch = searchTerm && searchTerm.includes(":");
+    const searchTerm =
+      search && search.trim()
+        ? search.trim()
+        : null;
 
-    const now = new Date();
-    const toDate = now.toISOString().split("T")[0];
+    const isTimeSearch =
+      !!searchTerm && searchTerm.includes(":");
 
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(now.getDate() - 6);
-    const fromDate = sevenDaysAgo.toISOString().split("T")[0];
+    /*
+     * =========================================================
+     * GET TODAY + LAST 7 DAYS IN IST
+     * =========================================================
+     */
+    const dateQuery = `
+      SELECT
+        (
+          CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+        )::DATE AS today,
 
-    const timeSearch = isTimeSearch ? `%${searchTerm}%` : "%";
+        (
+          (
+            CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+          )::DATE - 6
+        ) AS from_date
+    `;
 
+    const { rows: dateRows } = await db.query(dateQuery);
+
+    const today = dateRows[0].today;
+    const fromDate = dateRows[0].from_date;
+
+    /*
+     * =========================================================
+     * COUNT ACTIVE EMPLOYEES
+     * =========================================================
+     */
+    const countQuery = `
+      SELECT COUNT(DISTINCT o.or_id) AS total
+
+      FROM public.organizations o
+
+      INNER JOIN public.personal p
+        ON p.pr_id = o.pr_id
+
+      WHERE o.or_emp_id IS NOT NULL
+        AND TRIM(o.or_emp_id) <> ''
+
+        AND COALESCE(
+          o.or_is_active,
+          FALSE
+        ) = TRUE
+    `;
+
+    const countResult = await db.query(countQuery);
+
+    const totalItems = parseInt(
+      countResult.rows[0].total,
+      10
+    );
+
+    /*
+     * =========================================================
+     * WEEKLY ATTENDANCE
+     * =========================================================
+     */
     const query = `
-WITH calendar AS (
-  SELECT generate_series($1::date, $2::date, '1 day')::date AS date_only
-),
-employees AS (
-  SELECT emp_id, name, role
-  FROM users
-  WHERE is_active = true
-  ORDER BY emp_id
-  OFFSET $5 LIMIT $6
-),
-attendance_summary AS (
-  SELECT 
-    al.emp_id,
-    al.punch_time::date AS date_only,
-    MIN(al.punch_time) AS first_in,
-    CASE 
-      WHEN COUNT(*) > 1 THEN MAX(al.punch_time)
-      ELSE NULL
-    END AS last_out,
-    CASE 
-      WHEN COUNT(*) > 1 THEN ROUND(
-        EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600, 2
+      WITH calendar AS
+      (
+        SELECT
+          generate_series(
+            $1::DATE,
+            $2::DATE,
+            INTERVAL '1 day'
+          )::DATE AS date_only
+      ),
+
+      employees AS
+      (
+        SELECT DISTINCT
+
+          TRIM(o.or_emp_id) AS emp_id,
+
+          COALESCE(
+            NULLIF(
+              TRIM(p.pr_name),
+              ''
+            ),
+
+            NULLIF(
+              TRIM(
+                CONCAT_WS(
+                  ' ',
+                  p.pr_first_name,
+                  p.pr_last_name
+                )
+              ),
+              ''
+            ),
+
+            '-'
+          ) AS name,
+
+          'employee' AS role,
+
+          COALESCE(
+            o.or_is_active,
+            FALSE
+          ) AS is_active
+
+        FROM public.organizations o
+
+        INNER JOIN public.personal p
+          ON p.pr_id = o.pr_id
+
+        WHERE o.or_emp_id IS NOT NULL
+          AND TRIM(o.or_emp_id) <> ''
+
+          AND COALESCE(
+            o.or_is_active,
+            FALSE
+          ) = TRUE
+
+        ORDER BY
+          TRIM(o.or_emp_id)
+
+        OFFSET $3
+        LIMIT $4
       )
-      ELSE 0
-    END AS total_hours
-  FROM attendance_logs al
-  WHERE al.punch_time::date BETWEEN $1 AND $2
-  GROUP BY al.emp_id, al.punch_time::date
-)
 
-SELECT 
-  c.date_only,
-  e.emp_id,
-  e.name,
-  e.role,
-  TO_CHAR(c.date_only,'YYYY-MM-DD') AS date,
-  TO_CHAR(a.first_in,'HH12:MI am') AS first_in,
-  TO_CHAR(a.last_out,'HH12:MI am') AS last_out,
-  COALESCE(a.total_hours,0) AS total_hours,
+      SELECT
 
-  CASE
-    WHEN a.first_in IS NULL THEN 'Absent'
+        /*
+         * =====================================================
+         * DATE
+         * =====================================================
+         */
+        c.date_only,
 
-     WHEN a.first_in > (
-        c.date_only + time '10:30:00' + interval '30 minutes'
-    )
-    THEN 'Late Come'
-    
-    WHEN a.first_in IS NOT NULL
-         AND a.last_out IS NULL
-    THEN 'Working'
+        TO_CHAR(
+          c.date_only,
+          'YYYY-MM-DD'
+        ) AS date,
 
+        /*
+         * =====================================================
+         * EMPLOYEE
+         * =====================================================
+         */
+        e.emp_id,
 
-    WHEN a.last_out IS NOT NULL
-         AND a.last_out < (
-            a.first_in +
-            INTERVAL '7:30 hours' *
-            CASE
-                WHEN EXTRACT(DOW FROM c.date_only) = 6
-                THEN 5.0/8
-                ELSE 1
-            END
-         )
-    THEN 'Early Go'
+        e.name,
 
-    WHEN a.total_hours >= (
+        e.role,
+
+        e.is_active,
+
+        /*
+         * =====================================================
+         * ATTENDANCE
+         * =====================================================
+         */
+        wa.id AS attendance_id,
+
+        wa.attendance_date,
+
+        /*
+         * Punch In
+         *
+         * timestamp without time zone
+         * Stored directly as local/IST time.
+         */
+        wa.punch_in,
+
+        /*
+         * Punch Out
+         */
+        wa.punch_out,
+
+        /*
+         * =====================================================
+         * TOTAL HOURS
+         * =====================================================
+         *
+         * Convert PostgreSQL interval to HH:MM.
+         *
+         * EXTRACT(EPOCH) gives total seconds.
+         */
         CASE
-            WHEN EXTRACT(DOW FROM c.date_only) = 6
-            THEN 5 - (10.0/60)
-            ELSE 8 - (10.0/60)
-        END
-    )
-    THEN 'Present'
+          WHEN wa.total_hours IS NULL THEN
+            '00:00'
 
-    ELSE 'Absent'
-END AS status 
+          ELSE
+            LPAD(
+              FLOOR(
+                EXTRACT(EPOCH FROM wa.total_hours) / 3600
+              )::TEXT,
+              2,
+              '0'
+            )
+            || ':' ||
+            LPAD(
+              FLOOR(
+                MOD(
+                  EXTRACT(EPOCH FROM wa.total_hours),
+                  3600
+                ) / 60
+              )::TEXT,
+              2,
+              '0'
+            )
+        END AS total_hours,
 
-FROM employees e
-CROSS JOIN calendar c
-LEFT JOIN attendance_summary a
-  ON a.emp_id = e.emp_id
-  AND a.date_only = c.date_only
+        /*
+         * =====================================================
+         * EXPECTED HOURS
+         * =====================================================
+         */
+        CASE
+          WHEN wa.expected_hours IS NULL THEN
+            '09:00'
 
-WHERE c.date_only BETWEEN CURRENT_DATE - INTERVAL '6 days' AND CURRENT_DATE
+          ELSE
+            LPAD(
+              FLOOR(
+                EXTRACT(EPOCH FROM wa.expected_hours) / 3600
+              )::TEXT,
+              2,
+              '0'
+            )
+            || ':' ||
+            LPAD(
+              FLOOR(
+                MOD(
+                  EXTRACT(EPOCH FROM wa.expected_hours),
+                  3600
+                ) / 60
+              )::TEXT,
+              2,
+              '0'
+            )
+        END AS expected_hours,
 
-AND (
-    $3::text IS NULL
-    OR (
-        $7::boolean = false AND (
-            e.emp_id::text ILIKE $4
-            OR e.name ILIKE $4
+        /*
+         * =====================================================
+         * LATE / EARLY DETAILS
+         * =====================================================
+         */
+        wa.late_arrival,
+
+        wa.is_late_arrived,
+
+        wa.early_go,
+
+        wa.is_early_gone,
+
+        /*
+         * =====================================================
+         * STATUS ID
+         * =====================================================
+         */
+        wa.status_id,
+
+        /*
+         * =====================================================
+         * STATUS NAME
+         * =====================================================
+         */
+        COALESCE(
+          ast.status_name,
+          CASE
+            WHEN wa.id IS NULL
+              THEN 'Absent'
+            ELSE 'Unknown'
+          END
+        ) AS status
+
+      FROM employees e
+
+      CROSS JOIN calendar c
+
+      /*
+       * =====================================================
+       * WEEKLY ATTENDANCE
+       * =====================================================
+       */
+      LEFT JOIN public.weekly_attendance wa
+        ON TRIM(wa.emp_id) = TRIM(e.emp_id)
+
+        AND wa.attendance_date = c.date_only
+
+      /*
+       * =====================================================
+       * ATTENDANCE STATUS
+       * =====================================================
+       */
+      LEFT JOIN public.attendence_status ast
+        ON ast.id = wa.status_id
+
+        AND COALESCE(
+          ast.is_active,
+          TRUE
+        ) = TRUE
+
+      /*
+       * =====================================================
+       * SEARCH
+       * =====================================================
+       */
+      WHERE
+      (
+        $5::TEXT IS NULL
+
+        OR
+
+        (
+          $6::BOOLEAN = FALSE
+
+          AND
+          (
+            e.emp_id ILIKE $7
+
+            OR
+
+            e.name ILIKE $7
+          )
         )
-    )
-    OR (
-        $7::boolean = true AND (
-            COALESCE(TO_CHAR(a.first_in,'HH12:MI AM'),'') ILIKE $8
-            OR COALESCE(TO_CHAR(a.last_out,'HH12:MI AM'),'') ILIKE $8
+
+        OR
+
+        (
+          $6::BOOLEAN = TRUE
+
+          AND
+          (
+            COALESCE(
+              TO_CHAR(
+                wa.punch_in,
+                'HH12:MI AM'
+              ),
+              ''
+            ) ILIKE $8
+
+            OR
+
+            COALESCE(
+              TO_CHAR(
+                wa.punch_out,
+                'HH12:MI AM'
+              ),
+              ''
+            ) ILIKE $8
+          )
         )
-    )
-)
+      )
 
-ORDER BY c.date_only DESC, e.emp_id;
-`;
+      ORDER BY
+        c.date_only DESC,
+        e.emp_id;
+    `;
 
-    const { rows } = await db.query(query, [
-      fromDate,                     
-      toDate,                       
-      searchTerm || null,           
-      searchTerm ? `%${searchTerm}%` : null,
-      offset,                       
-      limitInt,                     
-      isTimeSearch || false,        
-      timeSearch                    
-    ]);
+    const searchLike =
+      searchTerm
+        ? `%${searchTerm}%`
+        : null;
 
-    if (!rows || rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No attendance data found",
-      });
-    }
+    const timeSearch =
+      isTimeSearch
+        ? `%${searchTerm}%`
+        : "%";
 
-    //  GROUP BY DATE (Daily Attendance View)
+    const { rows } = await db.query(
+      query,
+      [
+        fromDate,      // $1
+        today,         // $2
+        offset,        // $3
+        limitInt,      // $4
+        searchTerm,    // $5
+        isTimeSearch,  // $6
+        searchLike,    // $7
+        timeSearch     // $8
+      ]
+    );
+
+    console.log(
+      "Weekly attendance rows fetched:",
+      rows.length
+    );
+
+    /*
+     * =========================================================
+     * FORMAT PUNCH TIMES
+     * =========================================================
+     *
+     * punch_in and punch_out are:
+     *
+     * timestamp without time zone
+     *
+     * Therefore, no UTC -> IST conversion is performed here.
+     */
+    const formattedRows = rows.map((row) => {
+
+      /*
+       * -------------------------------------------------------
+       * PUNCH IN
+       * -------------------------------------------------------
+       */
+      const punchIn =
+        row.punch_in
+          ? new Date(row.punch_in).toLocaleTimeString(
+              "en-IN",
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }
+            )
+          : "-";
+
+      /*
+       * -------------------------------------------------------
+       * PUNCH OUT
+       * -------------------------------------------------------
+       */
+      const punchOut =
+        row.punch_out
+          ? new Date(row.punch_out).toLocaleTimeString(
+              "en-IN",
+              {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true,
+              }
+            )
+          : "-";
+
+      return {
+        date: row.date,
+
+        emp_id:
+          row.emp_id,
+
+        name:
+          row.name,
+
+        role:
+          row.role,
+
+        first_in:
+          punchIn,
+
+        last_out:
+          punchOut,
+
+        total_hours:
+          row.total_hours || "00:00",
+
+        expected_hours:
+          row.expected_hours || "09:00",
+
+        late_arrival:
+          row.late_arrival,
+
+        is_late_arrived:
+          row.is_late_arrived,
+
+        early_go:
+          row.early_go,
+
+        is_early_gone:
+          row.is_early_gone,
+
+        status_id:
+          row.status_id,
+
+        status:
+          row.status,
+      };
+    });
+
+    /*
+     * =========================================================
+     * GROUP BY DATE
+     * =========================================================
+     */
     const grouped = {};
 
-    rows.forEach((row) => {
+    formattedRows.forEach((row) => {
+
       if (!grouped[row.date]) {
         grouped[row.date] = {
           date: row.date,
-          employees: []
+          employees: [],
         };
       }
 
       grouped[row.date].employees.push({
-        emp_id: row.emp_id,
-        name: row.name,
-        role: row.role,
-        first_in: row.first_in,
-        last_out: row.last_out,
-        total_hours: row.total_hours,
-        status: row.status
+        emp_id:
+          row.emp_id,
+
+        name:
+          row.name,
+
+        role:
+          row.role,
+
+        first_in:
+          row.first_in,
+
+        last_out:
+          row.last_out,
+
+        total_hours:
+          row.total_hours,
+
+        expected_hours:
+          row.expected_hours,
+
+        late_arrival:
+          row.late_arrival,
+
+        is_late_arrived:
+          row.is_late_arrived,
+
+        early_go:
+          row.early_go,
+
+        is_early_gone:
+          row.is_early_gone,
+
+        status_id:
+          row.status_id,
+
+        status:
+          row.status,
       });
     });
 
-    //  Convert to array & ensure sorting
+    /*
+     * =========================================================
+     * SORT RESULT BY DATE DESC
+     * =========================================================
+     */
     const result = Object.values(grouped).sort(
-      (a, b) => new Date(b.date) - new Date(a.date)
+      (a, b) =>
+        new Date(b.date) -
+        new Date(a.date)
     );
 
+    /*
+     * =========================================================
+     * RESPONSE
+     * =========================================================
+     */
     res.status(200).json({
       success: true,
-      message: "Weekly attendance fetched successfully",
+
+      message:
+        "Weekly attendance fetched successfully",
+
       data: result,
+
+      // Optional pagination information
+      // Remove these if your existing response must be
+      // exactly unchanged.
+      totalItems,
+      page: pageInt,
+      limit: limitInt,
     });
 
   } catch (error) {
-    console.error("Attendance API Error:", error);
+
+    console.error(
+      "Weekly Attendance API Error:",
+      error
+    );
 
     res.status(500).json({
       success: false,

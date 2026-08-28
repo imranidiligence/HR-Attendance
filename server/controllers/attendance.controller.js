@@ -866,289 +866,394 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     const limit = Math.max(parseInt(req.query.limit) || 15, 1);
     const offset = (page - 1) * limit;
 
-    const showInactive = req.query.showInactive === "true";
+    const showInactive =
+      req.query.showInactive === "true";
 
-    const countQuery = `
-      SELECT COUNT(DISTINCT p.pr_id)::int AS total
-      FROM public.personal p
-      INNER JOIN public.user_role_relation urr
-        ON urr.pr_id = p.pr_id
-      INNER JOIN public.usr_role_master rm
-        ON rm.rm_role_id = urr.rl_role_id
-      LEFT JOIN public.organizations o
-        ON o.pr_id = p.pr_id
-      WHERE LOWER(rm.rm_role_name) IN ('employee', 'admin')
-      ${!showInactive ? `AND p.pr_is_active = true` : ""}
+    /*
+     * =========================================================
+     * TODAY IN IST
+     * =========================================================
+     *
+     * Do not use CURRENT_DATE because PostgreSQL session timezone
+     * may not be Asia/Kolkata.
+     */
+    const todayQuery = `
+      SELECT (
+        CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+      )::DATE AS today
     `;
 
-    const countResult = await db.query(countQuery);
+    const { rows: todayRows } =
+      await db.query(todayQuery);
 
-    const totalItems = countResult.rows[0]?.total || 0;
+    const today = todayRows[0].today;
 
-    const query = `
-      WITH attendance_summary AS (
-        SELECT
-          da.emp_id,
-          da.attendance_date,
+    /*
+     * =========================================================
+     * COUNT EMPLOYEES
+     * =========================================================
+     *
+     * organizations is now the employee master.
+     *
+     * personal contains employee details.
+     */
+    let countQuery = `
+      SELECT COUNT(DISTINCT o.or_id) AS total
+      FROM public.organizations o
 
-          COUNT(*) AS punch_count,
+      INNER JOIN public.personal p
+        ON p.pr_id = o.pr_id
 
-          MIN(da.punch_in) AS first_punch,
-
-          MAX(
-            CASE
-              WHEN da.punch_out = da.punch_in THEN NULL
-              ELSE da.punch_out
-            END
-          ) AS last_punch,
-
-          COALESCE(
-            SUM(
-              CASE
-                WHEN da.punch_out IS NOT NULL
-                THEN da.punch_out - da.punch_in
-                ELSE INTERVAL '0 hours'
-              END
-            ),
-            INTERVAL '0 hours'
-          ) AS total_hours
-
-        FROM public.daily_attendance da
-
-        WHERE da.attendance_date = CURRENT_DATE
-
-        GROUP BY
-          da.emp_id,
-          da.attendance_date
-      )
-
-      SELECT
-        p.pr_id,
-
-        o.or_emp_id AS emp_id,
-
-        TRIM(
-          COALESCE(p.pr_first_name, '') ||
-          CASE
-            WHEN p.pr_last_name IS NOT NULL
-                 AND p.pr_last_name <> ''
-            THEN ' ' || p.pr_last_name
-            ELSE ''
-          END
-        ) AS name,
-
-        COALESCE(
-          (
-            SELECT STRING_AGG(
-              DISTINCT rm2.rm_role_name,
-              ', '
-              ORDER BY rm2.rm_role_name
-            )
-            FROM public.user_role_relation urr2
-            INNER JOIN public.usr_role_master rm2
-              ON rm2.rm_role_id = urr2.rl_role_id
-            WHERE urr2.pr_id = p.pr_id
-          ),
-          ''
-        ) AS role,
-
-        p.pr_is_active AS is_active,
-
-        p.pr_email AS email,
-
-        o.or_organization_email AS official_email,
-
-        o.or_organization_email AS organization_email,
-
-        o.or_organization_name AS organization_name,
-
-        o.or_organization_location AS organization_location,
-
-        o.or_department_id AS department_id,
-
-        o.or_designation_id AS designation_id,
-
-        o.or_reporting_location_id AS reporting_location_id,
-
-        o.or_reporting_to_id AS reporting_to_id,
-
-        COALESCE(
-          a.attendance_date,
-          CURRENT_DATE
-        ) AS attendance_date,
-
-        a.first_punch AS punch_in,
-
-        a.last_punch AS punch_out,
-
-        CASE
-          WHEN p.pr_is_active = false
-            THEN 'Inactive'
-
-          WHEN a.punch_count IS NULL
-            THEN 'Absent'
-
-          WHEN a.punch_count >= 1
-               AND a.last_punch IS NULL
-            THEN 'Working'
-
-          WHEN a.punch_count >= 1
-            THEN 'Present'
-
-          ELSE 'Absent'
-        END AS status,
-
-        COALESCE(
-          a.total_hours,
-          INTERVAL '0 hours'
-        ) AS total_hours
-
-      FROM public.personal p
-
-      INNER JOIN public.user_role_relation urr
-        ON urr.pr_id = p.pr_id
-
-      INNER JOIN public.usr_role_master rm
-        ON rm.rm_role_id = urr.rl_role_id
-
-      LEFT JOIN public.organizations o
-        ON o.pr_id = p.pr_id
-
-      LEFT JOIN attendance_summary a
-        ON a.emp_id = o.or_emp_id
-
-      WHERE LOWER(rm.rm_role_name) IN ('employee', 'admin')
-
-      ${!showInactive ? `AND p.pr_is_active = true` : ""}
-
-      GROUP BY
-        p.pr_id,
-        p.pr_first_name,
-        p.pr_last_name,
-        p.pr_is_active,
-        p.pr_email,
-        o.or_emp_id,
-        o.or_organization_email,
-        o.or_organization_name,
-        o.or_organization_location,
-        o.or_department_id,
-        o.or_designation_id,
-        o.or_reporting_location_id,
-        o.or_reporting_to_id,
-        a.attendance_date,
-        a.first_punch,
-        a.last_punch,
-        a.punch_count,
-        a.total_hours
-
-      ORDER BY
-        p.pr_is_active DESC,
-        name ASC
-
-      LIMIT $1
-      OFFSET $2
+      WHERE o.or_emp_id IS NOT NULL
+        AND TRIM(o.or_emp_id) <> ''
     `;
 
-    const { rows } = await db.query(
-      query,
-      [limit, offset]
+    const countParams = [];
+
+    if (!showInactive) {
+      countQuery += `
+        AND COALESCE(o.or_is_active, TRUE) = TRUE
+      `;
+    }
+
+    const countResult =
+      await db.query(
+        countQuery,
+        countParams
+      );
+
+    const totalItems = parseInt(
+      countResult.rows[0].total,
+      10
     );
 
-    const formattedRows = rows.map((row) => {
-      let totalHours = "00:00";
+    /*
+     * =========================================================
+     * ATTENDANCE QUERY
+     * =========================================================
+     *
+     * Important:
+     *
+     * organizations
+     *      ↓
+     * personal
+     *      ↓
+     * daily_attendance
+     *      ↓
+     * attendence_status
+     *
+     * LEFT JOIN daily_attendance because an employee without
+     * a punch must still appear as Absent.
+     */
+    let query = `
+      SELECT
 
-      if (row.total_hours) {
-        const interval = row.total_hours;
+        /*
+         * =====================================================
+         * ATTENDANCE DATE
+         * =====================================================
+         */
+        (
+          CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+        )::DATE AS attendance_date,
 
-        if (typeof interval === "string") {
-          const match = interval.match(
-            /(?:(\d+)\s+days?\s+)?(\d{1,2}):(\d{2}):(\d{2}(?:\.\d+)?)/
-          );
+        /*
+         * =====================================================
+         * EMPLOYEE DETAILS
+         * =====================================================
+         */
+        TRIM(o.or_emp_id) AS emp_id,
 
-          if (match) {
-            const days = parseInt(match[1] || 0, 10);
-            const hours = parseInt(match[2] || 0, 10);
-            const minutes = parseInt(match[3] || 0, 10);
+        COALESCE(
+          o.or_is_active,
+          FALSE
+        ) AS is_active,
 
-            const totalMinutes =
-              days * 24 * 60 +
-              hours * 60 +
-              minutes;
+        COALESCE(
+          NULLIF(TRIM(p.pr_name), ''),
+          TRIM(
+            CONCAT_WS(
+              ' ',
+              p.pr_first_name,
+              p.pr_last_name
+            )
+          ),
+          '-'
+        ) AS name,
 
-            const finalHours = Math.floor(
-              totalMinutes / 60
+        /*
+         * You do not currently have a role column in the
+         * organizations schema provided.
+         */
+        'employee' AS role,
+
+        /*
+         * =====================================================
+         * ATTENDANCE
+         * =====================================================
+         */
+        da.punch_in,
+        da.punch_out,
+        da.status_id,
+        COALESCE(
+          ast.status_name,
+          'Absent'
+        ) AS status,
+
+        COALESCE(
+          da.total_hours,
+          INTERVAL '0'
+        ) AS total_hours
+
+      FROM public.organizations o
+
+      INNER JOIN public.personal p
+        ON p.pr_id = o.pr_id
+
+      /*
+       * Daily attendance is LEFT JOINed so employees with
+       * no punch are returned as well.
+       */
+      LEFT JOIN public.daily_attendance da
+
+        ON TRIM(da.emp_id) =
+           TRIM(o.or_emp_id)
+
+       AND da.attendance_date = $1
+
+      /*
+       * Status master
+       */
+      LEFT JOIN public.attendence_status ast
+        ON ast.id = da.status_id
+
+       AND COALESCE(
+         ast.is_active,
+         TRUE
+       ) = TRUE
+
+      WHERE o.or_emp_id IS NOT NULL
+        AND TRIM(o.or_emp_id) <> ''
+    `;
+
+    const queryParams = [today];
+
+    /*
+     * =========================================================
+     * ACTIVE / INACTIVE FILTER
+     * =========================================================
+     */
+
+    if (!showInactive) {
+      query += `
+        AND COALESCE(
+          o.or_is_active,
+          TRUE
+        ) = TRUE
+      `;
+    }
+
+    /*
+     * =========================================================
+     * ORDER + PAGINATION
+     * =========================================================
+     */
+
+    query += `
+      ORDER BY
+        COALESCE(o.or_is_active, FALSE) DESC,
+        TRIM(
+          COALESCE(
+            NULLIF(p.pr_name, ''),
+            CONCAT_WS(
+              ' ',
+              p.pr_first_name,
+              p.pr_last_name
+            )
+          )
+        ) ASC
+
+      LIMIT $2
+      OFFSET $3
+    `;
+
+    queryParams.push(
+      limit,
+      offset
+    );
+
+    const { rows } =
+      await db.query(
+        query,
+        queryParams
+      );
+
+    console.log(
+      "Attendance Rows Fetched: organization",
+      rows
+    );
+
+    /*
+     * =========================================================
+     * FORMAT DATA FOR FRONTEND
+     * =========================================================
+     */
+
+    const formattedRows =
+      rows.map((row) => {
+
+        /*
+         * -----------------------------------------------------
+         * TOTAL HOURS
+         * -----------------------------------------------------
+         *
+         * PostgreSQL pg driver generally returns INTERVAL
+         * as a string such as:
+         *
+         * 08:30:00
+         *
+         * So parse it safely.
+         */
+        let totalHours = "00:00";
+
+        if (
+          row.total_hours !== null &&
+          row.total_hours !== undefined
+        ) {
+          const intervalString =
+            String(row.total_hours);
+
+          const match =
+            intervalString.match(
+              /^(-?\d+):(\d{2}):(\d{2})/
             );
 
-            const finalMinutes =
-              totalMinutes % 60;
+          if (match) {
+            const hours =
+              parseInt(match[1], 10);
+
+            const minutes =
+              parseInt(match[2], 10);
 
             totalHours =
-              `${String(finalHours).padStart(2, "0")}:${String(finalMinutes).padStart(2, "0")}`;
+              `${String(hours).padStart(2, "0")}:${String(
+                minutes
+              ).padStart(2, "0")}`;
           }
-        } else {
-          const hours = interval.hours || 0;
-          const minutes = interval.minutes || 0;
-
-          totalHours =
-            `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
         }
-      }
 
-      return {
-        ...row,
+        /*
+         * -----------------------------------------------------
+         * PUNCH IN
+         * -----------------------------------------------------
+         */
+        const punchIn =
+          row.punch_in
+            ? new Date(
+                row.punch_in
+              ).toLocaleTimeString(
+                "en-IN",
+                {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                  timeZone:
+                    "Asia/Kolkata",
+                }
+              )
+            : "--";
 
-        total_hours: totalHours,
+        /*
+         * -----------------------------------------------------
+         * PUNCH OUT
+         * -----------------------------------------------------
+         */
+        const punchOut =
+          row.punch_out
+            ? new Date(
+                row.punch_out
+              ).toLocaleTimeString(
+                "en-IN",
+                {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                  timeZone:
+                    "Asia/Kolkata",
+                }
+              )
+            : "--";
 
-        punch_in: row.punch_in
-          ? new Date(row.punch_in).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-                timeZone: "Asia/Kolkata",
-              }
-            )
-          : "--",
+        /*
+         * -----------------------------------------------------
+         * RESPONSE
+         * -----------------------------------------------------
+         */
+        return {
+          attendance_date:
+            `${row.attendance_date}T18:30:00.000Z`,
 
-        punch_out: row.punch_out
-          ? new Date(row.punch_out).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-                timeZone: "Asia/Kolkata",
-              }
-            )
-          : "--",
-      };
-    });
+          emp_id:
+            row.emp_id,
 
-    return res.status(200).json({
+          is_active:
+            row.is_active,
+
+          name:
+            row.name,
+
+          punch_in:
+            punchIn,
+
+          punch_out:
+            punchOut,
+
+          role:
+            row.role,
+           status_id: row.status_id,
+          status:
+            row.status,
+
+          total_hours:
+            totalHours,
+        };
+      });
+
+    /*
+     * =========================================================
+     * RESPONSE
+     * =========================================================
+     */
+
+    res.status(200).json({
       success: true,
 
       employees: formattedRows,
 
       pagination: {
         currentPage: page,
+
         totalItems,
-        totalPages: Math.ceil(
-          totalItems / limit
-        ),
+
+        totalPages:
+          Math.ceil(
+            totalItems / limit
+          ),
+
         limit,
       },
     });
+
   } catch (error) {
     console.error(
-      "Today Organization Attendance Error:",
+      "Organization attendance error:",
       error
     );
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: "Failed to process attendance",
-      error: error.message,
+      message:
+        "Failed to process attendance",
     });
   }
 };
