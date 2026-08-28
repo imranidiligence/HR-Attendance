@@ -501,6 +501,7 @@ exports.addPersonInfo = async (req, res) => {
       first_name,
       last_name,
       email,
+      contact,
       nationality_id,
       gender_id,
       marital_status_id,
@@ -537,19 +538,23 @@ exports.addPersonInfo = async (req, res) => {
       }
 
       const value = String(dateStr).trim();
-      const parts = value.split("-");
 
-      if (
-        parts.length === 3 &&
-        parts[0].length === 2 &&
-        parts[1].length === 2 &&
-        parts[2].length === 4
-      ) {
-        const [day, month, year] = parts;
+      if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
+        const [day, month, year] = value.split("-");
         return `${year}-${month}-${day}`;
       }
 
-      return value;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+
+      const parsedDate = new Date(value);
+
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error("Invalid DOB format");
+      }
+
+      return parsedDate.toISOString().split("T")[0];
     };
 
     let formattedDob;
@@ -559,7 +564,7 @@ exports.addPersonInfo = async (req, res) => {
     } catch (error) {
       return res.status(400).json({
         success: false,
-        message: "Invalid DOB format"
+        message: "Invalid DOB format. Use YYYY-MM-DD or DD-MM-YYYY"
       });
     }
 
@@ -630,6 +635,7 @@ exports.addPersonInfo = async (req, res) => {
         pr_first_name,
         pr_last_name,
         pr_dob,
+        pr_contact,
         pr_gender_id,
         pr_blood_group_id,
         pr_marital_status_id,
@@ -649,8 +655,9 @@ exports.addPersonInfo = async (req, res) => {
         $8,
         $9,
         $10,
+        $11,
         CURRENT_TIMESTAMP,
-        $11
+        $12
       )
       RETURNING
         pr_id,
@@ -658,6 +665,7 @@ exports.addPersonInfo = async (req, res) => {
         pr_first_name,
         pr_last_name,
         pr_dob,
+        pr_contact,
         pr_gender_id,
         pr_blood_group_id,
         pr_marital_status_id,
@@ -672,6 +680,7 @@ exports.addPersonInfo = async (req, res) => {
         first_name.trim(),
         last_name.trim(),
         formattedDob,
+        contact ? String(contact).trim() : null,
         gender_id || null,
         blood_group_id || null,
         marital_status_id || null,
@@ -765,6 +774,13 @@ exports.addPersonInfo = async (req, res) => {
         success: false,
         message: "Invalid related record",
         error: error.detail
+      });
+    }
+
+    if (error.code === "22007") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid DOB format. Use YYYY-MM-DD or DD-MM-YYYY"
       });
     }
 
@@ -884,6 +900,7 @@ exports.updatePersonalInfo = async (req, res) => {
       last_name,
       email,
       dob,
+      contact,
       gender_id,
       marital_status_id,
       nationality_id,
@@ -916,22 +933,28 @@ exports.updatePersonalInfo = async (req, res) => {
     }
 
     const parseDate = (dateStr) => {
-      if (!dateStr) return null;
+      if (dateStr === undefined || dateStr === null || String(dateStr).trim() === "") {
+        return null;
+      }
 
       const value = String(dateStr).trim();
-      const parts = value.split("-");
 
-      if (
-        parts.length === 3 &&
-        parts[0].length === 2 &&
-        parts[1].length === 2 &&
-        parts[2].length === 4
-      ) {
-        const [day, month, year] = parts;
+      if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
+        const [day, month, year] = value.split("-");
         return `${year}-${month}-${day}`;
       }
 
-      return value;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value;
+      }
+
+      const parsedDate = new Date(value);
+
+      if (isNaN(parsedDate.getTime())) {
+        return null;
+      }
+
+      return parsedDate.toISOString().split("T")[0];
     };
 
     const formattedDob = parseDate(dob);
@@ -976,21 +999,23 @@ exports.updatePersonalInfo = async (req, res) => {
         pr_first_name = $1,
         pr_last_name = $2,
         pr_email = $3,
-        pr_dob = $4,
-        pr_gender_id = $5,
-        pr_marital_status_id = $6,
-        pr_nationality_id = $7,
-        pr_blood_group_id = $8,
-        pr_is_active = COALESCE($9, pr_is_active),
+        pr_dob = COALESCE($4::DATE, pr_dob),
+        pr_contact = COALESCE($5, pr_contact),
+        pr_gender_id = COALESCE($6, pr_gender_id),
+        pr_marital_status_id = COALESCE($7, pr_marital_status_id),
+        pr_nationality_id = COALESCE($8, pr_nationality_id),
+        pr_blood_group_id = COALESCE($9, pr_blood_group_id),
+        pr_is_active = COALESCE($10, pr_is_active),
         pr_updated_at = CURRENT_TIMESTAMP,
-        pr_updated_by = $10
-      WHERE pr_id = $11
+        pr_updated_by = $11
+      WHERE pr_id = $12
       RETURNING
         pr_id,
         pr_email,
         pr_first_name,
         pr_last_name,
         pr_dob,
+        pr_contact,
         pr_gender_id,
         pr_blood_group_id,
         pr_marital_status_id,
@@ -1007,6 +1032,9 @@ exports.updatePersonalInfo = async (req, res) => {
         last_name.trim(),
         email.trim().toLowerCase(),
         formattedDob,
+        contact !== undefined && contact !== null
+          ? String(contact).trim()
+          : null,
         gender_id || null,
         marital_status_id || null,
         nationality_id || null,
@@ -1117,6 +1145,7 @@ exports.updatePersonalInfo = async (req, res) => {
         first_name: employee.pr_first_name,
         last_name: employee.pr_last_name,
         date_of_birth: employee.pr_dob,
+        contact: employee.pr_contact,
         gender_id: employee.pr_gender_id,
         blood_group_id: employee.pr_blood_group_id,
         marital_status_id: employee.pr_marital_status_id,
@@ -1158,6 +1187,13 @@ exports.updatePersonalInfo = async (req, res) => {
         success: false,
         message: "Invalid related record",
         error: error.detail
+      });
+    }
+
+    if (error.code === "22007") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date of birth format. Use YYYY-MM-DD or DD-MM-YYYY"
       });
     }
 
