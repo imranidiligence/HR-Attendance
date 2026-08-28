@@ -61,7 +61,8 @@ const result = await db.query(
   WHERE
       LOWER(p.pr_email) = $1
       OR LOWER(o.or_emp_id) = $1
-      OR LOWER(o.or_organization_email) = $1
+      OR LOWER(o.or_official_email) = $1
+      OR LOWER(o.or_official_contact) = $1
 
   LIMIT 1
   `,
@@ -629,7 +630,7 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
 
     // Check whether user exists
     const existing = await db.query(
-      `SELECT * FROM users WHERE id = $1`,
+      `SELECT * FROM organizations WHERE pr_id = $1`,
       [id]
     );
 
@@ -651,10 +652,10 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
 
    // Update user status
 const query = `
-  UPDATE users
+  UPDATE organizations
   SET
     is_active = $1
-  WHERE id = $2
+  WHERE pr_id = $2
   RETURNING *
 `;
 
