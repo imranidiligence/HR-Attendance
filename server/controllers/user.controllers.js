@@ -30,55 +30,44 @@ const loginController = async (req, res) => {
     identifier = String(identifier).trim().toLowerCase();
     password = String(password).trim();
 
-    /*
-     * Find user by:
-     * 1. Personal Email
-     * 2. Employee ID
-     * 3. Organization Email
-     *
-     * After finding the user, get:
-     * personal.Pr_Id
-     * login.Lg_Password
-     */
-    const result = await db.query(
-      `
-      SELECT
-          p.pr_id,
-          p.pr_name,
-          p.pr_email,
-          p.pr_emp_id,
-          p.pr_first_name,
-          p.pr_last_name,
-          p.pr_profile_image,
-          p.pr_is_active,
+    
+const result = await db.query(
+  `
+  SELECT
+      p.pr_id,
+      p.pr_email,
 
-          o.or_id,
-          o.or_organization_name,
-          o.or_organization_email,
+      o.or_emp_id,
 
-          l.lg_password
+      p.pr_first_name,
+      p.pr_last_name,
+      p.pr_profile_image,
+      p.pr_is_active,
 
-      FROM personal p
+      o.or_id,
+      o.or_organization_name,
+      o.or_organization_email,
 
-      INNER JOIN login l
-          ON l.pr_id = p.pr_id
+      l.lg_password
 
-      LEFT JOIN organizations o
-          ON o.pr_id = p.pr_id
+  FROM personal p
 
-      WHERE
-          LOWER(p.pr_email) = $1
-          OR LOWER(p.pr_emp_id) = $1
-          OR LOWER(o.or_organization_email) = $1
+  INNER JOIN login l
+      ON l.pr_id = p.pr_id
 
-      LIMIT 1
-      `,
-      [identifier]
-    );
+  LEFT JOIN organizations o
+      ON o.pr_id = p.pr_id
 
-    /*
-     * User not found
-     */
+  WHERE
+      LOWER(p.pr_email) = $1
+      OR LOWER(o.or_emp_id) = $1
+      OR LOWER(o.or_organization_email) = $1
+
+  LIMIT 1
+  `,
+  [identifier]
+);
+  
     if (result.rows.length === 0) {
       return res.status(401).json({
         message: "Invalid email or password"
@@ -87,18 +76,14 @@ const loginController = async (req, res) => {
 
     const user = result.rows[0];
 
-    /*
-     * Check active user
-     */
+    
     if (!user.pr_is_active) {
       return res.status(401).json({
         message: "User account is inactive"
       });
     }
 
-    /*
-     * Compare password
-     */
+    
     const isMatch = await bcrypt.compare(
       password,
       user.lg_password
@@ -110,9 +95,7 @@ const loginController = async (req, res) => {
       });
     }
 
-    /*
-     * Get user roles
-     */
+    
     const roleResult = await db.query(
       `
       SELECT
@@ -133,9 +116,7 @@ const loginController = async (req, res) => {
 
     const roles = roleResult.rows;
 
-    /*
-     * Generate JWT
-     */
+  
     const token = jwt.sign(
       {
         id: user.pr_id,
@@ -148,14 +129,10 @@ const loginController = async (req, res) => {
       }
     );
 
-    /*
-     * Get token expiry
-     */
+  
     const decoded = jwt.decode(token);
 
-    /*
-     * Response
-     */
+  
     return res.status(200).json({
       message: "Login successful",
 
@@ -166,7 +143,7 @@ const loginController = async (req, res) => {
       user: {
         id: user.pr_id,
 
-        name: user.pr_name,
+        name: user.pr_first_name + user.pr_last_name,
 
         first_name: user.pr_first_name,
 
@@ -198,60 +175,100 @@ const loginController = async (req, res) => {
 
 const changeMyPassword = async (req, res) => {
   try {
-    const employeeId = req.user.id; 
+    const employeeId = req.user.id;
+
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required"
+      });
     }
 
-    if (newPassword.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 8 characters"
+      });
     }
 
-    
+    // Get current password from LOGIN table
     const result = await db.query(
-      "SELECT password, emp_id, name FROM users WHERE id = $1",
+      `
+      SELECT
+        l.pr_id,
+        l.lg_password,
+        p.pr_emp_id,
+        p.pr_first_name,
+        p.pr_last_name
+      FROM login l
+      INNER JOIN personal p
+        ON p.pr_id = l.pr_id
+      WHERE l.pr_id = $1
+      `,
       [employeeId]
     );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Employee not found" });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Employee login not found"
+      });
     }
 
     const user = result.rows[0];
 
-    
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    // Check current password
+    const isMatch = await bcrypt.compare(
+      String(currentPassword),
+      user.lg_password
+    );
 
     if (!isMatch) {
-      return res.status(401).json({ message: "Current password is incorrect" });
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect"
+      });
     }
 
-   
-    const saltRounds = 10;
-    const newHashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    // Hash new password
+    const newHashedPassword = await bcrypt.hash(
+      String(newPassword),
+      10
+    );
 
+    // Update password in LOGIN table
     await db.query(
-      `UPDATE users SET password = $1 WHERE id = $2`,
+      `
+      UPDATE login
+      SET lg_password = $1
+      WHERE pr_id = $2
+      `,
       [newHashedPassword, employeeId]
     );
 
-    
-    sendNotification(user.emp_id, `Security Password :-  ${newPassword} `, user.name);
+    // Notification
+    await sendNotification(
+      user.pr_emp_id,
+      "Your password has been changed successfully.",
+      `${user.pr_first_name || ""} ${user.pr_last_name || ""}`.trim()
+    );
 
     return res.status(200).json({
+      success: true,
       message: "Password changed successfully"
     });
 
   } catch (error) {
     console.error("Change Password Error:", error);
-    if (!res.headersSent) {
-      return res.status(500).json({ message: "Internal Server Error" });
-    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error"
+    });
   }
 };
-
 
 const getAllEmployees = async (req, res) => {
   try {
@@ -265,17 +282,9 @@ const getAllEmployees = async (req, res) => {
 
 const getAllEmployeesPaginated = async (req, res) => {
   try {
-    // ==========================================
-    // Pagination
-    // ==========================================
-
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit) || 10, 1);
     const offset = (page - 1) * limit;
-
-    // ==========================================
-    // Query Parameters
-    // ==========================================
 
     const {
       search = "",
@@ -286,26 +295,19 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     const searchValue = search.trim();
 
-    // ==========================================
-    // Build WHERE conditions
-    // ==========================================
-
     const conditions = [];
     const values = [];
 
     let paramIndex = 1;
 
-    // ==========================================
-    // Search
-    // Name / Email / Employee ID
-    // ==========================================
-
     if (searchValue) {
       conditions.push(`
         (
-          u.name ILIKE '%' || $${paramIndex} || '%'
-          OR u.email ILIKE '%' || $${paramIndex} || '%'
-          OR o.employeeidoforganisation::text ILIKE '%' || $${paramIndex} || '%'
+          p.pr_first_name ILIKE '%' || $${paramIndex} || '%'
+          OR p.pr_last_name ILIKE '%' || $${paramIndex} || '%'
+          OR p.pr_email ILIKE '%' || $${paramIndex} || '%'
+          OR o.or_emp_id ILIKE '%' || $${paramIndex} || '%'
+          OR o.or_organization_email ILIKE '%' || $${paramIndex} || '%'
         )
       `);
 
@@ -313,75 +315,43 @@ const getAllEmployeesPaginated = async (req, res) => {
       paramIndex++;
     }
 
-    // ==========================================
-    // Department Filter
-    // ==========================================
-
-    if (department) {
+    if (department !== undefined && department !== "") {
       conditions.push(`
-        o.department_id = $${paramIndex}
+        o.or_department_id = $${paramIndex}
       `);
 
       values.push(department);
       paramIndex++;
     }
 
-    // ==========================================
-    // Designation Filter
-    // ==========================================
-
-    if (designation) {
+    if (designation !== undefined && designation !== "") {
       conditions.push(`
-        o.designation_id = $${paramIndex}
+        o.or_designation_id = $${paramIndex}
       `);
 
       values.push(designation);
       paramIndex++;
     }
 
-    // ==========================================
-    // Status Filter
-    // ==========================================
-
     if (status !== undefined && status !== "") {
       conditions.push(`
-        u.is_active = $${paramIndex}
+        p.pr_is_active = $${paramIndex}
       `);
 
       values.push(status === "true");
       paramIndex++;
     }
 
-    // ==========================================
-    // WHERE clause
-    // ==========================================
-
     const whereClause =
       conditions.length > 0
         ? `WHERE ${conditions.join(" AND ")}`
         : "";
 
-    // ==========================================
-    // 1. Count total records
-    // ==========================================
-
     const countQuery = `
-      SELECT COUNT(DISTINCT u.id)::int AS total
-
-      FROM public.users u
-
-      LEFT JOIN public.personal p
-        ON u.id = p.employee_id
-
+      SELECT COUNT(DISTINCT p.pr_id)::int AS total
+      FROM public.personal p
       LEFT JOIN public.organizations o
-        ON u.id = o.employee_id
-
-      LEFT JOIN public.department_master d
-        ON d."DepartmentId" = o.department_id
-
-      LEFT JOIN public.designation_master des
-        ON o.designation_id = des.designation_id
-
+        ON p.pr_id = o.pr_id
       ${whereClause}
     `;
 
@@ -390,11 +360,7 @@ const getAllEmployeesPaginated = async (req, res) => {
       values
     );
 
-    const total = countResult.rows[0].total;
-
-    // ==========================================
-    // 2. Pagination parameters
-    // ==========================================
+    const total = countResult.rows[0]?.total || 0;
 
     const dataValues = [...values];
 
@@ -404,279 +370,183 @@ const getAllEmployeesPaginated = async (req, res) => {
     dataValues.push(limit);
     dataValues.push(offset);
 
-    // ==========================================
-    // 3. Get employees
-    // ==========================================
-
     const dataQuery = `
       SELECT
-
-        -- =====================================
-        -- USERS
-        -- All columns except password
-        -- =====================================
-
-        to_jsonb(u) - 'password' AS user,
-
-        -- =====================================
-        -- PERSONAL
-        -- =====================================
+        p.pr_id AS id,
 
         jsonb_build_object(
+          'pr_id',
+          p.pr_id,
 
-  'gender',
-  COALESCE(
-    g.gender_name,
-    p.gender::text
-  ),
+          'email',
+          p.pr_email,
 
-  'dob',
-  p.dob,
+          'first_name',
+          p.pr_first_name,
 
-  'bloodgroup',
-  COALESCE(
-    bg.blood_group_name,
-    p.bloodgroup::text
-  ),
+          'last_name',
+          p.pr_last_name,
 
-  'maritalstatus',
-  COALESCE(
-    ms.marital_status_name,
-    p.maritalstatus::text
-  ),
+          'full_name',
+          TRIM(
+            COALESCE(p.pr_first_name, '') ||
+            ' ' ||
+            COALESCE(p.pr_last_name, '')
+          ),
 
-  'nationality',
-  COALESCE(
-    n.nationality_name,
-    p.nationality::text
-  ),
+          'dob',
+          p.pr_dob,
 
-  'current_address',
-  p.current_address,
+          'gender_id',
+          p.pr_gender_id,
 
-  'aadharnumber',
-  p.aadharnumber,
+          'blood_group_id',
+          p.pr_blood_group_id,
 
-  'nominee',
-  p.nominee,
+          'marital_status_id',
+          p.pr_marital_status_id,
 
-  'employee_id',
-  p.employee_id,
+          'nationality_id',
+          p.pr_nationality_id,
 
-  'department',
-  COALESCE(
-    d."DepartmentName",
-    p.department::text
-  ),
-
-  'joining_date',
-  p.joining_date,
-
-  'designation',
-  COALESCE(
-    des.designation_name,
-    p.designation::text
-  ),
-
-  'leaving_date',
-  p.leaving_date,
-
-  'employee_type',
-  COALESCE(
-    et.employee_type_name,
-    p.employee_type::text
-  ),
-
-  'contact',
-  p.contact,
-
-  'permanent_address',
-  p.permanent_address,
-
-  'first_name',
-  p.first_name,
-
-  'last_name',
-  p.last_name,
-
-  'email',
-  p.email,
-
-  'nationality_id',
-  p.nationality_id,
-
-  'gender_id',
-  p.gender_id,
-
-  'marital_status_id',
-  p.marital_status_id,
-
-  'blood_group_id',
-  p.blood_group_id
-
-) AS personal,
-
-        -- =====================================
-        -- ORGANIZATION
-        -- =====================================
-
-        jsonb_build_object(
-
-          'organization_name',
-          o.organization_name,
-
-          'organization_code',
-          o.organization_code,
-
-          'industry_type',
-          o.industry_type,
-
-          'organization_location',
-          o.organization_location,
-
-          'city',
-          o.city,
-
-          'state',
-          o.state,
-
-          'country',
-          o.country,
+          'profile_image',
+          p.pr_profile_image,
 
           'is_active',
-          o.is_active,
+          p.pr_is_active,
 
           'created_at',
-          o.created_at,
+          p.pr_created_at,
 
-          'id',
-          o.id,
+          'updated_at',
+          p.pr_updated_at,
 
-          'employee_type',
-          COALESCE(
-            et.employee_type_name,
-            o.employee_type_id::text
-          ),
+          'created_by',
+          p.pr_created_by,
+
+          'updated_by',
+          p.pr_updated_by
+        ) AS personal,
+
+        jsonb_build_object(
+          'or_id',
+          o.or_id,
+
+          'pr_id',
+          o.pr_id,
+
+          'organization_name',
+          o.or_organization_name,
+
+          'organization_location',
+          o.or_organization_location,
 
           'employee_id',
-          o.employee_id,
+          o.or_emp_id,
 
-
-          'organization_email',
-          o.organization_email,
-
-          'department',
-          COALESCE(
-            d."DepartmentName",
-            o.department_id::text
-          ),
-
-          'designation',
-          COALESCE(
-            des.designation_name,
-            o.designation_id::text
-          ),
-
-          'joining_date',
-          o.joining_date,
-
-          'leaving_date',
-          o.leaving_date,
-
-          'official_email_id',
-          o.official_email_id,
-
-          'official_contact_no',
-          o.official_contact_no,
-
-          'reporting_to',
-          reporting_user.name,
-
-          'employeeidoforganisation',
-          o.employeeidoforganisation,
+          'is_active',
+          o.or_is_active,
 
           'employee_type_id',
-          o.employee_type_id,
-
-          'department_id',
-          o.department_id,
-
-          'designation_id',
-          o.designation_id,
+          o.or_employee_type_id,
 
           'reporting_location_id',
-          o.reporting_location_id,
+          o.or_reporting_location_id,
+
+          'organization_email',
+          o.or_organization_email,
 
           'reporting_to_id',
-          o.reporting_to_id
+          o.or_reporting_to_id,
 
-        ) AS organization
+          'department_id',
+          o.or_department_id,
 
-      FROM public.users u
+          'designation_id',
+          o.or_designation_id,
 
-      -- =====================================
-      -- PERSONAL
-      -- =====================================
+          'joining_date',
+          o.or_joining_date,
 
-      LEFT JOIN public.personal p
-        ON u.emp_id = p.emp_id
+          'leaving_date',
+          o.or_leaving_date,
 
-      -- =====================================
-      -- ORGANIZATION
-      -- =====================================
+          'created_at',
+          o.or_created_at,
+
+          'updated_at',
+          o.or_updated_at,
+
+          'created_by',
+          o.or_created_by,
+
+          'updated_by',
+          o.or_updated_by
+        ) AS organization,
+
+        COALESCE(
+          (
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'role_id',
+                r.rm_role_id,
+
+                'role_name',
+                r.rm_role_name
+              )
+              ORDER BY r.rm_role_id
+            )
+            FROM public.user_role_relation urr
+            INNER JOIN public.usr_role_master r
+              ON urr.rl_role_id = r.rm_role_id
+            WHERE urr.pr_id = p.pr_id
+          ),
+          '[]'::jsonb
+        ) AS roles,
+
+        (
+          SELECT jsonb_build_object(
+            'login_id',
+            l.lg_id,
+
+            'has_password',
+            CASE
+              WHEN l.lg_password IS NOT NULL
+                   AND l.lg_password <> ''
+              THEN true
+              ELSE false
+            END
+          )
+          FROM public.login l
+          WHERE l.pr_id = p.pr_id
+          LIMIT 1
+        ) AS login,
+
+        (
+          SELECT jsonb_build_object(
+            'image_id',
+            ui.ui_id,
+
+            'image_path',
+            ui.ui_imagepath
+          )
+          FROM public.user_image ui
+          WHERE ui.pr_id = p.pr_id
+          ORDER BY ui.ui_id DESC
+          LIMIT 1
+        ) AS user_image
+
+      FROM public.personal p
 
       LEFT JOIN public.organizations o
-        ON u.emp_id = o.employeeidoforganisation
-
-      -- =====================================
-      -- MASTER TABLES
-      -- =====================================
-
-      LEFT JOIN public.department_master d
-        ON o.department_id = d."DepartmentId"
-
-      LEFT JOIN public.designation_master des
-        ON o.designation_id = des.designation_id
-
-      LEFT JOIN public.employee_type_master et
-        ON o.employee_type_id = et.employee_type_id
-
-      LEFT JOIN public.branch_location_master rl
-        ON o.reporting_location_id = rl.branch_location_id
-
-      LEFT JOIN public.nationality_master n
-        ON p.nationality_id = n.nationality_id
-
-      LEFT JOIN public.gender_master g
-        ON p.gender_id = g.gender_id
-
-      LEFT JOIN public.marital_status_master ms
-        ON p.marital_status_id = ms.marital_status_id
-
-      LEFT JOIN public.blood_group_master bg
-        ON p.blood_group_id = bg.blood_group_id
-
-      -- =====================================
-      -- REPORTING PERSON
-      -- =====================================
-
-      LEFT JOIN public.users reporting_user
-        ON o.reporting_to_id = reporting_user.id
+        ON p.pr_id = o.pr_id
 
       ${whereClause}
 
-      -- =====================================
-      -- SORT
-      -- =====================================
-
       ORDER BY
-      u.is_active DESC,
-      u.created_at DESC,
-      u.id DESC
-
-      -- =====================================
-      -- PAGINATION
-      -- =====================================
+        p.pr_is_active DESC,
+        p.pr_created_at DESC,
+        p.pr_id DESC
 
       LIMIT $${limitParam}
       OFFSET $${offsetParam}
@@ -687,10 +557,6 @@ const getAllEmployeesPaginated = async (req, res) => {
       dataValues
     );
 
-    // ==========================================
-    // Pagination information
-    // ==========================================
-
     const totalPages = Math.ceil(total / limit);
 
     return res.status(200).json({
@@ -698,9 +564,9 @@ const getAllEmployeesPaginated = async (req, res) => {
 
       pagination: {
         currentPage: page,
-        limit: limit,
+        limit,
         totalRecords: total,
-        totalPages: totalPages,
+        totalPages,
         hasNextPage: page < totalPages,
         hasPreviousPage: page > 1,
       },
@@ -717,19 +583,18 @@ const getAllEmployeesPaginated = async (req, res) => {
 
       employees: result.rows,
     });
-
   } catch (error) {
-    console.error(
-      "Get Employees Error:",
-      error
-    );
+    console.error("Get Employees Error:", error);
 
     return res.status(500).json({
       success: false,
       message: "Internal Server Error",
+      error: error.message,
     });
   }
-}
+};
+
+
 const getCountOfEmployees = async (req, res) => {
   try {
         const totalEmployees = await db.query
