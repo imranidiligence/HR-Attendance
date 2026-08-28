@@ -1812,6 +1812,8 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
 
         p.pr_is_active AS is_active,
 
+        o.or_is_active AS organization_is_active,
+
         o.or_organization_email AS organization_email,
 
         o.or_organization_name AS organization_name,
@@ -1843,6 +1845,9 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
 
         CASE
           WHEN p.pr_is_active = false
+            THEN 'Inactive'
+
+          WHEN o.or_is_active = false
             THEN 'Inactive'
 
           WHEN a.punch_count IS NULL
@@ -1878,7 +1883,6 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         ON a.emp_id = o.or_emp_id
 
       WHERE LOWER(rm.rm_role_name) IN ('employee', 'admin')
-
         AND p.pr_is_active = true
 
       GROUP BY
@@ -1889,6 +1893,7 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         p.pr_is_active,
 
         o.or_emp_id,
+        o.or_is_active,
         o.or_organization_email,
         o.or_organization_name,
         o.or_organization_location,
@@ -1907,7 +1912,16 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         a.total_hours
 
       ORDER BY
-        p.pr_is_active DESC,
+        CASE
+          WHEN o.or_is_active = true THEN 0
+          ELSE 1
+        END,
+
+        CASE
+          WHEN p.pr_is_active = true THEN 0
+          ELSE 1
+        END,
+
         name ASC
 
       LIMIT $1
@@ -1931,7 +1945,7 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         const interval = String(row.total_hours);
 
         const match = interval.match(
-          /(?:(\d+)\s+days?\s+)?(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/
+          /(?:(\d+)\s+days?\s+)?(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/ 
         );
 
         if (match) {
@@ -2001,6 +2015,7 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         limit: limit,
       },
     });
+
   } catch (error) {
     console.error(
       "Manual report error:",
