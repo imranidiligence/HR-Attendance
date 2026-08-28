@@ -8,37 +8,6 @@ const sendEmail = require("../utils/mailer");
 const sendNotification = require("../services/notification.services");
 // Organization
 
-/*
-
-address
-: 
-"Patel Arcade 2,Juna Bazar,City Chowk Chh.Sambhaji Nagar"
-city
-: 
-"Chh.Sambhaji Nagar (Aurangabad)"
-country
-: 
-"india"
-created_at
-: 
-"2026-01-14T11:54:45.187Z"
-industry_type
-: 
-"Enterprise Software & Digital Transformation"
-is_active
-: 
-null
-organization_code
-: 
-"IDILIGENCE"
-organization_name
-: 
-"Idiligence Solution"
-state
-: 
-"Maharashtra"
-*/
-
 exports.addOrganizationInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
@@ -331,7 +300,6 @@ exports.getOrganizationInfo = async (req, res) => {
     });
   }
 };
-
 
 exports.updateOrganizationInfo = async (req, res) => {
   const { employee_id } = req.params;
@@ -889,7 +857,6 @@ exports.getPersonalInfo = async (req, res) => {
   }
 };
 
-
 exports.updatePersonalInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
@@ -1183,8 +1150,6 @@ exports.updatePersonalInfo = async (req, res) => {
     });
   }
 };
-
-
 
 // Education
 exports.addEducationInfo = async (req, res) => {
@@ -1749,9 +1714,9 @@ exports.deleteEducationInfo = async (req, res) => {
 exports.addExperienceInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
+
     const {
       company_name,
-      designation,
       start_date,
       end_date,
       total_years,
@@ -1759,58 +1724,158 @@ exports.addExperienceInfo = async (req, res) => {
       designation_id
     } = req.body;
 
-    // 1. Check for Missing Required Fields
-    // if (!company_name || !designation || !start_date || !end_date || !location) {
-    //   return res.status(400).json({
-    //     message: "All fields (Company, Designation, Dates, and Location) are required",
-    //   });
-    // }
+    // JWT user ID
+    const createdBy = req.user?.id;
 
-    // 2. Validate Date Formats
-    const start = new Date(start_date);
-    const end = new Date(end_date);
+    // -----------------------------
+    // Validate Employee ID
+    // -----------------------------
+    const employeeId = parseInt(employee_id, 10);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
-        message: "Invalid date format provided",
+        success: false,
+        message: "Valid Employee ID is required"
       });
     }
 
-    // 3. Logical Validation: End Date cannot be before Start Date
-    if (end < start) {
-      return res.status(400).json({
-        message: "End date cannot be earlier than start date",
+    // -----------------------------
+    // Validate JWT User ID
+    // -----------------------------
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
       });
     }
 
-    // 4. Sanitize Inputs (Optional but recommended: prevent excessive string lengths)
-    // if (company_name.length > 255 || designation.length > 255) {
-    //   return res.status(400).json({
-    //     message: "Company name or designation is too long",
-    //   });
-    // }
-
-    // 5. Database Insertion
-    const result = await db.query(
+    // -----------------------------
+    // Check Employee Exists
+    // -----------------------------
+    const employeeCheck = await db.query(
       `
-      INSERT INTO experience 
-        (employee_id, company_name, designation, start_date, end_date, total_years, location, designation_id) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
-      RETURNING *
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
       `,
-      [employee_id, company_name.trim(), designation.trim(), start_date, end_date, total_years, location.trim(), designation_id]
+      [employeeId]
     );
 
-    // Send Notification
-    // sendNotification(emp_id, "New Experience Added", req.user.name);
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
-    res.status(201).json({
+    // -----------------------------
+    // Validate Dates
+    // -----------------------------
+    if (start_date) {
+      const start = new Date(start_date);
+
+      if (isNaN(start.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid start date format"
+        });
+      }
+    }
+
+    if (end_date) {
+      const end = new Date(end_date);
+
+      if (isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid end date format"
+        });
+      }
+    }
+
+    // -----------------------------
+    // End Date Validation
+    // -----------------------------
+    if (start_date && end_date) {
+      const start = new Date(start_date);
+      const end = new Date(end_date);
+
+      if (end < start) {
+        return res.status(400).json({
+          success: false,
+          message: "End date cannot be earlier than start date"
+        });
+      }
+    }
+
+    // -----------------------------
+    // Insert Experience
+    // -----------------------------
+    const result = await db.query(
+      `
+      INSERT INTO experience (
+        Pr_Id,
+        Ex_Company_Name,
+        Ex_Start_Date,
+        Ex_End_Date,
+        Ex_Total_Years,
+        Ex_Location,
+        Ex_Designation_Id,
+        Ex_Created_By,
+        Ex_Created_At
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING *
+      `,
+      [
+        employeeId,
+        company_name?.trim() || null,
+        start_date || null,
+        end_date || null,
+        total_years || null,
+        location?.trim() || null,
+        designation_id || null,
+        createdBy
+      ]
+    );
+
+    // -----------------------------
+    // Response
+    // -----------------------------
+    return res.status(201).json({
+      success: true,
       message: "Experience created successfully",
-      experience: result.rows[0],
+      employee_id: employeeId,
+      created_by: createdBy,
+      experience: result.rows[0]
     });
+
   } catch (error) {
-    console.error("Create experience error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Create Experience Error:", error);
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee or designation reference",
+        error: error.detail
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating experience",
+      error: error.message
+    });
   }
 };
 
@@ -1818,42 +1883,68 @@ exports.getExperienceInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    if (!employee_id) {
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
-        message: "Employee ID is required"
+        success: false,
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    // Check employee exists in personal table
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
       });
     }
 
     const { rows } = await db.query(
       `
       SELECT
-        id,
-        employee_id,
-        company_name,
-        designation,
-        designation_id,
-        start_date,
-        end_date,
-        total_years,
-        location
+        Ex_Id AS experience_id,
+        Pr_Id AS employee_id,
+        Ex_Company_Name AS company_name,
+        Ex_Start_Date AS start_date,
+        Ex_End_Date AS end_date,
+        Ex_Total_Years AS total_years,
+        Ex_Location AS location,
+        Ex_Designation_Id AS designation_id,
+        Ex_Created_By AS created_by,
+        Ex_Updated_By AS updated_by,
+        Ex_Created_At AS created_at,
+        Ex_Updated_At AS updated_at
       FROM experience
-      WHERE employee_id = $1
-      ORDER BY start_date DESC NULLS LAST, id DESC
+      WHERE Pr_Id = $1
+      ORDER BY Ex_Start_Date DESC NULLS LAST, Ex_Id DESC
       `,
-      [employee_id]
+      [employeeId]
     );
 
-    // Always return 200 so frontend can safely handle []
     return res.status(200).json({
+      success: true,
+      employee_id: employeeId,
       total: rows.length,
       experience: rows
     });
 
   } catch (error) {
-    console.error("Get experience error:", error);
+    console.error("Get Experience Info Error:", error);
 
     return res.status(500).json({
-      message: "Internal Server Error"
+      success: false,
+      message: "Server error while fetching experience information",
+      error: error.message
     });
   }
 };
@@ -1862,9 +1953,36 @@ exports.updateExperienceInfo = async (req, res) => {
   try {
     const { employee_id, id } = req.params;
 
+    const employeeId = parseInt(employee_id, 10);
+    const experienceId = parseInt(id, 10);
+    const updatedBy = req.user?.id;
+
+    // ---------- Validate Employee ID ----------
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    // ---------- Validate Experience ID ----------
+    if (!id || isNaN(experienceId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Experience ID is required"
+      });
+    }
+
+    // ---------- JWT User ID ----------
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
     const {
       company_name,
-      designation,
       designation_id,
       start_date,
       end_date,
@@ -1872,83 +1990,107 @@ exports.updateExperienceInfo = async (req, res) => {
       location
     } = req.body;
 
-    // ---------- Required Fields ----------
-    // if (
-    //   !company_name ||
-    //   !designation ||
-    //   !designation_id ||
-    //   !start_date ||
-    //   !end_date ||
-    //   !location
-    // ) {
-    //   return res.status(400).json({
-    //     message: "All required fields are required"
-    //   });
-    // }
-
     // ---------- Validate Dates ----------
-    const start = new Date(start_date);
-    const end = new Date(end_date);
+    if (start_date && end_date) {
+      const start = new Date(start_date);
+      const end = new Date(end_date);
 
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-      return res.status(400).json({
-        message: "Invalid date format"
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid date format"
+        });
+      }
+
+      // ---------- Validate Date Order ----------
+      if (end < start) {
+        return res.status(400).json({
+          success: false,
+          message: "End date cannot be earlier than start date"
+        });
+      }
+    }
+
+    // ---------- Check Employee Exists ----------
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
       });
     }
 
-    // ---------- Validate Date Order ----------
-    if (end < start) {
-      return res.status(400).json({
-        message: "End date cannot be earlier than start date"
-      });
-    }
-
-    // ---------- Update ----------
+    // ---------- Update Experience ----------
     const result = await db.query(
       `
       UPDATE experience
       SET
-        company_name = $1,
-        designation = $2,
-        designation_id = $3,
-        start_date = $4,
-        end_date = $5,
-        total_years = $6,
-        location = $7
-      WHERE id = $8
-        AND employee_id = $9
+        Ex_Company_Name = $1,
+        Ex_Designation_Id = $2,
+        Ex_Start_Date = $3,
+        Ex_End_Date = $4,
+        Ex_Total_Years = $5,
+        Ex_Location = $6,
+        Ex_Updated_By = $7,
+        Ex_Updated_At = CURRENT_TIMESTAMP
+      WHERE Ex_Id = $8
+        AND Pr_Id = $9
       RETURNING *
       `,
       [
-        company_name.trim(),
-        designation.trim(),
-        designation_id,
-        start_date,
-        end_date,
-        total_years,
-        location.trim(),
-        id,
-        employee_id
+        company_name ? company_name.trim() : null,
+        designation_id || null,
+        start_date || null,
+        end_date || null,
+        total_years || null,
+        location ? location.trim() : null,
+        updatedBy,
+        experienceId,
+        employeeId
       ]
     );
 
-    if (result.rows.length === 0) {
+    // ---------- Record Not Found ----------
+    if (result.rowCount === 0) {
       return res.status(404).json({
-        message: "Experience record not found"
+        success: false,
+        message: `Experience record with ID ${experienceId} was not found for employee ${employeeId}`
       });
     }
 
     return res.status(200).json({
       success: true,
       message: "Experience updated successfully",
+      employee_id: employeeId,
+      experience_id: experienceId,
+      updated_by: updatedBy,
       experience: result.rows[0]
     });
 
   } catch (error) {
-    console.error("Update experience error:", error);
+    console.error("Update Experience Error:", error);
+
+    // ---------- Foreign Key Error ----------
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee or designation reference",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
-      message: "Internal Server Error"
+      success: false,
+      message: "Server error while updating experience",
+      error: error.message
     });
   }
 };
@@ -2000,34 +2142,56 @@ exports.getContactInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    if (!employee_id) {
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
-        message: "Employee ID is required"
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    // Check employee exists
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
       });
     }
 
     const result = await db.query(
       `
       SELECT
-        employee_id,
-        contact_type,
-        contact_type_id,
-        phone,
-        email,
-        relation,
-        is_primary,
-        created_at,
-        id
+        Ct_Id AS contact_id,
+        Pr_Id AS employee_id,
+        Ct_Phone AS phone,
+        Ct_Email AS email,
+        Ct_Relation AS relation,
+        Ct_Is_Primary AS is_primary,
+        Ct_Contact_Type_Id AS contact_type_id,
+        Ct_Created_By AS created_by,
+        Ct_Updated_By AS updated_by,
+        Ct_Created_At AS created_at,
+        Ct_Updated_At AS updated_at
       FROM contact
-      WHERE employee_id = $1
-      ORDER BY is_primary DESC, id ASC
+      WHERE Pr_Id = $1
+      ORDER BY Ct_Is_Primary DESC NULLS LAST, Ct_Id ASC
       `,
-      [employee_id]
+      [employeeId]
     );
 
     return res.status(200).json({
       success: true,
+      employee_id: employeeId,
       total: result.rows.length,
       contacts: result.rows
     });
@@ -2037,149 +2201,246 @@ exports.getContactInfo = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error"
+      message: "Server error while fetching contact information",
+      error: error.message
     });
   }
 };
+
 exports.addContactInfo = async (req, res) => {
   const { employee_id } = req.params;
-  const newContact = req.body;
+  const createdBy = req.user?.id;
 
   const client = await db.connect();
 
   try {
-    await client.query("BEGIN");
+    const employeeId = parseInt(employee_id, 10);
 
-    // Get existing contacts
-    const currentContactsRes = await client.query(
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
+    // Check employee exists
+    const employeeCheck = await client.query(
       `
-      SELECT
-        contact_type,
-        contact_type_id,
-        phone,
-        email,
-        relation,
-        is_primary
-      FROM contact
-      WHERE employee_id = $1
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
       `,
-      [employee_id]
+      [employeeId]
     );
 
-    const existingContacts = currentContactsRes.rows;
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
-    // Combine existing + new contact
-    const incomingContacts = Array.isArray(newContact)
-      ? newContact
-      : [newContact];
+    const incomingContacts = Array.isArray(req.body)
+      ? req.body
+      : [req.body];
 
+    if (!incomingContacts.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact data is required"
+      });
+    }
+
+    // Get existing contacts
+    const existingResult = await client.query(
+      `
+      SELECT
+        Ct_Phone,
+        Ct_Email,
+        Ct_Relation,
+        Ct_Is_Primary,
+        Ct_Contact_Type_Id
+      FROM contact
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    const existingContacts = existingResult.rows;
+
+    // Combine existing + incoming
     const updatedList = [
       ...existingContacts,
       ...incomingContacts
     ];
 
-    // ------------------------------------------------
-    // Validate only one primary contact
-    // ------------------------------------------------
+    // Check only one primary contact
     const primaryContacts = updatedList.filter(
-      contact => contact.is_primary === true
+      contact => contact.Ct_Is_Primary === true ||
+                 contact.is_primary === true
     );
 
     if (primaryContacts.length > 1) {
-      await client.query("ROLLBACK");
-
       return res.status(400).json({
         success: false,
         message: "Only one contact can be marked as primary."
       });
     }
 
-    // ------------------------------------------------
-    // Validate duplicate emails
-    // ------------------------------------------------
+    // Check duplicate emails
     const emails = updatedList
-      .map(contact => contact.email?.trim().toLowerCase())
+      .map(contact =>
+        (
+          contact.Ct_Email ||
+          contact.email ||
+          ""
+        ).trim().toLowerCase()
+      )
       .filter(Boolean);
 
     const uniqueEmails = new Set(emails);
 
     if (uniqueEmails.size !== emails.length) {
-      await client.query("ROLLBACK");
-
       return res.status(400).json({
         success: false,
         message: "Duplicate emails found in contact list."
       });
     }
 
-    // Delete existing records
+    await client.query("BEGIN");
+
+    // Delete existing contacts
     await client.query(
-      `DELETE FROM contact WHERE employee_id = $1`,
-      [employee_id]
+      `
+      DELETE FROM contact
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
     );
 
-    // ------------------------------------------------
-    // Bulk Insert
-    // ------------------------------------------------
-    if (updatedList.length > 0) {
-      const values = [];
+    // Insert contacts
+    for (const contact of updatedList) {
 
-      const placeholders = updatedList
-        .map((contact, i) => {
-          const offset = i * 7;
+      const phone =
+        contact.Ct_Phone ||
+        contact.phone ||
+        null;
 
-          values.push(
-            employee_id,
-            contact.contact_type || null,
-            contact.contact_type_id || null,
-            contact.phone || null,
-            contact.email?.trim().toLowerCase() || null,
-            contact.relation || null,
-            contact.is_primary ?? false
-          );
+      const email =
+        (
+          contact.Ct_Email ||
+          contact.email ||
+          ""
+        ).trim().toLowerCase() || null;
 
-          return `(
-            $${offset + 1},
-            $${offset + 2},
-            $${offset + 3},
-            $${offset + 4},
-            $${offset + 5},
-            $${offset + 6},
-            $${offset + 7},
-            NOW()
-          )`;
-        })
-        .join(",");
+      const relation =
+        contact.Ct_Relation ||
+        contact.relation ||
+        null;
+
+      const isPrimary =
+        contact.Ct_Is_Primary ??
+        contact.is_primary ??
+        false;
+
+      const contactTypeId =
+        contact.Ct_Contact_Type_Id ||
+        contact.contact_type_id ||
+        null;
 
       await client.query(
         `
         INSERT INTO contact (
-          employee_id,
-          contact_type,
-          contact_type_id,
+          Pr_Id,
+          Ct_Phone,
+          Ct_Email,
+          Ct_Relation,
+          Ct_Is_Primary,
+          Ct_Contact_Type_Id,
+          Ct_Created_By,
+          Ct_Created_At
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          CURRENT_TIMESTAMP
+        )
+        `,
+        [
+          employeeId,
           phone,
           email,
           relation,
-          is_primary,
-          created_at
-        )
-        VALUES ${placeholders}
-        `,
-        values
+          isPrimary,
+          contactTypeId,
+          createdBy
+        ]
       );
     }
 
     await client.query("COMMIT");
 
+    // Get inserted contacts
+    const result = await client.query(
+      `
+      SELECT
+        Ct_Id AS id,
+        Pr_Id AS employee_id,
+        Ct_Phone AS phone,
+        Ct_Email AS email,
+        Ct_Relation AS relation,
+        Ct_Is_Primary AS is_primary,
+        Ct_Contact_Type_Id AS contact_type_id,
+        Ct_Created_By AS created_by,
+        Ct_Created_At AS created_at
+      FROM contact
+      WHERE Pr_Id = $1
+      ORDER BY Ct_Is_Primary DESC, Ct_Id ASC
+      `,
+      [employeeId]
+    );
+
     return res.status(201).json({
       success: true,
-      message: "Contact added successfully"
+      message: "Contact added successfully",
+      employee_id: employeeId,
+      created_by: createdBy,
+      contacts: result.rows
     });
 
   } catch (error) {
+
     await client.query("ROLLBACK");
 
     console.error("Add Contact Error:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Email already exists in contact records.",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID or contact type ID.",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -2191,22 +2452,65 @@ exports.addContactInfo = async (req, res) => {
     client.release();
   }
 };
+
 exports.updateContactInfo = async (req, res) => {
   const { employee_id } = req.params;
-  const contacts = req.body;
-
-  if (!Array.isArray(contacts)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid data format. Expected an array."
-    });
-  }
+  const updatedBy = req.user?.id;
 
   const client = await db.connect();
 
   try {
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Employee ID is required"
+      });
+    }
+
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
     // ------------------------------------------------
-    // Validate Primary Contact
+    // Check employee exists
+    // ------------------------------------------------
+    const employeeCheck = await client.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
+
+    // ------------------------------------------------
+    // Validate request body
+    // ------------------------------------------------
+    const contacts = Array.isArray(req.body)
+      ? req.body
+      : [req.body];
+
+    if (!contacts.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact data is required"
+      });
+    }
+
+    // ------------------------------------------------
+    // Validate only one primary contact
     // ------------------------------------------------
     const primaryContacts = contacts.filter(
       contact => contact.is_primary === true
@@ -2220,115 +2524,163 @@ exports.updateContactInfo = async (req, res) => {
     }
 
     // ------------------------------------------------
-    // Validate Duplicate Emails in Request
+    // Normalize emails
     // ------------------------------------------------
-    const emailsInRequest = contacts
-      .map(contact => contact.email?.trim().toLowerCase())
+    const emails = contacts
+      .map(contact =>
+        contact.email
+          ? contact.email.trim().toLowerCase()
+          : null
+      )
       .filter(Boolean);
 
-    const uniqueEmails = new Set(emailsInRequest);
+    // ------------------------------------------------
+    // Duplicate emails inside request
+    // ------------------------------------------------
+    const uniqueEmails = new Set(emails);
 
-    if (uniqueEmails.size !== emailsInRequest.length) {
+    if (uniqueEmails.size !== emails.length) {
       return res.status(400).json({
         success: false,
-        message: "Duplicate emails found in your contact list."
+        message: "Duplicate emails found in contact list."
       });
     }
 
     // ------------------------------------------------
-    // Check Emails Used By Other Employees
+    // Check emails used by another employee
     // ------------------------------------------------
-    if (emailsInRequest.length > 0) {
-      const globalCheck = await client.query(
+    if (emails.length > 0) {
+      const emailCheck = await client.query(
         `
-        SELECT email
+        SELECT Ct_Email
         FROM contact
-        WHERE LOWER(email) = ANY($1)
-          AND employee_id != $2
+        WHERE LOWER(Ct_Email) = ANY($1)
+          AND Pr_Id != $2
         `,
-        [emailsInRequest, employee_id]
+        [emails, employeeId]
       );
 
-      if (globalCheck.rowCount > 0) {
-        return res.status(400).json({
+      if (emailCheck.rowCount > 0) {
+        return res.status(409).json({
           success: false,
-          message: `The email ${globalCheck.rows[0].email} is already used by another employee.`
+          message: `The email ${emailCheck.rows[0].ct_email} is already used by another employee.`
         });
       }
     }
 
+    // ------------------------------------------------
+    // BEGIN TRANSACTION
+    // ------------------------------------------------
     await client.query("BEGIN");
 
     // ------------------------------------------------
-    // Delete Existing Contacts
+    // Delete old contacts
     // ------------------------------------------------
     await client.query(
-      `DELETE FROM contact WHERE employee_id = $1`,
-      [employee_id]
+      `
+      DELETE FROM contact
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
     );
 
     // ------------------------------------------------
-    // Insert Updated Contacts
+    // Insert updated contacts
     // ------------------------------------------------
-    if (contacts.length > 0) {
-      const values = [];
+    const insertedContacts = [];
 
-      const placeholders = contacts
-        .map((contact, i) => {
-          const offset = i * 7;
+    for (const contact of contacts) {
 
-          values.push(
-            employee_id,
-            contact.contact_type || null,
-            contact.contact_type_id || null,
-            contact.phone || null,
-            contact.email?.trim().toLowerCase() || null,
-            contact.relation || null,
-            contact.is_primary ?? false
-          );
+      const phone = contact.phone?.trim() || null;
 
-          return `(
-            $${offset + 1},
-            $${offset + 2},
-            $${offset + 3},
-            $${offset + 4},
-            $${offset + 5},
-            $${offset + 6},
-            $${offset + 7},
-            NOW()
-          )`;
-        })
-        .join(",");
+      const email = contact.email
+        ? contact.email.trim().toLowerCase()
+        : null;
 
-      await client.query(
+      const relation = contact.relation?.trim() || null;
+
+      const isPrimary = contact.is_primary ?? false;
+
+      const contactTypeId =
+        contact.contact_type_id || null;
+
+      const result = await client.query(
         `
         INSERT INTO contact (
-          employee_id,
-          contact_type,
-          contact_type_id,
+          Pr_Id,
+          Ct_Phone,
+          Ct_Email,
+          Ct_Relation,
+          Ct_Is_Primary,
+          Ct_Contact_Type_Id,
+          Ct_Created_By,
+          Ct_Updated_By,
+          Ct_Created_At,
+          Ct_Updated_At
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+        RETURNING *
+        `,
+        [
+          employeeId,
           phone,
           email,
           relation,
-          is_primary,
-          created_at
-        )
-        VALUES ${placeholders}
-        `,
-        values
+          isPrimary,
+          contactTypeId,
+          updatedBy,
+          updatedBy
+        ]
       );
+
+      insertedContacts.push(result.rows[0]);
     }
 
+    // ------------------------------------------------
+    // COMMIT
+    // ------------------------------------------------
     await client.query("COMMIT");
 
     return res.status(200).json({
       success: true,
-      message: "Contacts updated successfully"
+      message: "Contacts updated successfully",
+      employee_id: employeeId,
+      updated_by: updatedBy,
+      contacts: insertedContacts
     });
 
   } catch (error) {
+
     await client.query("ROLLBACK");
 
-    console.error("Bulk Contact Error:", error);
+    console.error("Update Contact Error:", error);
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Contact email already exists.",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID or contact type ID.",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -2431,248 +2783,394 @@ exports.deleteContactInfo = async (req, res) => {
   }
 };
 
-
 exports.getNomineeInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    // console.log("getNominee:", emp_id);
+    const employeeId = parseInt(employee_id, 10);
 
-    //  Ensure integer (important if column type integer hai)
-    const empIdInt = parseInt(employee_id);
-
-    const query = `
-      SELECT *
-      FROM nominee
-      WHERE employee_id = $1
-      
-    `;
-
-    const result = await db.query(query, [empIdInt]);
-
-    if (result.rows.length === 0) {
-      return res.status(200).json({
-        success: true,
-        nominee: null
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
       });
     }
 
-    // console.log("Get Nominee",result.rows[0]);
+    const result = await db.query(
+      `
+      SELECT
+        Nm_Id AS id,
+        Pr_Id AS employee_id,
+        Nm_Nominee_Name AS nominee_name,
+        Nm_Nominee_Relation AS nominee_relation,
+        Nm_Nominee_Contact AS nominee_contact,
+        Nm_Nominee_Percentage AS nominee_percentage,
+        Nm_Created_By AS created_by,
+        Nm_Updated_By AS updated_by,
+        Nm_Created_At AS created_at,
+        Nm_Updated_At AS updated_at
+      FROM nominee
+      WHERE Pr_Id = $1
+      ORDER BY Nm_Id ASC
+      `,
+      [employeeId]
+    );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
+      employee_id: employeeId,
+      total: result.rows.length,
       nominee: result.rows
     });
 
   } catch (error) {
     console.error("Get Nominee Error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-// exports.addNomineeInfo = async (req, res) => {
-//   try {
-//     const { nominee_name, nominee_relation, nominee_contact } = req.body;
-//     const { emp_id } = req.params;
-
-//     const empId = emp_id ? emp_id : req.user.emp_id;
-
-//     // console.log("empId:", empId);
-//     // console.log("Body:", req.body);
-
-//     //  Validate input
-//     if (!nominee_name || !nominee_relation || !nominee_contact) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "All fields are required",
-//       });
-//     }
-
-//     const query = `
-//       INSERT INTO nominee 
-//       (emp_id, nominee_name, nominee_relation, nominee_contact)
-//       VALUES ($1, $2, $3, $4)
-//       RETURNING *
-//     `;
-
-//     const result = await db.query(query, [
-//       empId,
-//       nominee_name,
-//       nominee_relation,
-//       nominee_contact,
-//     ]);
-
-//     return res.status(200).json({
-//       success: true,
-//       message: "Nominee added successfully",
-//       data: result.rows[0],
-//     });
-
-//   } catch (error) {
-//     console.error("Add Nominee Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Internal Server Error",
-//     });
-//   }
-// };
 exports.addNomineeInfo = async (req, res) => {
+  const client = await db.connect();
+
   try {
-    const { nominees } = req.body;
     const { employee_id } = req.params;
-    const empId = employee_id || req.user.emp_id;
+    const employeeId = parseInt(employee_id, 10);
+    const createdBy = req.user?.id;
 
-    // 1. Basic Validation
-    // if (!nominees || !Array.isArray(nominees) || nominees.length === 0) {
-    //   return res.status(400).json({ success: false, message: "Nominees array is required" });
-    // }
-
-    // 2. Fetch Existing Total Percentage from DB
-    const percentageCheck = await db.query(
-      `SELECT SUM(nominee_percentage) as total_pct FROM nominee WHERE employee_id = $1`,
-      [empId]
-    );
-    const existingTotal = Number(percentageCheck.rows[0].total_pct || 0);
-
-    if (existingTotal >= 100) {
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
-        message: `Total percentage is already 100%. Cannot add more nominees.`,
+        message: "Valid employee ID is required"
       });
     }
 
-    // 3. Validate Each New Nominee & Calculate Incoming Total
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
+    // Check employee exists
+    const employeeCheck = await client.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
+
+    const { nominees } = req.body;
+
+    if (!Array.isArray(nominees) || nominees.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Nominees array is required"
+      });
+    }
+
+    await client.query("BEGIN");
+
+    // Existing percentage
+    const percentageResult = await client.query(
+      `
+      SELECT COALESCE(SUM(Nm_Nominee_Percentage), 0) AS total_percentage
+      FROM nominee
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    const existingTotal = Number(
+      percentageResult.rows[0].total_percentage || 0
+    );
+
+    // Validate incoming nominees
     let incomingTotal = 0;
-    // for (const nominee of nominees) {
-    //   const { nominee_name, nominee_relation, nominee_contact, nominee_percentage } = nominee;
 
-    //   if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
-    //     return res.status(400).json({ success: false, message: "All nominee fields are required" });
-    //   }
+    for (const nominee of nominees) {
+      const {
+        nominee_name,
+        nominee_relation,
+        nominee_contact,
+        nominee_percentage
+      } = nominee;
 
-    //   if (!/^[0-9]{10}$/.test(nominee_contact.toString())) {
-    //     return res.status(400).json({ success: false, message: "Contact number must be 10 digits" });
-    //   }
+      if (
+        !nominee_name ||
+        !nominee_relation ||
+        nominee_contact === undefined ||
+        nominee_percentage === undefined
+      ) {
+        await client.query("ROLLBACK");
 
-    //   const pct = Number(nominee_percentage);
-    //   if (pct <= 0 || pct > 100) {
-    //     return res.status(400).json({ success: false, message: "Percentage must be between 1 and 100" });
-    //   }
-    //   incomingTotal += pct;
-    // }
+        return res.status(400).json({
+          success: false,
+          message: "All nominee fields are required"
+        });
+      }
 
-    // 4. Final Percentage Cap Check
+      const contactStr = String(nominee_contact).trim();
+
+      if (!/^[0-9]{10}$/.test(contactStr)) {
+        await client.query("ROLLBACK");
+
+        return res.status(400).json({
+          success: false,
+          message: "Nominee contact must be exactly 10 digits"
+        });
+      }
+
+      const percentage = Number(nominee_percentage);
+
+      if (
+        isNaN(percentage) ||
+        percentage <= 0 ||
+        percentage > 100
+      ) {
+        await client.query("ROLLBACK");
+
+        return res.status(400).json({
+          success: false,
+          message: "Nominee percentage must be between 1 and 100"
+        });
+      }
+
+      incomingTotal += percentage;
+    }
+
+    // Check total percentage
     if (existingTotal + incomingTotal > 100) {
+      await client.query("ROLLBACK");
+
       return res.status(400).json({
         success: false,
-        message: `Remaining allowed: ${100 - existingTotal}%`,
+        message: `Only ${100 - existingTotal}% percentage is remaining`
       });
     }
 
-    // 5. Duplicate Contact Check
-    const contacts = nominees.map(n => n.nominee_contact.toString());
-    const existingContact = await db.query(
-      `SELECT nominee_contact FROM nominee WHERE employee_id = $1 AND nominee_contact = ANY($2)`,
-      [empId, contacts]
-    );
+    // Check duplicate contacts
+    for (const nominee of nominees) {
+      const contactStr = String(nominee.nominee_contact).trim();
 
-    if (existingContact.rows.length > 0) {
-      return res.status(400).json({ success: false, message: "Nominee with this contact already exists" });
+      const duplicateCheck = await client.query(
+        `
+        SELECT Nm_Id
+        FROM nominee
+        WHERE Pr_Id = $1
+          AND Nm_Nominee_Contact = $2
+        LIMIT 1
+        `,
+        [employeeId, contactStr]
+      );
+
+      if (duplicateCheck.rowCount > 0) {
+        await client.query("ROLLBACK");
+
+        return res.status(409).json({
+          success: false,
+          message: `Nominee with contact ${contactStr} already exists`
+        });
+      }
     }
 
-    // 6. Bulk Insert
-    const values = [];
-    const placeholders = nominees.map((nominee, index) => {
-      const base = index * 5;
-      values.push(empId, nominee.nominee_name, nominee.nominee_relation, nominee.nominee_contact.toString(), nominee.nominee_percentage);
-      return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
-    });
+    const inserted = [];
 
-    const query = `
-      INSERT INTO nominee (employee_id, nominee_name, nominee_relation, nominee_contact, nominee_percentage)
-      VALUES ${placeholders.join(", ")} RETURNING *`;
+    // Insert nominees
+    for (const nominee of nominees) {
+      const result = await client.query(
+        `
+        INSERT INTO nominee (
+          Pr_Id,
+          Nm_Nominee_Name,
+          Nm_Nominee_Relation,
+          Nm_Nominee_Contact,
+          Nm_Nominee_Percentage,
+          Nm_Created_By,
+          Nm_Created_At
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          CURRENT_TIMESTAMP
+        )
+        RETURNING *
+        `,
+        [
+          employeeId,
+          nominee.nominee_name.trim(),
+          nominee.nominee_relation.trim(),
+          String(nominee.nominee_contact).trim(),
+          Number(nominee.nominee_percentage),
+          createdBy
+        ]
+      );
 
-    const result = await db.query(query, values);
+      inserted.push(result.rows[0]);
+    }
 
-    return res.status(200).json({
+    await client.query("COMMIT");
+
+    return res.status(201).json({
       success: true,
       message: "Nominees added successfully",
-      data: result.rows,
+      employee_id: employeeId,
+      created_by: createdBy,
+      data: inserted
     });
+
   } catch (error) {
+    await client.query("ROLLBACK");
+
     console.error("Add Nominee Error:", error);
-    return res.status(500).json({ success: false, message: "Internal Server Error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+
+  } finally {
+    client.release();
   }
 };
-// exports.updateNomineeInfo = async (req, res) => {
-//   try {
-//     const { nominee_name, nominee_relation, nominee_contact } = req.body;
-//     const emp_id = req.user.emp_id;
 
-//     if (!nominee_name || !nominee_relation || !nominee_contact) {
-//       return res.status(400).json({ message: "All fields are required" });
-//     }
-
-//     const query = `
-//       UPDATE nominee
-//       SET 
-//         nominee_name = $1,
-//         nominee_relation = $2,
-//         nominee_contact = $3
-//       WHERE emp_id = $4
-//       RETURNING *;
-//     `;
-
-//     const result = await db.query(query, [
-//       nominee_name,
-//       nominee_relation,
-//       nominee_contact,
-//       emp_id
-//     ]);
-
-//     if (result.rowCount === 0) {
-//       return res.status(404).json({ message: "Nominee not found for this employee" });
-//     }
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Nominee info updated successfully",
-//       data: result.rows[0]
-//     });
-
-//   } catch (error) {
-//     console.error("Update Nominee Error:", error);
-//     res.status(500).json({ message: "Internal Server Error" });
-//   }
-// };
 exports.updateNomineeInfo = async (req, res) => {
   try {
-    const { employee_id, id } = req.params; 
-    const { nominee_name, nominee_relation, nominee_contact, nominee_percentage } = req.body;
-    const emp_id = req.user.emp_id;
-    const newPercentage = Number(nominee_percentage);
+    const { employee_id, id } = req.params;
 
-    // 1. Basic Validation
-    // if (!nominee_name || !nominee_relation || !nominee_contact || nominee_percentage === undefined) {
-    //   return res.status(400).json({ success: false, message: "All fields are required" });
-    // }
+    const employeeId = parseInt(employee_id, 10);
+    const nomineeId = parseInt(id, 10);
+    const updatedBy = req.user?.id;
 
-    // 2. Contact Validation (10 digits)
-    const contactStr = nominee_contact.toString();
-    if (!/^[0-9]{10}$/.test(contactStr)) {
-      return res.status(400).json({ success: false, message: "Contact number must be exactly 10 digits" });
+    if (
+      !employee_id ||
+      isNaN(employeeId) ||
+      !id ||
+      isNaN(nomineeId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID and nominee ID are required"
+      });
     }
 
-    // 3. Percentage Calculation Logic
-    // We fetch all nominees for this employee EXCEPT the one we are currently updating
-    const otherNominees = await db.query(
-      `SELECT nominee_percentage FROM nominee WHERE employee_id = $1 AND id != $2`,
-      [employee_id, id]
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
+    const {
+      nominee_name,
+      nominee_relation,
+      nominee_contact,
+      nominee_percentage
+    } = req.body;
+
+    if (
+      !nominee_name ||
+      !nominee_relation ||
+      nominee_contact === undefined ||
+      nominee_percentage === undefined
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All nominee fields are required"
+      });
+    }
+
+    const contactStr = String(nominee_contact).trim();
+
+    if (!/^[0-9]{10}$/.test(contactStr)) {
+      return res.status(400).json({
+        success: false,
+        message: "Nominee contact must be exactly 10 digits"
+      });
+    }
+
+    const newPercentage = Number(nominee_percentage);
+
+    if (
+      isNaN(newPercentage) ||
+      newPercentage <= 0 ||
+      newPercentage > 100
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Nominee percentage must be between 1 and 100"
+      });
+    }
+
+    // Check nominee exists for this employee
+    const nomineeCheck = await db.query(
+      `
+      SELECT Nm_Id
+      FROM nominee
+      WHERE Nm_Id = $1
+        AND Pr_Id = $2
+      `,
+      [nomineeId, employeeId]
     );
 
-    const existingTotal = otherNominees.rows.reduce(
-      (sum, n) => sum + Number(n.nominee_percentage),
-      0
+    if (nomineeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Nominee ${nomineeId} not found for employee ${employeeId}`
+      });
+    }
+
+    // Check duplicate contact
+    const duplicateContact = await db.query(
+      `
+      SELECT Nm_Id
+      FROM nominee
+      WHERE Pr_Id = $1
+        AND Nm_Nominee_Contact = $2
+        AND Nm_Id != $3
+      LIMIT 1
+      `,
+      [employeeId, contactStr, nomineeId]
+    );
+
+    if (duplicateContact.rowCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Another nominee with this contact already exists"
+      });
+    }
+
+    // Calculate percentage excluding current nominee
+    const percentageResult = await db.query(
+      `
+      SELECT COALESCE(SUM(Nm_Nominee_Percentage), 0) AS total_percentage
+      FROM nominee
+      WHERE Pr_Id = $1
+        AND Nm_Id != $2
+      `,
+      [employeeId, nomineeId]
+    );
+
+    const existingTotal = Number(
+      percentageResult.rows[0].total_percentage || 0
     );
 
     const projectedTotal = existingTotal + newPercentage;
@@ -2680,50 +3178,62 @@ exports.updateNomineeInfo = async (req, res) => {
     if (projectedTotal > 100) {
       return res.status(400).json({
         success: false,
-        message: `You only have ${100 - existingTotal}% remaining.`,
+        message: `Only ${100 - existingTotal}% percentage is remaining`
       });
     }
 
-    // 4. Perform Update
-    const query = `
+    // Update
+    const result = await db.query(
+      `
       UPDATE nominee
-      SET 
-        nominee_name = $1,
-        nominee_relation = $2,
-        nominee_contact = $3,
-        nominee_percentage = $4
-      WHERE id = $5 AND employee_id = $6
-      RETURNING *;
-    `;
-
-    const result = await db.query(query, [
-      nominee_name,
-      nominee_relation,
-      contactStr, // Stored as string to avoid "Integer out of range"
-      newPercentage,
-      id,
-      employee_id
-    ]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Nominee not found or not authorized",
-      });
-    }
+      SET
+        Nm_Nominee_Name = $1,
+        Nm_Nominee_Relation = $2,
+        Nm_Nominee_Contact = $3,
+        Nm_Nominee_Percentage = $4,
+        Nm_Updated_By = $5,
+        Nm_Updated_At = CURRENT_TIMESTAMP
+      WHERE Nm_Id = $6
+        AND Pr_Id = $7
+      RETURNING *
+      `,
+      [
+        nominee_name.trim(),
+        nominee_relation.trim(),
+        contactStr,
+        newPercentage,
+        updatedBy,
+        nomineeId,
+        employeeId
+      ]
+    );
 
     return res.status(200).json({
       success: true,
       message: "Nominee updated successfully",
-      data: result.rows[0],
+      employee_id: employeeId,
+      updated_by: updatedBy,
+      data: result.rows[0]
     });
 
   } catch (error) {
     console.error("Update Nominee Error:", error);
-    return res.status(500).json({ success: false, message: "Internal Server Error" });
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Nominee contact already exists",
+        error: error.detail
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
-
 
 exports.deleteNomineeInfo = async (req, res) => {
   try {
@@ -2759,374 +3269,329 @@ exports.deleteNomineeInfo = async (req, res) => {
   }
 };
 
-
 exports.addBankInfo = async (req, res) => {
   try {
-    const {employee_id } = req.params;
+    const { employee_id } = req.params;
+
     const {
       account_holder_name,
       bank_name,
       account_number,
       ifsc_code,
       branch_name,
-      upi_id,
-      account_type,
       is_active = true,
-      pan_number,
       account_type_id
     } = req.body;
 
-    // console.log(req.body);
-
-
-    // if (!account_holder_name || !bank_name || !account_number || !ifsc_code || !branch_name) {
-    //   return res.status(400).json({ message: "All required fields must be provided." });
-    // }
+    if (!employee_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
 
     const result = await db.query(
       `
       INSERT INTO bank_accounts (
-        employee_id, account_holder_name, bank_name, account_number, ifsc_code, branch_name, upi_id, account_type, pan_number, account_type_id, is_active
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        Pr_Id,
+        Ba_Account_Holder_Name,
+        Ba_Bank_Name,
+        Ba_Account_Number,
+        Ba_Ifsc_Code,
+        Ba_Branch_Name,
+        Ba_Is_Active,
+        Ba_Account_Type_Id,
+        Ba_Created_At
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
       RETURNING *
       `,
       [
         employee_id,
-        account_holder_name,
-        bank_name,
-        account_number,
-        ifsc_code,
-        branch_name,
-        upi_id,
-        account_type,
-        pan_number,
-        account_type_id,
-        is_active
+        account_holder_name || null,
+        bank_name || null,
+        account_number || null,
+        ifsc_code || null,
+        branch_name || null,
+        is_active,
+        account_type_id || null
       ]
     );
 
-    // console.log("result.rows[0]",result.rows[0])
-    // sendNotification(emp_id, "Bank", req.user.name);
-    res.status(201).json({
+    return res.status(201).json({
+      success: true,
       message: "Bank details saved successfully",
-      bankInfo: result.rows[0],
+      bankInfo: result.rows[0]
     });
+
   } catch (error) {
     console.error("Bank save error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
-}
+};
 
 exports.getBankInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
+      });
+    }
+
     const result = await db.query(
-      `SELECT * FROM bank_accounts WHERE employee_id = $1`,
-      [employee_id]
+      `
+      SELECT
+        Ba_Id AS id,
+        Pr_Id AS employee_id,
+        Ba_Account_Holder_Name AS account_holder_name,
+        Ba_Bank_Name AS bank_name,
+        Ba_Account_Number AS account_number,
+        Ba_Ifsc_Code AS ifsc_code,
+        Ba_Branch_Name AS branch_name,
+        Ba_Is_Active AS is_active,
+        Ba_Created_At AS created_at,
+        Ba_Updated_At AS updated_at,
+        Ba_Account_Type_Id AS account_type_id,
+        Ba_Created_By AS created_by,
+        Ba_Updated_By AS updated_by
+      FROM bank_accounts
+      WHERE Pr_Id = $1
+      ORDER BY Ba_Id DESC
+      `,
+      [employeeId]
     );
 
-    res.status(200).json({
+    return res.status(200).json({
+      success: true,
+      employee_id: employeeId,
+      total: result.rows.length,
       bankDetails: result.rows
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Get Bank Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
-}
+};
 
 exports.updateBankInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
-    // console.log("req.body bank update ",req.body);
+
+    const employeeId = parseInt(employee_id, 10);
+    const updatedBy = req.user?.id;
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
+      });
+    }
+
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
     const {
       account_holder_name,
       bank_name,
       account_number,
       ifsc_code,
       branch_name,
-      upi_id,
-      account_type,
-      pan_number,
       account_type_id,
       is_active
     } = req.body;
 
-    // if (
-    //   !account_holder_name ||
-    //   !bank_name ||
-    //   !account_number ||
-    //   !ifsc_code ||
-    //   !account_type ||
-    //   !pan_number
-    // ) {
-    //   return res.status(400).json({
-    //     message: "Required bank fields are missing"
-    //   });
-    // }
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
 
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
-const recordCheck = await db.query(
-      `SELECT id FROM bank_accounts WHERE employee_id = $1`, 
-      [employee_id]
-    ); 
+    const recordCheck = await db.query(
+      `
+      SELECT Ba_Id
+      FROM bank_accounts
+      WHERE Pr_Id = $1
+      ORDER BY Ba_Id DESC
+      LIMIT 1
+      `,
+      [employeeId]
+    );
 
     if (recordCheck.rowCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "No bank details found for this employee. Use the 'Add' feature instead of 'Update'."
+        message: "No bank details found for this employee. Use Add API first."
       });
     }
 
-    // Basic validation
-    
+    const bankId = recordCheck.rows[0].ba_id;
 
     const result = await db.query(
       `
       UPDATE bank_accounts
       SET
-        account_holder_name = $1,
-        bank_name = $2,
-        account_number = $3,
-        ifsc_code = $4,
-        branch_name = $5,
-        upi_id = $6,
-        account_type = $7,
-        pan_number = $8,
-        is_active = $9,
-        account_type_id = $10,
-        updated_at = NOW()
-      WHERE employee_id = $11
+        Ba_Account_Holder_Name = $1,
+        Ba_Bank_Name = $2,
+        Ba_Account_Number = $3,
+        Ba_Ifsc_Code = $4,
+        Ba_Branch_Name = $5,
+        Ba_Is_Active = $6,
+        Ba_Account_Type_Id = $7,
+        Ba_Updated_By = $8,
+        Ba_Updated_At = CURRENT_TIMESTAMP
+      WHERE Ba_Id = $9
+        AND Pr_Id = $10
       RETURNING *
       `,
       [
-        account_holder_name,
-        bank_name,
-        account_number,
-        ifsc_code,
+        account_holder_name || null,
+        bank_name || null,
+        account_number || null,
+        ifsc_code || null,
         branch_name || null,
-        upi_id || null,
-        account_type,
-        pan_number,
         is_active ?? true,
         account_type_id || null,
-        employee_id
+        updatedBy,
+        bankId,
+        employeeId
       ]
     );
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({
-        message: "Bank details not found for this employee"
-      });
-    }
-
-    // Mask sensitive data in response
-    const responseData = {
-      ...result.rows[0],
-      account_number: `XXXXXX${result.rows[0].account_number.slice(-4)}`
-    };
-
-    // sendNotification(emp_id, "Bank", req.user.name);
-
-    res.status(200).json({
+    return res.status(200).json({
+      success: true,
       message: "Bank details updated successfully",
-      data: responseData
+      employee_id: employeeId,
+      updated_by: updatedBy,
+      data: result.rows[0]
     });
 
   } catch (error) {
-    console.error("Update bank details error:", error);
-    res.status(500).json({
-      message: "Internal Server Error"
+    console.error("Update Bank Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
     });
   }
-}
+};
 
-
-// exports.addBankDocInfo = async (req, res) => {
-//   try {
-//     const { emp_id } = req.params;
-    
-//     const {documentType,documentNumber} = req.body;
-
-
-//     console.log("documentType,documentNumber",documentType,documentNumber)
-
-//     if (!req.files || Object.keys(req.files).length === 0) {
-//       return res.status(400).json({ message: "No files uploaded" });
-//     }
-
-//     const uploadedDocs = [];
-
-//     for (const field in req.files) {
-//       const file = req.files[field][0];
-
-//       // 1. Get the old file path BEFORE updating the DB
-//       const { rows: existing } = await db.query(
-//         "SELECT file_path FROM bank_documents WHERE emp_id = $1 AND file_type = $2",
-//         [emp_id, file.fieldname]
-//       );
-
-//       // 2. Perform the Upsert (Insert or Update)
-//       const result = await db.query(
-//         `
-//         INSERT INTO bank_documents (
-//           bank_account_id, 
-//           file_type, 
-//           file_name, 
-//           file_path, 
-//           file_size, 
-//           created_at, 
-//           updated_at
-//         )
-//         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-//         ON CONFLICT (bank_account_id, file_type) 
-//         DO UPDATE SET 
-//           file_name = EXCLUDED.file_name,
-//           file_path = EXCLUDED.file_path,
-//           file_size = EXCLUDED.file_size,
-//           updated_at = NOW()
-//         RETURNING *;
-//         `,
-//         [
-//           emp_id,
-//           file.fieldname,
-//           file.originalname,
-//           `/uploads/bank-docs/${file.filename}`,
-//           file.size,
-//         ]
-//       );
-
-//       // 3. Delete the old physical file from disk ONLY IF the DB update succeeded
-//       if (existing.length > 0 && existing[0].file_path) {
-//         // Adjust path resolution based on your folder structure
-//         const oldFilePath = path.join(__dirname, "../../", existing[0].file_path);
-
-//         if (fs.existsSync(oldFilePath)) {
-//           fs.unlink(oldFilePath, (err) => {
-//             if (err) console.error("Could not delete old file:", err);
-//           });
-//         }
-//       }
-
-//       uploadedDocs.push(result.rows[0]);
-//     }
-
-//     // sendNotification(emp_id, "Bank Documents", req.user?.name || "Employee");
-
-//     return res.status(201).json({
-//       message: "Bank documents uploaded successfully",
-//       documents: uploadedDocs,
-//     });
-
-//   } catch (error) {
-//     console.error("Database Error details:", error.hint || error.message);
-//     if (!res.headersSent) {
-//       res.status(500).json({
-//         message: "Internal Server Error",
-//         error: error.message
-//       });
-//     }
-//   }
-// }
 exports.addBankDocInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
-    const { documentType, documentNumber, documentTypeId } = req.body;
-    const file = req.file;
 
-    if (!employee_id) {
+    const {
+      documentType,
+      documentTypeId,
+      documentNumber
+    } = req.body;
+
+    const employeeId = parseInt(employee_id, 10);
+    const createdBy = req.user?.id || null;
+
+    if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
-        message: "employee_id is required"
+        message: "Valid employee ID is required"
       });
     }
 
-    if (!file) {
+    if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "No file uploaded. Use form-data field 'document'."
+        message: "Bank document is required"
       });
     }
 
-    if (!documentType) {
-      return res.status(400).json({
-        success: false,
-        message: "documentType is required"
-      });
-    }
-
-    if (!documentTypeId) {
-      return res.status(400).json({
-        success: false,
-        message: "documentTypeId is required"
-      });
-    }
-
-    const existingResult = await db.query(
+    // Check employee exists in personal table
+    const employeeCheck = await db.query(
       `
-      SELECT file_path
-      FROM bank_documents
-      WHERE employee_id = $1
-        AND document_type_id = $2
-      ORDER BY created_at DESC
-      LIMIT 1
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
       `,
-      [employee_id, documentTypeId]
+      [employeeId]
     );
 
-    const existing = existingResult.rows;
-
-    const filePath = `/uploads/bank-docs/${file.filename}`;
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
     const result = await db.query(
       `
-      INSERT INTO bank_documents (
-        employee_id,
-        document_type,
-        document_number,
-        document_type_id,
-        file_name,
-        file_path,
-        file_size,
-        created_at
+      INSERT INTO documents (
+        Pr_Id,
+        Dc_File_Name,
+        Dc_File_Path,
+        Dc_File_Size,
+        Dc_Created_At,
+        Dc_Document_Number,
+        Dc_Document_Type_Id,
+        Dc_Created_By
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-      RETURNING *;
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        CURRENT_TIMESTAMP,
+        $5,
+        $6,
+        $7
+      )
+      RETURNING *
       `,
       [
-        employee_id,
-        documentType,
+        employeeId,
+        req.file.filename,
+        req.file.path,
+        req.file.size,
         documentNumber || null,
-        documentTypeId,
-        file.originalname,
-        filePath,
-        file.size
+        documentTypeId ? parseInt(documentTypeId, 10) : null,
+        createdBy
       ]
     );
 
-    if (existing.length > 0 && existing[0].file_path) {
-      const oldFilePath = path.join(
-        __dirname,
-        "..",
-        existing[0].file_path
-      );
-
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlink(oldFilePath, (err) => {
-          if (err) {
-            console.error("Could not delete old file:", err);
-          } else {
-            console.log("Old file deleted:", oldFilePath);
-          }
-        });
-      }
-    }
-
     return res.status(201).json({
       success: true,
-      message: "Bank document saved successfully",
+      message: "Bank document uploaded successfully",
+      employee_id: employeeId,
       document: result.rows[0]
     });
+
   } catch (error) {
     console.error("Add Bank Document Error:", error);
 
@@ -3138,6 +3603,160 @@ exports.addBankDocInfo = async (req, res) => {
   }
 };
 
+exports.getAllBankDoc = async (req, res) => {
+  try {
+    const { employee_id } = req.params;
+
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
+      });
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        Dc_Id AS id,
+        Pr_Id AS employee_id,
+        Dc_File_Name AS file_name,
+        Dc_File_Path AS file_path,
+        Dc_File_Size AS file_size,
+        Dc_Created_At AS created_at,
+        Dc_Updated_At AS updated_at,
+        Dc_Document_Number AS document_number,
+        Dc_Document_Type_Id AS document_type_id,
+        Dc_Created_By AS created_by,
+        Dc_Updated_By AS updated_by
+      FROM documents
+      WHERE Pr_Id = $1
+      ORDER BY Dc_Id DESC
+      `,
+      [employeeId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      employee_id: employeeId,
+      total: result.rows.length,
+      documents: result.rows
+    });
+
+  } catch (error) {
+    console.error("Bank Documents GET Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+
+exports.updateBankDocInfo = async (req, res) => {
+  try {
+    const { employee_id, id } = req.params;
+
+    const employeeId = parseInt(employee_id, 10);
+    const documentId = parseInt(id, 10);
+    const updatedBy = req.user?.id || null;
+
+    const {
+      documentTypeId,
+      documentNumber
+    } = req.body;
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
+      });
+    }
+
+    if (!id || isNaN(documentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid document ID is required"
+      });
+    }
+
+    // Check document exists
+    const documentCheck = await db.query(
+      `
+      SELECT *
+      FROM documents
+      WHERE Dc_Id = $1
+        AND Pr_Id = $2
+      `,
+      [documentId, employeeId]
+    );
+
+    if (documentCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found"
+      });
+    }
+
+    const oldDocument = documentCheck.rows[0];
+
+    let fileName = oldDocument.dc_file_name;
+    let filePath = oldDocument.dc_file_path;
+    let fileSize = oldDocument.dc_file_size;
+
+    // If new file uploaded
+    if (req.file) {
+      fileName = req.file.filename;
+      filePath = req.file.path;
+      fileSize = req.file.size;
+    }
+
+    const result = await db.query(
+      `
+      UPDATE documents
+      SET
+        Dc_File_Name = $1,
+        Dc_File_Path = $2,
+        Dc_File_Size = $3,
+        Dc_Document_Number = $4,
+        Dc_Document_Type_Id = $5,
+        Dc_Updated_By = $6,
+        Dc_Updated_At = CURRENT_TIMESTAMP
+      WHERE Dc_Id = $7
+        AND Pr_Id = $8
+      RETURNING *
+      `,
+      [
+        fileName,
+        filePath,
+        fileSize,
+        documentNumber || null,
+        documentTypeId ? parseInt(documentTypeId, 10) : null,
+        updatedBy,
+        documentId,
+        employeeId
+      ]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Bank document updated successfully",
+      employee_id: employeeId,
+      document: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Update Bank Document Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
 
 exports.deleteDocument = async (req, res) => {
   try {
@@ -3162,172 +3781,294 @@ exports.deleteDocument = async (req, res) => {
   }
 }
 
-exports.getAllBankDoc = async (req, res) => {
-  try {
-    const { employee_id } = req.params;
-
-    // Fetch documents from DB
-    const result = await db.query(
-      `
-      SELECT id,employee_id, document_type,document_number, document_type_id, file_name, file_path, file_size, created_at, updated_at
-      FROM bank_documents
-      WHERE employee_id = $1
-      ORDER BY created_at ASC
-      `,
-      [employee_id]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "No documents found" });
-    }
-
-    res.status(200).json({
-      employee_id,
-      documents: result.rows,
-    });
-  } catch (error) {
-    console.error("Bank Documents GET Error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-}
-
 exports.addProfileImage = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Image is required" });
+    const { emp_id } = req.params;
+
+    const employeeId = parseInt(emp_id, 10);
+    const createdBy = req.user?.id || null;
+
+    if (!emp_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee ID is required"
+      });
     }
 
-    const requestedEmpId = req.params.emp_id;   
-    const loggedInEmpId = req.user.emp_id;    
-    const userRole = req.user.role;
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Profile image is required"
+      });
+    }
 
-   
-    // if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
-    //   return res.status(403).json({ message: "Unauthorized access" });
-    // }
+    // Check employee exists
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
     const imagePath = `/uploads/profile-images/${req.file.filename}`;
 
-    // Get old image
+    // Check existing image
     const oldImageResult = await db.query(
-      `SELECT profile_image FROM users WHERE id = $1`,
-      [requestedEmpId]
+      `
+      SELECT
+        Ui_Id,
+        Ui_ImagePath
+      FROM User_Image
+      WHERE Pr_Id = $1
+      ORDER BY Ui_Id DESC
+      LIMIT 1
+      `,
+      [employeeId]
     );
 
-    const oldImagePath = oldImageResult.rows[0]?.profile_image;
+    const oldImage = oldImageResult.rows[0];
 
-    // Delete old image
-    if (oldImagePath) {
-      const fullPath = path.join(__dirname, "..", oldImagePath);
+    // Insert new image
+    const result = await db.query(
+      `
+      INSERT INTO User_Image (
+        Pr_Id,
+        Ui_ImagePath,
+        Ui_Created_By,
+        Ui_Created_At
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING *
+      `,
+      [
+        employeeId,
+        imagePath,
+        createdBy
+      ]
+    );
 
-      if (fs.existsSync(fullPath)) {
-        fs.unlink(fullPath, (err) => {
-          if (err) console.error("Failed to delete old profile image:", err);
+    // Delete old image file
+    if (oldImage?.ui_imagepath) {
+      const oldFilePath = path.join(
+        __dirname,
+        "..",
+        oldImage.ui_imagepath
+      );
+
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlink(oldFilePath, (err) => {
+          if (err) {
+            console.error(
+              "Failed to delete old profile image:",
+              err
+            );
+          }
         });
       }
     }
 
-    // Update DB
-    await db.query(
-      `UPDATE users SET profile_image = $1 WHERE id = $2`,
-      [imagePath, requestedEmpId]
-    );
+    // Delete old DB record
+    if (oldImage?.ui_id) {
+      await db.query(
+        `
+        DELETE FROM User_Image
+        WHERE Ui_Id = $1
+        `,
+        [oldImage.ui_id]
+      );
+    }
 
-    res.status(200).json({
-      message: oldImagePath
+    return res.status(200).json({
+      success: true,
+      message: oldImage
         ? "Profile image updated successfully"
         : "Profile image added successfully",
+      employee_id: employeeId,
       profile_image: imagePath,
+      data: result.rows[0]
     });
 
   } catch (error) {
-    console.error("Upload error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Add Profile Image Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
 exports.getProfileImage = async (req, res) => {
   try {
-    const requestedEmpId = req.params.emp_id;   
-    const loggedInEmpId = req.user.emp_id;    
-    const userRole = req.user.role;
+    const { emp_id } = req.params;
 
-    // // If normal employee → only allow own image
-    // if (userRole !== "admin" && requestedEmpId !== loggedInEmpId) {
-    //   return res.status(403).json({ message: "Unauthorized access" });
-    // }
+    const employeeId = parseInt(emp_id, 10);
 
-    const result = await db.query(
-      `SELECT profile_image FROM users WHERE id = $1`,
-      [requestedEmpId]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const profileImage = result.rows[0].profile_image;
-
-    let formattedPath = profileImage;
-    if (profileImage && !profileImage.startsWith("/")) {
-      formattedPath = `/${profileImage}`;
-    }
-
-    const fullImageUrl = profileImage
-      ? `${req.protocol}://${req.get("host")}${formattedPath}`
-      : null;
-
-    res.status(200).json({
-      profile_image: fullImageUrl,
-    });
-
-  } catch (error) {
-    console.error("Fetch profile image error:", error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-};
-exports.addAddressInfo = async (req, res) => {
-  try {
-    const {
-      employee_id,
-      permanent_address,
-      current_address
-    } = req.body;
-
-    console.log("Address Body:", req.body);
-    console.log("employee_id:", employee_id);
-
-    if (employee_id == null || employee_id === undefined) {
+    if (!emp_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
-        message: "employee_id required"
+        message: "Valid employee ID is required"
       });
     }
 
-    const query = `
-      INSERT INTO address (
-        employee_id,
-        permanent_address,
-        current_address
-      )
-      VALUES ($1, $2, $3)
-      RETURNING *;
-    `;
+    const result = await db.query(
+      `
+      SELECT
+        Ui_Id AS id,
+        Pr_Id AS employee_id,
+        Ui_ImagePath AS image_path,
+        Ui_Created_By AS created_by,
+        Ui_Updated_By AS updated_by,
+        Ui_Created_At AS created_at,
+        Ui_Updated_At AS updated_at
+      FROM User_Image
+      WHERE Pr_Id = $1
+      ORDER BY Ui_Id DESC
+      LIMIT 1
+      `,
+      [employeeId]
+    );
 
-    const result = await db.query(query, [
-      employee_id,
-      permanent_address,
-      current_address
-    ]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Profile image not found"
+      });
+    }
+
+    const image = result.rows[0];
+
+    const imagePath = image.image_path
+      ? image.image_path.startsWith("/")
+        ? image.image_path
+        : `/${image.image_path}`
+      : null;
+
+    const fullImageUrl = imagePath
+      ? `${req.protocol}://${req.get("host")}${imagePath}`
+      : null;
+
+    return res.status(200).json({
+      success: true,
+      employee_id: employeeId,
+      profile_image: fullImageUrl,
+      data: {
+        ...image,
+        image_path: fullImageUrl
+      }
+    });
+
+  } catch (error) {
+    console.error("Get Profile Image Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
+  }
+};
+
+exports.addAddressInfo = async (req, res) => {
+  try {
+    const { employee_id, permanent_address, current_address } = req.body;
+    const createdBy = req.user?.id;
+
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee_id is required"
+      });
+    }
+
+    if (!createdBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
+
+    // Check employee exists
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
+
+    const result = await db.query(
+      `
+      INSERT INTO address (
+        Pr_Id,
+        Ad_Perment_Address,
+        Ad_Current_Address,
+        Ad_Is_Active,
+        Ad_Created_At,
+        Ad_Created_By
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        CURRENT_TIMESTAMP,
+        $5
+      )
+      RETURNING *
+      `,
+      [
+        employeeId,
+        permanent_address || null,
+        current_address || null,
+        true,
+        createdBy
+      ]
+    );
 
     return res.status(201).json({
       success: true,
       message: "Address info added successfully",
+      employee_id: employeeId,
+      created_by: createdBy,
       data: result.rows[0]
     });
 
   } catch (error) {
-    console.error("[ERROR] /address POST:", error);
+    console.error("Add Address Error:", error);
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee ID",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -3339,60 +4080,182 @@ exports.addAddressInfo = async (req, res) => {
 
 exports.updateAddressInfo = async (req, res) => {
   try {
-    const { employee_id, permanent_address, current_address} = req.body;
+    const { employee_id } = req.params;
 
-    // console.log("Education",req.body);
-    
-    // console.log("emp_id Add Education", emp_id)
+    const {
+      permanent_address,
+      current_address
+    } = req.body;
 
-    if(!employee_id){
-      return res.status(400).json({message:"employee_id required"});
+    const employeeId = parseInt(employee_id, 10);
+    const updatedBy = req.user?.id;
+
+    // -----------------------------
+    // Validate Employee ID
+    // -----------------------------
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee_id is required"
+      });
     }
 
+    // -----------------------------
+    // Validate JWT User
+    // -----------------------------
+    if (!updatedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "User ID not found in JWT token"
+      });
+    }
 
-    // console.log("req.user.emp_id,emp_id",req.user.emp_id,emp_id)
+    // -----------------------------
+    // Check Employee Exists
+    // -----------------------------
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
 
-    // if (req.user.role === "employee" && req.user.emp_id !== emp_id) {
-    //   return res.status(403).json({ message: "Unauthorized" });
-    // }
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
 
-    const query = `Update address set permanent_address=$1,current_address=$2 where employee_id=$3`;
-    await db.query(query, [permanent_address, current_address, employee_id]);
+    // -----------------------------
+    // Check Address Exists
+    // -----------------------------
+    const addressCheck = await db.query(
+      `
+      SELECT Ad_Id
+      FROM address
+      WHERE Pr_Id = $1
+      ORDER BY Ad_Id DESC
+      LIMIT 1
+      `,
+      [employeeId]
+    );
 
-    res.status(201).json({
-      message: "Address info updated successfully",
-      address: { permanent_address, current_address },
+    if (addressCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Address information not found for employee ${employeeId}`
+      });
+    }
+
+    const addressId = addressCheck.rows[0].ad_id;
+
+    // -----------------------------
+    // Update Address
+    // -----------------------------
+    const result = await db.query(
+      `
+      UPDATE address
+      SET
+        Ad_Perment_Address = $1,
+        Ad_Current_Address = $2,
+        Ad_Updated_By = $3,
+        Ad_Updated_At = CURRENT_TIMESTAMP
+      WHERE Ad_Id = $4
+        AND Pr_Id = $5
+      RETURNING
+        Ad_Id AS id,
+        Pr_Id AS employee_id,
+        Ad_Perment_Address AS permanent_address,
+        Ad_Current_Address AS current_address,
+        Ad_Is_Active AS is_active,
+        Ad_Created_At AS created_at,
+        Ad_Created_By AS created_by,
+        Ad_Updated_By AS updated_by,
+        Ad_Updated_At AS updated_at
+      `,
+      [
+        permanent_address || null,
+        current_address || null,
+        updatedBy,
+        addressId,
+        employeeId
+      ]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Address information updated successfully",
+      employee_id: employeeId,
+      address: result.rows[0]
     });
 
   } catch (error) {
-    console.error("[ERROR] /address PUT:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Update Address Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating address",
+      error: error.message
+    });
   }
 };
-
 
 exports.getAddressInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
 
-    if(!employee_id){
-      return res.status(400).json({message:"employee_id required"});
+    const employeeId = parseInt(employee_id, 10);
+
+    if (!employee_id || isNaN(employeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid employee_id is required"
+      });
     }
 
     const result = await db.query(
-      `SELECT permanent_address, current_address FROM address WHERE employee_id = $1`,
-      [employee_id]
+      `
+      SELECT
+        Ad_Id AS id,
+        Pr_Id AS employee_id,
+        Ad_Perment_Address AS permanent_address,
+        Ad_Current_Address AS current_address,
+        Ad_Is_Active AS is_active,
+        Ad_Created_At AS created_at,
+        Ad_Created_By AS created_by,
+        Ad_Updated_By AS updated_by,
+        Ad_Updated_At AS updated_at
+      FROM address
+      WHERE Pr_Id = $1
+      ORDER BY Ad_Id DESC
+      LIMIT 1
+      `,
+      [employeeId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Address info not found" });
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Address info not found"
+      });
     }
 
-    res.status(200).json({
-      address: result.rows[0],
+    return res.status(200).json({
+      success: true,
+      employee_id: employeeId,
+      address: result.rows[0]
     });
+
   } catch (error) {
-    console.error("[ERROR] /address GET:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Get Address Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };

@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const auth = require("../middlewares/authMiddleware");
 const { db } = require("../db/connectDB");
-const { getOrganizationInfo, addOrganizationInfo, updateOrganizationInfo, addPersonInfo, addEducationInfo, getEducationInfo, getPersonalInfo, updatePersonalInfo, updateEducationInfo, deleteEducationInfo, addExperienceInfo, updateExperienceInfo, deleteExperienceInfo, getExperienceInfo, getContactInfo, updateContactInfo, addBankInfo, getBankInfo, updateBankInfo, addBankDocInfo, getAllBankDoc, addProfileImage, getProfileImage,deleteContactInfo,addContactInfo, getNomineeInfo, addNomineeInfo, updateNomineeInfo, deleteDocument, deleteNomineeInfo, addAddressInfo, getAddressInfo, updateAddressInfo } = require("../controllers/profile.controller");
+const { getOrganizationInfo, addOrganizationInfo, updateOrganizationInfo, addPersonInfo, addEducationInfo, getEducationInfo, getPersonalInfo, updatePersonalInfo, updateEducationInfo, deleteEducationInfo, addExperienceInfo, updateExperienceInfo, deleteExperienceInfo, getExperienceInfo, getContactInfo, updateContactInfo, addBankInfo, getBankInfo, updateBankInfo, addBankDocInfo, getAllBankDoc, updateBankDocInfo, addProfileImage, getProfileImage,deleteContactInfo,addContactInfo, getNomineeInfo, addNomineeInfo, updateNomineeInfo, deleteDocument, deleteNomineeInfo, addAddressInfo, getAddressInfo, updateAddressInfo } = require("../controllers/profile.controller");
 const { isAdmin } = require("../middlewares/roleMiddleware");
 const uploadBankDoc = require("../middlewares/uploadBankDoc");
 const uploadProfileImage = require("../middlewares/uploadProfileImage");
@@ -116,13 +116,27 @@ router.delete("/nominee/:employee_id/:id",auth,deleteNomineeInfo);
 // BANK API
 
 
-router.get("/bank/:employee_id", auth, getBankInfo);
-router.post("/bank/:employee_id", auth, addBankInfo);
-router.put("/bank/:employee_id", auth, updateBankInfo);
+router.get(
+  "/bank/:employee_id",
+  auth,
+  getBankInfo
+);
+
+router.post(
+  "/bank/:employee_id",
+  auth,
+  addBankInfo
+);
+
+router.put(
+  "/bank/:employee_id",
+  auth,
+  updateBankInfo
+);
 
 router.post("/profile/address", auth, addAddressInfo);
 router.get("/profile/address/:employee_id", auth, getAddressInfo);
-router.put("/profile/address", auth, updateAddressInfo);
+router.put("/profile/address/:employee_id", auth, updateAddressInfo);
 
 
 // Document Upload Api 
@@ -148,56 +162,69 @@ router.put("/profile/address", auth, updateAddressInfo);
 router.post(
   "/bank/doc/:employee_id",
   auth,
-
   (req, res, next) => {
-
     uploadBankDoc(req, res, (err) => {
 
+      
       if (err) {
-
-        console.error(
-          "Bank Document Upload Error:",
-          err
-        );
+        console.error("Bank Document Upload Error:", err);
 
         if (err instanceof multer.MulterError) {
-
           return res.status(400).json({
             success: false,
             message: err.message,
             code: err.code
           });
-
         }
 
         return res.status(400).json({
           success: false,
-          message: err.message
+          message: err.message || "File upload failed"
         });
-
       }
 
-      console.log(
-        "Uploaded File:",
-        req.file
-      );
+     
+      console.log("Uploaded File:", req.file);
 
-      console.log(
-        "Form Body:",
-        req.body
-      );
+      
+      console.log("Form Body:", req.body);
 
+      
       next();
-
     });
-
   },
-
   addBankDocInfo
 );
 
 router.delete("/bank/doc/:employee_id/:id", auth,deleteDocument);
 
+router.put(
+  "/bank/doc/:employee_id/:id",
+  auth,
+  (req, res, next) => {
+    uploadBankDoc(req, res, (err) => {
+      if (err) {
+        console.error("Bank Document Update Upload Error:", err);
+
+        if (err instanceof multer.MulterError) {
+          return res.status(400).json({
+            success: false,
+            message: err.message,
+            code: err.code
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: err.message || "File upload failed"
+        });
+      }
+
+      next();
+    });
+  },
+  updateBankDocInfo
+);
 
 // GET all bank documents for an employee
 router.get("/bank/doc/:employee_id", auth, getAllBankDoc);
