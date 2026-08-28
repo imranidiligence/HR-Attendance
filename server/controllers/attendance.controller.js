@@ -994,7 +994,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
          */
         da.punch_in,
         da.punch_out,
-
+        da.status_id,
         COALESCE(
           ast.status_name,
           'Absent'
@@ -1210,7 +1210,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           role:
             row.role,
-
+           status_id: row.status_id,
           status:
             row.status,
 
