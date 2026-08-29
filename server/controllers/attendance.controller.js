@@ -860,6 +860,7 @@ exports.processAndSendAttendanceReport = async (
 };
 
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
+// In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
