@@ -78,7 +78,7 @@ async function syncMachineToActivityLog(client) {
       ? machineResponse.data
       : [];
 
-      console.log(machineLogs, "logs from activity");
+      // console.log(machineLogs, "logs from activity");
 
   if (machineLogs.length === 0) {
     console.log("[CRON] Machine returned no logs");

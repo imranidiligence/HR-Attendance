@@ -271,10 +271,6 @@ async function runWithLock(jobName, jobFunction) {
   }
 }
 
-/* =====================================================
-   EXISTING PIPELINE: machine -> activity_log ->
-   attendance_logs -> daily_attendance, every minute
-===================================================== */
 
 async function runPipeline(client) {
   const machineResult = await syncMachineToActivityLog(client);
@@ -297,10 +293,6 @@ cron.schedule(
   { timezone: TIMEZONE }
 );
 
-/* =====================================================
-   WEEKLY AGGREGATION: attendance_logs -> weekly table
-   Runs once daily at 11:00 AM IST
-===================================================== */
 
 cron.schedule(
   "0 11 * * *",
@@ -310,10 +302,6 @@ cron.schedule(
   { timezone: TIMEZONE }
 );
 
-/* =====================================================
-   MONTHLY AGGREGATION: attendance_logs -> monthly table
-   Runs once daily at 11:00 AM IST
-===================================================== */
 
 cron.schedule(
   "0 11 * * *",
@@ -323,15 +311,6 @@ cron.schedule(
   { timezone: TIMEZONE }
 );
 
-/* =====================================================
-   STARTUP RUNS
-
-   Weekly and monthly tables are currently empty, so run
-   both once immediately on app start/deploy (in addition
-   to their 11 AM schedule). Same lock names as above, so
-   if you restart the app right before/after 11 AM, the
-   lock still prevents a double-run.
-===================================================== */
 
 (async () => {
   console.log("[CRON] Running weekly_attendance once on startup...");
