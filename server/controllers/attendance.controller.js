@@ -970,7 +970,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS is_active,
 
         COALESCE(
-          NULLIF(TRIM(p.pr_name), ''),
+          NULLIF(TRIM(p.pr_first_name), ''),
           TRIM(
             CONCAT_WS(
               ' ',
@@ -1064,7 +1064,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         COALESCE(o.or_is_active, FALSE) DESC,
         TRIM(
           COALESCE(
-            NULLIF(p.pr_name, ''),
+            NULLIF(p.pr_first_name, ''),
             CONCAT_WS(
               ' ',
               p.pr_first_name,
@@ -1471,7 +1471,6 @@ exports.getMyAttendance = async (req, res) => {
     const limit = Math.max(parseInt(req.query.limit) || 15, 1);
     const offset = (page - 1) * limit;
 
-    // Optional date filters
     const { startDate, endDate } = req.query;
 
     // Default: last 30 days + today
@@ -1500,13 +1499,18 @@ exports.getMyAttendance = async (req, res) => {
     const countResult = await db.query(
       `
       SELECT COUNT(*)::int AS total
-      FROM generate_series(
-        COALESCE($1::date, ${defaultFromDate}),
-        COALESCE($2::date, ${defaultToDate}),
-        INTERVAL '1 day'
-      ) d;
+      FROM daily_attendance da
+      WHERE da.emp_id = $1
+        AND da.attendance_date >= COALESCE(
+          $2::date,
+          ${defaultFromDate}
+        )
+        AND da.attendance_date <= COALESCE(
+          $3::date,
+          ${defaultToDate}
+        );
       `,
-      [fromDate, toDate]
+      [empId, fromDate, toDate]
     );
 
     const totalItems = countResult.rows[0].total;
@@ -1516,136 +1520,49 @@ exports.getMyAttendance = async (req, res) => {
     // ---------------------------------------------------------
     const { rows } = await db.query(
       `
-      WITH date_range AS (
-        SELECT generate_series(
-          COALESCE($1::date, ${defaultFromDate}),
-          COALESCE($2::date, ${defaultToDate}),
-          INTERVAL '1 day'
-        )::date AS attendance_date
-      ),
-
-      logs_summary AS (
-        SELECT
-            emp_id,
-            DATE(punch_time) AS attendance_date,
-            MIN(punch_time) AS log_punch_in,
-            MAX(punch_time) AS log_punch_out,
-            COUNT(*) AS total_logs
-        FROM attendance_logs
-        WHERE emp_id = $3
-        GROUP BY emp_id, DATE(punch_time)
-      )
-
       SELECT
-          $3 AS emp_id,
-          u.name AS employee_name,
-          TO_CHAR(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
+          da.emp_id,
 
-          COALESCE(
-            da.punch_in,
-            ls.log_punch_in
-          ) AS punch_in,
+          TO_CHAR(
+            da.attendance_date,
+            'YYYY-MM-DD'
+          ) AS attendance_date,
 
-          CASE
-              WHEN da.punch_out IS NOT NULL
-                  THEN da.punch_out
+          da.punch_in,
+          da.punch_out,
 
-              WHEN ls.total_logs > 1
-                  THEN ls.log_punch_out
+          da.total_hours,
+          da.expected_hours,
 
-              ELSE NULL
-          END AS punch_out,
+          da.late_arrival,
+          da.is_late_arrived,
 
-          CASE
-              WHEN COALESCE(
-                da.punch_in,
-                ls.log_punch_in
-              ) IS NULL
-                  THEN 0
+          da.early_go,
+          da.is_early_gone,
 
-              WHEN (
-                  CASE
-                      WHEN da.punch_out IS NOT NULL
-                          THEN da.punch_out
+          da.status_id
 
-                      WHEN ls.total_logs > 1
-                          THEN ls.log_punch_out
+      FROM daily_attendance da
 
-                      ELSE NULL
-                  END
-              ) IS NULL
-                  THEN 0
+      WHERE da.emp_id = $1
+        AND da.attendance_date >= COALESCE(
+          $2::date,
+          ${defaultFromDate}
+        )
+        AND da.attendance_date <= COALESCE(
+          $3::date,
+          ${defaultToDate}
+        )
 
-              ELSE EXTRACT(
-                EPOCH FROM (
-                  (
-                    CASE
-                        WHEN da.punch_out IS NOT NULL
-                            THEN da.punch_out
-
-                        WHEN ls.total_logs > 1
-                            THEN ls.log_punch_out
-
-                        ELSE NULL
-                    END
-                  )
-                  -
-                  COALESCE(
-                    da.punch_in,
-                    ls.log_punch_in
-                  )
-                )
-              )
-          END AS total_seconds,
-
-          CASE
-              WHEN COALESCE(
-                da.punch_in,
-                ls.log_punch_in
-              ) IS NULL
-                  THEN 'Absent'
-
-              WHEN (
-                  CASE
-                      WHEN da.punch_out IS NOT NULL
-                          THEN da.punch_out
-
-                      WHEN ls.total_logs > 1
-                          THEN ls.log_punch_out
-
-                      ELSE NULL
-                  END
-              ) IS NULL
-                  THEN 'Working'
-
-              ELSE 'Present'
-          END AS status
-
-      FROM date_range dr
-
-      CROSS JOIN (
-          SELECT name
-          FROM users
-          WHERE emp_id = $3
-      ) u
-
-      LEFT JOIN daily_attendance da
-             ON da.emp_id = $3
-            AND da.attendance_date = dr.attendance_date
-
-      LEFT JOIN logs_summary ls
-             ON ls.emp_id = $3
-            AND ls.attendance_date = dr.attendance_date
-
-      ORDER BY dr.attendance_date DESC
+      ORDER BY da.attendance_date DESC
 
       LIMIT $4
       OFFSET $5;
       `,
       [
+        empId,
         fromDate,
         toDate,
-        empId,
         limit,
         offset,
       ]
@@ -1656,23 +1573,38 @@ exports.getMyAttendance = async (req, res) => {
       rows
     );
 
+    // ---------------------------------------------------------
+    // FORMAT RESPONSE
+    // ---------------------------------------------------------
     const attendance = rows.map((row) => {
       let total_hours = null;
 
       // Use total_hours from DB if available
       if (
-        row.total_seconds &&
+        row.total_hours !== null &&
+        row.total_hours !== undefined
+      ) {
+        total_hours = row.total_hours;
+      }
+      // Otherwise calculate from punch_in / punch_out
+      else if (
         row.punch_in &&
         row.punch_out
       ) {
-        const seconds = Number(row.total_seconds);
+        const punchIn = new Date(row.punch_in);
+        const punchOut = new Date(row.punch_out);
 
-        total_hours = {
-          hours: Math.floor(seconds / 3600),
-          minutes: Math.floor(
-            (seconds % 3600) / 60
-          ),
-        };
+        const seconds =
+          (punchOut.getTime() - punchIn.getTime()) / 1000;
+
+        if (seconds > 0) {
+          total_hours = {
+            hours: Math.floor(seconds / 3600),
+            minutes: Math.floor(
+              (seconds % 3600) / 60
+            ),
+          };
+        }
       }
 
       return {
@@ -1689,17 +1621,15 @@ exports.getMyAttendance = async (req, res) => {
       attendance,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(
-          totalItems / limit
-        ),
+        totalPages: Math.ceil(totalItems / limit),
         totalItems,
         limit,
         hasNext:
-          page <
-          Math.ceil(totalItems / limit),
+          page < Math.ceil(totalItems / limit),
         hasPrevious: page > 1,
       },
     });
+
   } catch (err) {
     console.error(
       "getMyAttendance error:",
