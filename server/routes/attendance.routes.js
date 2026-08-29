@@ -139,7 +139,7 @@ router.get("/all-attendance", auth, async (req, res) => {
            */
           COALESCE(
             NULLIF(
-              TRIM(p.pr_name),
+              TRIM(p.pr_first_name),
               ''
             ),
 
@@ -1213,7 +1213,7 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
           COALESCE(
             NULLIF(
-              TRIM(p.pr_name),
+              TRIM(p.pr_first_name),
               ''
             ),
 
