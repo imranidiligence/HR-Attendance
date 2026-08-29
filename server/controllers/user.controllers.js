@@ -61,7 +61,8 @@ const result = await db.query(
   WHERE
       LOWER(p.pr_email) = $1
       OR LOWER(o.or_emp_id) = $1
-      OR LOWER(o.or_organization_email) = $1
+      OR LOWER(o.or_official_email) = $1
+      OR LOWER(o.or_official_contact) = $1
 
   LIMIT 1
   `,
@@ -622,14 +623,12 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate User ID
     if (!id || isNaN(id)) {
       return errorResponse(res, 400, 'Valid User ID is required', null);
     }
 
-    // Check whether user exists
     const existing = await db.query(
-      `SELECT * FROM users WHERE id = $1`,
+      `SELECT * FROM organizations WHERE pr_id = $1`,
       [id]
     );
 
@@ -637,9 +636,8 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       return errorResponse(res, 404, 'User not found', null);
     }
 
-    const { UpdatedBy, IsActive } = req.body;
+    const { IsActive } = req.body;
 
-    // Validate IsActive
     if (typeof IsActive !== 'boolean') {
       return errorResponse(
         res,
@@ -649,19 +647,23 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       );
     }
 
-   // Update user status
-const query = `
-  UPDATE users
-  SET
-    is_active = $1
-  WHERE id = $2
-  RETURNING *
-`;
+    const updatedBy = req.user?.id || null;
 
-const result = await db.query(query, [
-  IsActive,
-  id
-]);
+    const query = `
+      UPDATE organizations
+      SET
+        or_is_active = $1,
+        or_updated_by = $2,
+        or_updated_at = CURRENT_TIMESTAMP
+      WHERE pr_id = $3
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [
+      IsActive,
+      updatedBy,
+      id
+    ]);
 
     return successResponse(
       res,
@@ -679,9 +681,4 @@ const result = await db.query(query, [
   }
 };
 
-const resetPassword = async (req,res) =>{
-  
-}
-
-
-module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees, resetPassword };
+module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };

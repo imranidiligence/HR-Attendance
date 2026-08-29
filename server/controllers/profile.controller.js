@@ -815,6 +815,7 @@ exports.getPersonalInfo = async (req, res) => {
         p.pr_marital_status_id,
         p.pr_nationality_id,
         p.pr_is_active,
+        p.pr_contact,
         p.pr_created_at,
         p.pr_created_by,
         p.pr_updated_at,
@@ -850,6 +851,7 @@ exports.getPersonalInfo = async (req, res) => {
       marital_status_id: result.rows[0].pr_marital_status_id,
       nationality_id: result.rows[0].pr_nationality_id,
       is_active: result.rows[0].pr_is_active,
+      contact: result.rows[0].pr_contact,
       created_at: result.rows[0].pr_created_at,
       created_by: result.rows[0].pr_created_by,
       updated_at: result.rows[0].pr_updated_at,
@@ -1720,22 +1722,14 @@ exports.deleteEducationInfo = async (req, res) => {
       });
     }
 
-    // Authorization
-    // if (
-    //   req.user.role === "employee" &&
-    //   String(req.user.emp_id) !== String(emp_id)
-    // ) {
-    //   return res.status(403).json({
-    //     message: "Access Denied: You cannot delete this record"
-    //   });
-    // }
+    
 
     const result = await db.query(
       `
       DELETE FROM education
-      WHERE id = $1
-        AND employee_id = $2
-      RETURNING id
+      WHERE ed_id = $1
+        AND Pr_id = $2
+      RETURNING Pr_id
       `,
       [educationId, employee_id]
     );
@@ -2164,8 +2158,8 @@ exports.deleteExperienceInfo = async (req, res) => {
     const result = await db.query(
       `
       DELETE FROM experience
-      WHERE id = $1
-        AND employee_id = $2
+      WHERE ex_id = $1
+        AND Pr_id = $2
       RETURNING *
       `,
       [experienceId, employee_id]
@@ -2764,89 +2758,44 @@ exports.updateContactInfo = async (req, res) => {
 exports.deleteContactInfo = async (req, res) => {
   const { employee_id, id } = req.params;
 
-  try {
-    const contactId = Number(id);
+   try {
+    const { employee_id, id } = req.params;
 
-    if (isNaN(contactId)) {
+    const experienceId = Number(id);
+
+    if (isNaN(experienceId)) {
       return res.status(400).json({
-        success: false,
         message: "Invalid Contact ID"
       });
     }
 
-    // ------------------------------------------------
-    // Check Contact
-    // ------------------------------------------------
     const result = await db.query(
       `
-      SELECT
-        id,
-        is_primary
-      FROM contact
-      WHERE id = $1
-        AND employee_id = $2
+      DELETE FROM Contact
+      WHERE ct_id = $1
+        AND Pr_id = $2
+      RETURNING *
       `,
-      [contactId, employee_id]
+      [experienceId, employee_id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
-        success: false,
-        message: "Contact not found for this employee."
+        message: "Contact not found"
       });
     }
 
-    const isPrimary = result.rows[0].is_primary;
-
-    // ------------------------------------------------
-    // If Primary, don't allow deleting when others exist
-    // ------------------------------------------------
-    if (isPrimary) {
-      const countResult = await db.query(
-        `
-        SELECT COUNT(*)::int AS total
-        FROM contact
-        WHERE employee_id = $1
-        `,
-        [employee_id]
-      );
-
-      const totalContacts = countResult.rows[0].total;
-
-      if (totalContacts > 1) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "You cannot delete the Primary contact. Assign another contact as Primary first."
-        });
-      }
-    }
-
-    // ------------------------------------------------
-    // Delete Contact
-    // ------------------------------------------------
-    const deleteResult = await db.query(
-      `
-      DELETE FROM contact
-      WHERE id = $1
-        AND employee_id = $2
-      RETURNING *
-      `,
-      [contactId, employee_id]
-    );
-
     return res.status(200).json({
       success: true,
-      message: "Contact deleted successfully.",
-      deletedContact: deleteResult.rows[0]
+      message: "Contact deleted successfully",
+      deletedExperience: result.rows[0]
     });
 
   } catch (error) {
-    console.error("Delete Contact Error:", error);
+    console.error("Delete Contact error:", error);
 
     return res.status(500).json({
-      success: false,
-      message: "Server error during deletion."
+      message: "Internal Server Error"
     });
   }
 };
@@ -3316,7 +3265,7 @@ exports.deleteNomineeInfo = async (req, res) => {
 
     const query = `
       DELETE FROM nominee
-      WHERE id = $1 AND employee_id = $2
+      WHERE nm_id = $1 AND Pr_id = $2
       RETURNING *;
     `;
 
@@ -3831,8 +3780,8 @@ exports.deleteDocument = async (req, res) => {
     const { id, employee_id } = req.params;
 
     const queryDelete = `
-      DELETE FROM bank_documents
-      WHERE id = $1 AND employee_id = $2
+      DELETE FROM documents
+      WHERE dc_id = $1 AND Pr_id = $2
     `;
 
     const result = await db.query(queryDelete, [id, employee_id]);
