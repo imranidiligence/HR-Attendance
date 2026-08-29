@@ -2091,12 +2091,7 @@ async function getDeviceAttendance() {
   const deviceSN = "EUF7251400009";
   const deviceIP = "60.254.61.177";
 
-  const zk = new ZKLib(
-    deviceIP,
-    4370,
-    10000,
-    4000
-  );
+const zk = new ZKLib(deviceIP, 4370, 10000, 15000);
 
   function formatISTWithOffset(date) {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
@@ -2210,22 +2205,22 @@ async function getDeviceAttendance() {
     }
   }
 }
-let isSyncRunning = false;
+// let isSyncRunning = false;
 
-cron.schedule("*/1 * * * *", async () => {
-  if (isSyncRunning) {
-    console.log("Previous sync still running");
-    return;
-  }
+// cron.schedule("*/1 * * * *", async () => {
+//   if (isSyncRunning) {
+//     console.log("Previous sync still running");
+//     return;
+//   }
 
-  isSyncRunning = true;
+//   isSyncRunning = true;
 
-  try {
-    await getDeviceAttendance();
-  } finally {
-    isSyncRunning = false;
-  }
-});
+//   try {
+//     await getDeviceAttendance();
+//   } finally {
+//     isSyncRunning = false;
+//   }
+// });
 //
 // let isSyncRunning2 = false;
 // cron.schedule("*/1 * * * *", async () => {

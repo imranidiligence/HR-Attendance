@@ -1659,6 +1659,7 @@ exports.getMyAttendance = async (req, res) => {
     const attendance = rows.map((row) => {
       let total_hours = null;
 
+      // Use total_hours from DB if available
       if (
         row.total_seconds &&
         row.punch_in &&
@@ -1680,6 +1681,9 @@ exports.getMyAttendance = async (req, res) => {
       };
     });
 
+    // ---------------------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------------------
     return res.status(200).json({
       success: true,
       attendance,
