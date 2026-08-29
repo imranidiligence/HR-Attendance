@@ -932,6 +932,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
      * ATTENDANCE QUERY
      * =========================================================
      *
+     * Important:
+     *
      * organizations
      *      ↓
      * personal
@@ -993,38 +995,15 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         da.punch_in,
         da.punch_out,
         da.status_id,
-
         COALESCE(
           ast.status_name,
           'Absent'
         ) AS status,
 
-        /*
-         * =====================================================
-         * TOTAL HOURS
-         * =====================================================
-         *
-         * Convert PostgreSQL INTERVAL into total seconds.
-         *
-         * Example:
-         *
-         * 00:09:48 -> 588 seconds
-         * 08:30:25 -> 30625 seconds
-         *
-         * This avoids the pg driver returning the INTERVAL
-         * as an object like:
-         *
-         * {
-         *   minutes: 9,
-         *   seconds: 48
-         * }
-         */
-        EXTRACT(
-          EPOCH FROM COALESCE(
-            da.total_hours,
-            INTERVAL '0'
-          )
-        ) AS total_hours_seconds
+        COALESCE(
+          da.total_hours,
+          INTERVAL '0'
+        ) AS total_hours
 
       FROM public.organizations o
 
@@ -1083,7 +1062,6 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     query += `
       ORDER BY
         COALESCE(o.or_is_active, FALSE) DESC,
-
         TRIM(
           COALESCE(
             NULLIF(p.pr_name, ''),
@@ -1129,49 +1107,39 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
          * TOTAL HOURS
          * -----------------------------------------------------
          *
-         * total_hours_seconds comes from:
+         * PostgreSQL pg driver generally returns INTERVAL
+         * as a string such as:
          *
-         * EXTRACT(EPOCH FROM da.total_hours)
+         * 08:30:00
          *
-         * Example:
-         *
-         * 00:09:48
-         *      ↓
-         * 588 seconds
-         *      ↓
-         * 00:09
-         *
-         * 08:30:25
-         *      ↓
-         * 30625 seconds
-         *      ↓
-         * 08:30
+         * So parse it safely.
          */
         let totalHours = "00:00";
 
         if (
-          row.total_hours_seconds !== null &&
-          row.total_hours_seconds !== undefined
+          row.total_hours !== null &&
+          row.total_hours !== undefined
         ) {
-          const totalSeconds = Math.max(
-            0,
-            Math.floor(
-              Number(row.total_hours_seconds)
-            )
-          );
+          const intervalString =
+            String(row.total_hours);
 
-          const hours = Math.floor(
-            totalSeconds / 3600
-          );
+          const match =
+            intervalString.match(
+              /^(-?\d+):(\d{2}):(\d{2})/
+            );
 
-          const minutes = Math.floor(
-            (totalSeconds % 3600) / 60
-          );
+          if (match) {
+            const hours =
+              parseInt(match[1], 10);
 
-          totalHours =
-            `${String(hours).padStart(2, "0")}:${String(
-              minutes
-            ).padStart(2, "0")}`;
+            const minutes =
+              parseInt(match[2], 10);
+
+            totalHours =
+              `${String(hours).padStart(2, "0")}:${String(
+                minutes
+              ).padStart(2, "0")}`;
+          }
         }
 
         /*
@@ -1242,10 +1210,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           role:
             row.role,
-
-          status_id:
-            row.status_id,
-
+           status_id: row.status_id,
           status:
             row.status,
 
@@ -1506,6 +1471,7 @@ exports.getMyAttendance = async (req, res) => {
     const limit = Math.max(parseInt(req.query.limit) || 15, 1);
     const offset = (page - 1) * limit;
 
+    // Optional date filters
     const { startDate, endDate } = req.query;
 
     // Default: last 30 days + today
@@ -1534,14 +1500,13 @@ exports.getMyAttendance = async (req, res) => {
     const countResult = await db.query(
       `
       SELECT COUNT(*)::int AS total
-      FROM daily_attendance
-      WHERE emp_id = $1
-        AND attendance_date BETWEEN
-            COALESCE($2::date, ${defaultFromDate})
-            AND
-            COALESCE($3::date, ${defaultToDate});
+      FROM generate_series(
+        COALESCE($1::date, ${defaultFromDate}),
+        COALESCE($2::date, ${defaultToDate}),
+        INTERVAL '1 day'
+      ) d;
       `,
-      [empId, fromDate, toDate]
+      [fromDate, toDate]
     );
 
     const totalItems = countResult.rows[0].total;
@@ -1551,45 +1516,136 @@ exports.getMyAttendance = async (req, res) => {
     // ---------------------------------------------------------
     const { rows } = await db.query(
       `
+      WITH date_range AS (
+        SELECT generate_series(
+          COALESCE($1::date, ${defaultFromDate}),
+          COALESCE($2::date, ${defaultToDate}),
+          INTERVAL '1 day'
+        )::date AS attendance_date
+      ),
+
+      logs_summary AS (
+        SELECT
+            emp_id,
+            DATE(punch_time) AS attendance_date,
+            MIN(punch_time) AS log_punch_in,
+            MAX(punch_time) AS log_punch_out,
+            COUNT(*) AS total_logs
+        FROM attendance_logs
+        WHERE emp_id = $3
+        GROUP BY emp_id, DATE(punch_time)
+      )
+
       SELECT
-          da.emp_id,
+          $3 AS emp_id,
+          u.name AS employee_name,
+          TO_CHAR(dr.attendance_date, 'YYYY-MM-DD') AS attendance_date,
 
-          TO_CHAR(
-            da.attendance_date,
-            'YYYY-MM-DD'
-          ) AS attendance_date,
+          COALESCE(
+            da.punch_in,
+            ls.log_punch_in
+          ) AS punch_in,
 
-          da.punch_in,
-          da.punch_out,
+          CASE
+              WHEN da.punch_out IS NOT NULL
+                  THEN da.punch_out
 
-          da.total_hours,
-          da.expected_hours,
+              WHEN ls.total_logs > 1
+                  THEN ls.log_punch_out
 
-          da.late_arrival,
-          da.is_late_arrived,
+              ELSE NULL
+          END AS punch_out,
 
-          da.early_go,
-          da.is_early_gone,
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 0
 
-          da.status_id
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
 
-      FROM daily_attendance da
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
 
-      WHERE da.emp_id = $1
-        AND da.attendance_date BETWEEN
-            COALESCE($2::date, ${defaultFromDate})
-            AND
-            COALESCE($3::date, ${defaultToDate})
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 0
 
-      ORDER BY da.attendance_date DESC
+              ELSE EXTRACT(
+                EPOCH FROM (
+                  (
+                    CASE
+                        WHEN da.punch_out IS NOT NULL
+                            THEN da.punch_out
+
+                        WHEN ls.total_logs > 1
+                            THEN ls.log_punch_out
+
+                        ELSE NULL
+                    END
+                  )
+                  -
+                  COALESCE(
+                    da.punch_in,
+                    ls.log_punch_in
+                  )
+                )
+              )
+          END AS total_seconds,
+
+          CASE
+              WHEN COALESCE(
+                da.punch_in,
+                ls.log_punch_in
+              ) IS NULL
+                  THEN 'Absent'
+
+              WHEN (
+                  CASE
+                      WHEN da.punch_out IS NOT NULL
+                          THEN da.punch_out
+
+                      WHEN ls.total_logs > 1
+                          THEN ls.log_punch_out
+
+                      ELSE NULL
+                  END
+              ) IS NULL
+                  THEN 'Working'
+
+              ELSE 'Present'
+          END AS status
+
+      FROM date_range dr
+
+      CROSS JOIN (
+          SELECT name
+          FROM users
+          WHERE emp_id = $3
+      ) u
+
+      LEFT JOIN daily_attendance da
+             ON da.emp_id = $3
+            AND da.attendance_date = dr.attendance_date
+
+      LEFT JOIN logs_summary ls
+             ON ls.emp_id = $3
+            AND ls.attendance_date = dr.attendance_date
+
+      ORDER BY dr.attendance_date DESC
 
       LIMIT $4
       OFFSET $5;
       `,
       [
-        empId,
         fromDate,
         toDate,
+        empId,
         limit,
         offset,
       ]
@@ -1600,35 +1656,22 @@ exports.getMyAttendance = async (req, res) => {
       rows
     );
 
-    // ---------------------------------------------------------
-    // FORMAT TOTAL HOURS
-    // ---------------------------------------------------------
     const attendance = rows.map((row) => {
       let total_hours = null;
 
       if (
-        row.total_hours !== null &&
-        row.total_hours !== undefined
-      ) {
-        total_hours = row.total_hours;
-      } else if (
+        row.total_seconds &&
         row.punch_in &&
         row.punch_out
       ) {
-        const punchIn = new Date(row.punch_in);
-        const punchOut = new Date(row.punch_out);
+        const seconds = Number(row.total_seconds);
 
-        const seconds =
-          (punchOut.getTime() - punchIn.getTime()) / 1000;
-
-        if (seconds > 0) {
-          total_hours = {
-            hours: Math.floor(seconds / 3600),
-            minutes: Math.floor(
-              (seconds % 3600) / 60
-            ),
-          };
-        }
+        total_hours = {
+          hours: Math.floor(seconds / 3600),
+          minutes: Math.floor(
+            (seconds % 3600) / 60
+          ),
+        };
       }
 
       return {
@@ -1642,15 +1685,17 @@ exports.getMyAttendance = async (req, res) => {
       attendance,
       pagination: {
         currentPage: page,
-        totalPages: Math.ceil(totalItems / limit),
+        totalPages: Math.ceil(
+          totalItems / limit
+        ),
         totalItems,
         limit,
         hasNext:
-          page < Math.ceil(totalItems / limit),
+          page <
+          Math.ceil(totalItems / limit),
         hasPrevious: page > 1,
       },
     });
-
   } catch (err) {
     console.error(
       "getMyAttendance error:",
@@ -1672,7 +1717,7 @@ exports.getMyHolidays = async (req, res) => {
         htm.holiday_type_name
       FROM holidays h
       LEFT JOIN holiday_type_master htm
-        ON h.holiday_type_id = htm.holiday_type_id
+        ON h.holiday_id = htm.holiday_type_id
       ORDER BY h.holiday_date ASC
     `);
 
