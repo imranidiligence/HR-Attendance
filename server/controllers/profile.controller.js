@@ -721,9 +721,50 @@ exports.addPersonInfo = async (req, res) => {
       ]
     );
 
+    const roleIdResult = await db.query(
+      `
+      SELECT COALESCE(MAX(Rl_Id), 0) + 1 AS next_rl_id
+      FROM user_role_relation
+      `
+    );
+
+    const nextRlId = roleIdResult.rows[0].next_rl_id;
+
+    const roleResult = await db.query(
+      `
+      INSERT INTO user_role_relation (
+        Rl_Id,
+        Pr_Id,
+        Rl_Role_Id,
+        Rl_Created_By,
+        Rl_Created_At
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING
+        Rl_Id,
+        Pr_Id,
+        Rl_Role_Id,
+        Rl_Created_By,
+        Rl_Created_At
+      `,
+      [
+        nextRlId,
+        newEmployeeId,
+        3,
+        createdBy
+      ]
+    );
+
     return res.status(201).json({
       success: true,
-      message: "Personal details and login credentials created successfully",
+      message:
+        "Personal details, login credentials, and role assigned successfully",
       employee_id: newEmployeeId,
       created_by: createdBy,
       personalDetails: personalResult.rows[0],
@@ -731,9 +772,15 @@ exports.addPersonInfo = async (req, res) => {
         login_id: loginResult.rows[0].lg_id,
         employee_id: loginResult.rows[0].pr_id,
         created_at: loginResult.rows[0].lg_created_at
+      },
+      roleDetails: {
+        role_relation_id: roleResult.rows[0].rl_id,
+        employee_id: roleResult.rows[0].pr_id,
+        role_id: roleResult.rows[0].rl_role_id,
+        created_by: roleResult.rows[0].rl_created_by,
+        created_at: roleResult.rows[0].rl_created_at
       }
     });
-
   } catch (error) {
     console.error("Personal POST error:", error);
 
