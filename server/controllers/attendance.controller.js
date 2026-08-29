@@ -1534,12 +1534,16 @@ exports.getMyAttendance = async (req, res) => {
     const countResult = await db.query(
       `
       SELECT COUNT(*)::int AS total
-      FROM daily_attendance
-      WHERE emp_id = $1
-        AND attendance_date BETWEEN
-            COALESCE($2::date, ${defaultFromDate})
-            AND
-            COALESCE($3::date, ${defaultToDate});
+      FROM daily_attendance da
+      WHERE da.emp_id = $1
+        AND da.attendance_date >= COALESCE(
+          $2::date,
+          ${defaultFromDate}
+        )
+        AND da.attendance_date <= COALESCE(
+          $3::date,
+          ${defaultToDate}
+        );
       `,
       [empId, fromDate, toDate]
     );
@@ -1576,10 +1580,14 @@ exports.getMyAttendance = async (req, res) => {
       FROM daily_attendance da
 
       WHERE da.emp_id = $1
-        AND da.attendance_date BETWEEN
-            COALESCE($2::date, ${defaultFromDate})
-            AND
-            COALESCE($3::date, ${defaultToDate})
+        AND da.attendance_date >= COALESCE(
+          $2::date,
+          ${defaultFromDate}
+        )
+        AND da.attendance_date <= COALESCE(
+          $3::date,
+          ${defaultToDate}
+        )
 
       ORDER BY da.attendance_date DESC
 
@@ -1601,17 +1609,20 @@ exports.getMyAttendance = async (req, res) => {
     );
 
     // ---------------------------------------------------------
-    // FORMAT TOTAL HOURS
+    // FORMAT RESPONSE
     // ---------------------------------------------------------
     const attendance = rows.map((row) => {
       let total_hours = null;
 
+      // Use total_hours from DB if available
       if (
         row.total_hours !== null &&
         row.total_hours !== undefined
       ) {
         total_hours = row.total_hours;
-      } else if (
+      }
+      // Otherwise calculate from punch_in / punch_out
+      else if (
         row.punch_in &&
         row.punch_out
       ) {
@@ -1637,6 +1648,9 @@ exports.getMyAttendance = async (req, res) => {
       };
     });
 
+    // ---------------------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------------------
     return res.status(200).json({
       success: true,
       attendance,

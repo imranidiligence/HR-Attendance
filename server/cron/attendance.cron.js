@@ -273,15 +273,18 @@ async function runWithLock(jobName, jobFunction) {
 
 
 async function runPipeline(client) {
+  const runId = Math.random().toString(36).slice(2, 8);
+  console.log(`[CRON][${runId}] pipeline start`)
   const machineResult = await syncMachineToActivityLog(client);
   console.log("[CRON] Stage 1 (machine -> activity_log):", machineResult);
+  console.log(`[CRON][${runId}] Stage 1:`, machineResult);
 
   const activityResult = await syncActivityToAttendanceLogs(client);
   console.log("[CRON] Stage 2 (activity_log -> attendance_logs):", activityResult);
-
+  console.log(`[CRON][${runId}] Stage 2:`, activityResult);
   const dailyResult = await generateDailyAttendance(client);
   console.log("[CRON] Stage 3 (attendance_logs -> daily_attendance):", dailyResult);
-
+  console.log(`[CRON][${runId}] Stage 3:`, dailyResult);
   return { machineResult, activityResult, dailyResult };
 }
 
