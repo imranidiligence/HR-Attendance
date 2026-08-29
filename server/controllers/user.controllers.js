@@ -681,4 +681,9 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
   }
 };
 
-module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees };
+const resetPassword = async (req,res) =>{
+  
+}
+
+
+module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees, resetPassword };
