@@ -860,6 +860,7 @@ exports.processAndSendAttendanceReport = async (
 };
 
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
+// In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -932,6 +933,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
      * ATTENDANCE QUERY
      * =========================================================
      *
+     * Important:
+     *
      * organizations
      *      ↓
      * personal
@@ -968,7 +971,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS is_active,
 
         COALESCE(
-          NULLIF(TRIM(p.pr_name), ''),
+          NULLIF(TRIM(p.pr_first_name), ''),
           TRIM(
             CONCAT_WS(
               ' ',
@@ -993,38 +996,15 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         da.punch_in,
         da.punch_out,
         da.status_id,
-
         COALESCE(
           ast.status_name,
           'Absent'
         ) AS status,
 
-        /*
-         * =====================================================
-         * TOTAL HOURS
-         * =====================================================
-         *
-         * Convert PostgreSQL INTERVAL into total seconds.
-         *
-         * Example:
-         *
-         * 00:09:48 -> 588 seconds
-         * 08:30:25 -> 30625 seconds
-         *
-         * This avoids the pg driver returning the INTERVAL
-         * as an object like:
-         *
-         * {
-         *   minutes: 9,
-         *   seconds: 48
-         * }
-         */
-        EXTRACT(
-          EPOCH FROM COALESCE(
-            da.total_hours,
-            INTERVAL '0'
-          )
-        ) AS total_hours_seconds
+        COALESCE(
+          da.total_hours,
+          INTERVAL '0'
+        ) AS total_hours
 
       FROM public.organizations o
 
@@ -1083,10 +1063,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     query += `
       ORDER BY
         COALESCE(o.or_is_active, FALSE) DESC,
-
         TRIM(
           COALESCE(
-            NULLIF(p.pr_name, ''),
+            NULLIF(p.pr_first_name, ''),
             CONCAT_WS(
               ' ',
               p.pr_first_name,
@@ -1129,49 +1108,39 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
          * TOTAL HOURS
          * -----------------------------------------------------
          *
-         * total_hours_seconds comes from:
+         * PostgreSQL pg driver generally returns INTERVAL
+         * as a string such as:
          *
-         * EXTRACT(EPOCH FROM da.total_hours)
+         * 08:30:00
          *
-         * Example:
-         *
-         * 00:09:48
-         *      ↓
-         * 588 seconds
-         *      ↓
-         * 00:09
-         *
-         * 08:30:25
-         *      ↓
-         * 30625 seconds
-         *      ↓
-         * 08:30
+         * So parse it safely.
          */
         let totalHours = "00:00";
 
         if (
-          row.total_hours_seconds !== null &&
-          row.total_hours_seconds !== undefined
+          row.total_hours !== null &&
+          row.total_hours !== undefined
         ) {
-          const totalSeconds = Math.max(
-            0,
-            Math.floor(
-              Number(row.total_hours_seconds)
-            )
-          );
+          const intervalString =
+            String(row.total_hours);
 
-          const hours = Math.floor(
-            totalSeconds / 3600
-          );
+          const match =
+            intervalString.match(
+              /^(-?\d+):(\d{2}):(\d{2})/
+            );
 
-          const minutes = Math.floor(
-            (totalSeconds % 3600) / 60
-          );
+          if (match) {
+            const hours =
+              parseInt(match[1], 10);
 
-          totalHours =
-            `${String(hours).padStart(2, "0")}:${String(
-              minutes
-            ).padStart(2, "0")}`;
+            const minutes =
+              parseInt(match[2], 10);
+
+            totalHours =
+              `${String(hours).padStart(2, "0")}:${String(
+                minutes
+              ).padStart(2, "0")}`;
+          }
         }
 
         /*
@@ -1242,10 +1211,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           role:
             row.role,
-
-          status_id:
-            row.status_id,
-
+           status_id: row.status_id,
           status:
             row.status,
 
