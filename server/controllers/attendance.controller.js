@@ -943,7 +943,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         /*
          * Official email from organizations table
          */
-        o."Or_Official_Email" AS email,
+        o."or_official_email" AS email,
 
         'employee' AS role,
 
