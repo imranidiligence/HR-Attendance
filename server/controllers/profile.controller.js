@@ -2549,18 +2549,24 @@ exports.addContactInfo = async (req, res) => {
 };
 
 exports.updateContactInfo = async (req, res) => {
-  const { employee_id } = req.params;
-  const updatedBy = req.user?.id;
-
-  const client = await db.connect();
-
   try {
+    const { employee_id } = req.params;
+
     const employeeId = parseInt(employee_id, 10);
+    const contactId = parseInt(req.body.ct_id, 10);
+    const updatedBy = req.user?.id;
 
     if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
         message: "Valid Employee ID is required"
+      });
+    }
+
+    if (!req.body.ct_id || isNaN(contactId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Contact ID is required"
       });
     }
 
@@ -2571,10 +2577,15 @@ exports.updateContactInfo = async (req, res) => {
       });
     }
 
-    // ------------------------------------------------
-    // Check employee exists
-    // ------------------------------------------------
-    const employeeCheck = await client.query(
+    const {
+      phone,
+      email,
+      relation,
+      is_primary,
+      contact_type_id
+    } = req.body;
+
+    const employeeCheck = await db.query(
       `
       SELECT Pr_Id
       FROM personal
@@ -2590,181 +2601,66 @@ exports.updateContactInfo = async (req, res) => {
       });
     }
 
-    // ------------------------------------------------
-    // Validate request body
-    // ------------------------------------------------
-    const contacts = Array.isArray(req.body)
-      ? req.body
-      : [req.body];
-
-    if (!contacts.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Contact data is required"
-      });
-    }
-
-    // ------------------------------------------------
-    // Validate only one primary contact
-    // ------------------------------------------------
-    const primaryContacts = contacts.filter(
-      contact => contact.is_primary === true
-    ).length;
-
-    if (primaryContacts > 1) {
-      return res.status(400).json({
-        success: false,
-        message: "Only one contact can be marked as primary."
-      });
-    }
-
-    // ------------------------------------------------
-    // Normalize emails
-    // ------------------------------------------------
-    const emails = contacts
-      .map(contact =>
-        contact.email
-          ? contact.email.trim().toLowerCase()
-          : null
-      )
-      .filter(Boolean);
-
-    // ------------------------------------------------
-    // Duplicate emails inside request
-    // ------------------------------------------------
-    const uniqueEmails = new Set(emails);
-
-    if (uniqueEmails.size !== emails.length) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate emails found in contact list."
-      });
-    }
-
-    // ------------------------------------------------
-    // Check emails used by another employee
-    // ------------------------------------------------
-    if (emails.length > 0) {
-      const emailCheck = await client.query(
-        `
-        SELECT Ct_Email
-        FROM contact
-        WHERE LOWER(Ct_Email) = ANY($1)
-          AND Pr_Id != $2
-        `,
-        [emails, employeeId]
-      );
-
-      if (emailCheck.rowCount > 0) {
-        return res.status(409).json({
-          success: false,
-          message: `The email ${emailCheck.rows[0].ct_email} is already used by another employee.`
-        });
-      }
-    }
-
-    // ------------------------------------------------
-    // BEGIN TRANSACTION
-    // ------------------------------------------------
-    await client.query("BEGIN");
-
-    // ------------------------------------------------
-    // Delete old contacts
-    // ------------------------------------------------
-    await client.query(
+    const contactCheck = await db.query(
       `
-      DELETE FROM contact
-      WHERE Pr_Id = $1
+      SELECT Ct_Id
+      FROM contact
+      WHERE Ct_Id = $1
+        AND Pr_Id = $2
       `,
-      [employeeId]
+      [contactId, employeeId]
     );
 
-    // ------------------------------------------------
-    // Insert updated contacts
-    // ------------------------------------------------
-    const insertedContacts = [];
-
-    for (const contact of contacts) {
-
-      const phone = contact.phone?.trim() || null;
-
-      const email = contact.email
-        ? contact.email.trim().toLowerCase()
-        : null;
-
-      const relation = contact.relation?.trim() || null;
-
-      const isPrimary = contact.is_primary ?? false;
-
-      const contactTypeId =
-        contact.contact_type_id || null;
-
-      const result = await client.query(
-        `
-        INSERT INTO contact (
-          Pr_Id,
-          Ct_Phone,
-          Ct_Email,
-          Ct_Relation,
-          Ct_Is_Primary,
-          Ct_Contact_Type_Id,
-          Ct_Created_By,
-          Ct_Updated_By,
-          Ct_Created_At,
-          Ct_Updated_At
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          CURRENT_TIMESTAMP,
-          CURRENT_TIMESTAMP
-        )
-        RETURNING *
-        `,
-        [
-          employeeId,
-          phone,
-          email,
-          relation,
-          isPrimary,
-          contactTypeId,
-          updatedBy,
-          updatedBy
-        ]
-      );
-
-      insertedContacts.push(result.rows[0]);
+    if (contactCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Contact record with ID ${contactId} was not found for employee ${employeeId}`
+      });
     }
 
-    // ------------------------------------------------
-    // COMMIT
-    // ------------------------------------------------
-    await client.query("COMMIT");
+    const result = await db.query(
+      `
+      UPDATE contact
+      SET
+        Ct_Phone = $1,
+        Ct_Email = $2,
+        Ct_Relation = $3,
+        Ct_Is_Primary = $4,
+        Ct_Contact_Type_Id = $5,
+        Ct_Updated_By = $6,
+        Ct_Updated_At = CURRENT_TIMESTAMP
+      WHERE Ct_Id = $7
+        AND Pr_Id = $8
+      RETURNING *
+      `,
+      [
+        phone ? phone.trim() : null,
+        email ? email.trim().toLowerCase() : null,
+        relation ? relation.trim() : null,
+        is_primary ?? false,
+        contact_type_id || null,
+        updatedBy,
+        contactId,
+        employeeId
+      ]
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Contacts updated successfully",
+      message: "Contact updated successfully",
       employee_id: employeeId,
+      contact_id: contactId,
       updated_by: updatedBy,
-      contacts: insertedContacts
+      contact: result.rows[0]
     });
 
   } catch (error) {
-
-    await client.query("ROLLBACK");
-
     console.error("Update Contact Error:", error);
 
     if (error.code === "23505") {
       return res.status(409).json({
         success: false,
-        message: "Contact email already exists.",
+        message: "Contact email already exists",
         error: error.detail
       });
     }
@@ -2772,19 +2668,16 @@ exports.updateContactInfo = async (req, res) => {
     if (error.code === "23503") {
       return res.status(400).json({
         success: false,
-        message: "Invalid employee ID or contact type ID.",
+        message: "Invalid employee or contact type reference",
         error: error.detail
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error",
+      message: "Server error while updating contact",
       error: error.message
     });
-
-  } finally {
-    client.release();
   }
 };
 
@@ -3583,7 +3476,6 @@ exports.addBankDocInfo = async (req, res) => {
       });
     }
 
-    // Check employee exists in personal table
     const employeeCheck = await db.query(
       `
       SELECT Pr_Id
@@ -3599,6 +3491,8 @@ exports.addBankDocInfo = async (req, res) => {
         message: `Employee with ID ${employeeId} not found`
       });
     }
+
+    const filePath = `/uploads/bank-docs/${req.file.filename}`;
 
     const result = await db.query(
       `
@@ -3627,7 +3521,7 @@ exports.addBankDocInfo = async (req, res) => {
       [
         employeeId,
         req.file.filename,
-        req.file.path,
+        filePath,
         req.file.size,
         documentNumber || null,
         documentTypeId ? parseInt(documentTypeId, 10) : null,
@@ -3639,11 +3533,36 @@ exports.addBankDocInfo = async (req, res) => {
       success: true,
       message: "Bank document uploaded successfully",
       employee_id: employeeId,
-      document: result.rows[0]
+      document: {
+        id: result.rows[0].dc_id,
+        file_name: result.rows[0].dc_file_name,
+        file_path: result.rows[0].dc_file_path,
+        file_size: result.rows[0].dc_file_size,
+        document_number: result.rows[0].dc_document_number,
+        document_type_id: result.rows[0].dc_document_type_id,
+        created_by: result.rows[0].dc_created_by,
+        created_at: result.rows[0].dc_created_at
+      }
     });
 
   } catch (error) {
     console.error("Add Bank Document Error:", error);
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee or document type reference",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Document already exists",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -3705,6 +3624,7 @@ exports.getAllBankDoc = async (req, res) => {
   }
 };
 
+
 exports.updateBankDocInfo = async (req, res) => {
   try {
     const { employee_id, id } = req.params;
@@ -3732,10 +3652,32 @@ exports.updateBankDocInfo = async (req, res) => {
       });
     }
 
-    // Check document exists
+    const employeeCheck = await db.query(
+      `
+      SELECT Pr_Id
+      FROM personal
+      WHERE Pr_Id = $1
+      `,
+      [employeeId]
+    );
+
+    if (employeeCheck.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee with ID ${employeeId} not found`
+      });
+    }
+
     const documentCheck = await db.query(
       `
-      SELECT *
+      SELECT
+        Dc_Id,
+        Pr_Id,
+        Dc_File_Name,
+        Dc_File_Path,
+        Dc_File_Size,
+        Dc_Document_Number,
+        Dc_Document_Type_Id
       FROM documents
       WHERE Dc_Id = $1
         AND Pr_Id = $2
@@ -3746,7 +3688,7 @@ exports.updateBankDocInfo = async (req, res) => {
     if (documentCheck.rowCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Document not found"
+        message: `Document with ID ${documentId} was not found for employee ${employeeId}`
       });
     }
 
@@ -3756,10 +3698,9 @@ exports.updateBankDocInfo = async (req, res) => {
     let filePath = oldDocument.dc_file_path;
     let fileSize = oldDocument.dc_file_size;
 
-    // If new file uploaded
     if (req.file) {
       fileName = req.file.filename;
-      filePath = req.file.path;
+      filePath = `/uploads/bank-docs/${req.file.filename}`;
       fileSize = req.file.size;
     }
 
@@ -3782,8 +3723,12 @@ exports.updateBankDocInfo = async (req, res) => {
         fileName,
         filePath,
         fileSize,
-        documentNumber || null,
-        documentTypeId ? parseInt(documentTypeId, 10) : null,
+        documentNumber !== undefined
+          ? documentNumber
+          : oldDocument.dc_document_number,
+        documentTypeId !== undefined
+          ? parseInt(documentTypeId, 10)
+          : oldDocument.dc_document_type_id,
         updatedBy,
         documentId,
         employeeId
@@ -3794,11 +3739,29 @@ exports.updateBankDocInfo = async (req, res) => {
       success: true,
       message: "Bank document updated successfully",
       employee_id: employeeId,
+      document_id: documentId,
+      updated_by: updatedBy,
       document: result.rows[0]
     });
 
   } catch (error) {
     console.error("Update Bank Document Error:", error);
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid employee or document type reference",
+        error: error.detail
+      });
+    }
+
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Document already exists",
+        error: error.detail
+      });
+    }
 
     return res.status(500).json({
       success: false,
@@ -3807,6 +3770,7 @@ exports.updateBankDocInfo = async (req, res) => {
     });
   }
 };
+
 
 exports.deleteDocument = async (req, res) => {
   try {
