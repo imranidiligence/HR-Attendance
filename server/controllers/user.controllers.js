@@ -462,6 +462,9 @@ const getAllEmployeesPaginated = async (req, res) => {
           'official_email',
           o.or_official_email,
 
+          'official_contact',
+          o.or_official_contact,
+
           'reporting_to_id',
           o.or_reporting_to_id,
 
