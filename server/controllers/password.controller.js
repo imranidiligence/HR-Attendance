@@ -53,7 +53,7 @@ const sendPasswordResetOtp = async (req, res) => {
       WHERE LOWER(o.or_official_email) = $1
       LIMIT 1
       `,
-      [normalizedEmail]
+      [normalizedEmail],
     );
 
     if (result.rows.length === 0) {
@@ -79,7 +79,7 @@ const sendPasswordResetOtp = async (req, res) => {
       WHERE pr_id = $1
       LIMIT 1
       `,
-      [organization.pr_id]
+      [organization.pr_id],
     );
 
     if (loginResult.rows.length === 0) {
@@ -102,9 +102,7 @@ const sendPasswordResetOtp = async (req, res) => {
     // --------------------------------------------------
     // OTP expires after 10 minutes
     // --------------------------------------------------
-    const expiresAt = new Date(
-      Date.now() + 10 * 60 * 1000
-    );
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     // --------------------------------------------------
     // Insert / update resetpassword
@@ -131,11 +129,7 @@ const sendPasswordResetOtp = async (req, res) => {
         rp_otp_expires_at = EXCLUDED.rp_otp_expires_at,
         rp_updated_at = NOW()
       `,
-      [
-        organization.pr_id,
-        otpHash,
-        expiresAt,
-      ]
+      [organization.pr_id, otpHash, expiresAt],
     );
 
     // --------------------------------------------------
@@ -146,23 +140,17 @@ const sendPasswordResetOtp = async (req, res) => {
       "Password Reset OTP - I-Diligence Solution",
       "password_reset_otp",
       {
-        name:
-          organization.or_organization_name ||
-          "User",
+        name: organization.or_organization_name || "User",
         otp,
-      }
+      },
     );
 
     return res.status(200).json({
       success: true,
-      message:
-        "OTP has been sent to your registered email",
+      message: "OTP has been sent to your registered email",
     });
   } catch (error) {
-    console.error(
-      "sendPasswordResetOtp error:",
-      error
-    );
+    console.error("sendPasswordResetOtp error:", error);
 
     return res.status(500).json({
       success: false,
@@ -185,11 +173,7 @@ const sendPasswordResetOtp = async (req, res) => {
 // ======================================================
 const resetPassword = async (req, res) => {
   try {
-    const {
-      email,
-      otp,
-      newPassword,
-    } = req.body;
+    const { email, otp, newPassword } = req.body;
 
     // --------------------------------------------------
     // Validate request
@@ -197,8 +181,7 @@ const resetPassword = async (req, res) => {
     if (!email || !otp || !newPassword) {
       return res.status(400).json({
         success: false,
-        message:
-          "Email, OTP and new password are required",
+        message: "Email, OTP and new password are required",
       });
     }
 
@@ -208,8 +191,7 @@ const resetPassword = async (req, res) => {
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
-        message:
-          "Password must be at least 8 characters",
+        message: "Password must be at least 8 characters",
       });
     }
 
@@ -239,14 +221,13 @@ const resetPassword = async (req, res) => {
 
       LIMIT 1
       `,
-      [normalizedEmail]
+      [normalizedEmail],
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message:
-          "No password reset request found for this email",
+        message: "No password reset request found for this email",
       });
     }
 
@@ -255,14 +236,10 @@ const resetPassword = async (req, res) => {
     // --------------------------------------------------
     // Check OTP exists
     // --------------------------------------------------
-    if (
-      !user.rp_otp_hash ||
-      !user.rp_otp_expires_at
-    ) {
+    if (!user.rp_otp_hash || !user.rp_otp_expires_at) {
       return res.status(400).json({
         success: false,
-        message:
-          "OTP not found. Please request a new OTP",
+        message: "OTP not found. Please request a new OTP",
       });
     }
 
@@ -271,9 +248,7 @@ const resetPassword = async (req, res) => {
     // --------------------------------------------------
     const currentTime = new Date();
 
-    const expiryTime = new Date(
-      user.rp_otp_expires_at
-    );
+    const expiryTime = new Date(user.rp_otp_expires_at);
 
     if (currentTime > expiryTime) {
       // Delete expired reset request
@@ -282,23 +257,19 @@ const resetPassword = async (req, res) => {
         DELETE FROM resetpassword
         WHERE pr_id = $1
         `,
-        [user.pr_id]
+        [user.pr_id],
       );
 
       return res.status(400).json({
         success: false,
-        message:
-          "OTP has expired. Please request a new OTP",
+        message: "OTP has expired. Please request a new OTP",
       });
     }
 
     // --------------------------------------------------
     // Verify OTP
     // --------------------------------------------------
-    const validOtp = await bcrypt.compare(
-      otp.toString(),
-      user.rp_otp_hash
-    );
+    const validOtp = await bcrypt.compare(otp.toString(), user.rp_otp_hash);
 
     if (!validOtp) {
       return res.status(400).json({
@@ -310,10 +281,7 @@ const resetPassword = async (req, res) => {
     // --------------------------------------------------
     // Hash new password
     // --------------------------------------------------
-    const hashedPassword = await bcrypt.hash(
-      newPassword,
-      12
-    );
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // --------------------------------------------------
     // Update password in login table
@@ -327,10 +295,7 @@ const resetPassword = async (req, res) => {
       WHERE pr_id = $2
       RETURNING lg_id
       `,
-      [
-        hashedPassword,
-        user.pr_id,
-      ]
+      [hashedPassword, user.pr_id],
     );
 
     if (updateResult.rowCount === 0) {
@@ -348,7 +313,7 @@ const resetPassword = async (req, res) => {
       DELETE FROM resetpassword
       WHERE pr_id = $1
       `,
-      [user.pr_id]
+      [user.pr_id],
     );
 
     return res.status(200).json({
@@ -356,10 +321,7 @@ const resetPassword = async (req, res) => {
       message: "Password reset successfully",
     });
   } catch (error) {
-    console.error(
-      "resetPassword error:",
-      error
-    );
+    console.error("resetPassword error:", error);
 
     return res.status(500).json({
       success: false,
@@ -384,25 +346,17 @@ const resetPassword = async (req, res) => {
 // ======================================================
 const changeMyPassword = async (req, res) => {
   try {
-    // --------------------------------------------------
-    // IMPORTANT:
-    //
-    // This assumes req.user.id contains pr_id.
-    // --------------------------------------------------
-    const prId = req.user?.id;
+    const { pr_id, newPassword } = req.body;
 
-    if (!prId) {
-      return res.status(401).json({
+    // Validate pr_id
+    if (!pr_id) {
+      return res.status(400).json({
         success: false,
-        message: "Unauthorized",
+        message: "pr_id is required",
       });
     }
 
-    const { newPassword } = req.body;
-
-    // --------------------------------------------------
     // Validate new password
-    // --------------------------------------------------
     if (!newPassword) {
       return res.status(400).json({
         success: false,
@@ -413,14 +367,11 @@ const changeMyPassword = async (req, res) => {
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
-        message:
-          "New password must be at least 8 characters long",
+        message: "New password must be at least 8 characters long",
       });
     }
 
-    // --------------------------------------------------
-    // Check login account
-    // --------------------------------------------------
+    // Check login account using pr_id
     const loginResult = await db.query(
       `
       SELECT
@@ -430,7 +381,7 @@ const changeMyPassword = async (req, res) => {
       WHERE pr_id = $1
       LIMIT 1
       `,
-      [prId]
+      [pr_id],
     );
 
     if (loginResult.rows.length === 0) {
@@ -440,19 +391,10 @@ const changeMyPassword = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------
     // Hash new password
-    // --------------------------------------------------
-    const hashedPassword = await bcrypt.hash(
-      newPassword,
-      12
-    );
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    // --------------------------------------------------
     // Update password
-    //
-    // No old password comparison.
-    // --------------------------------------------------
     await db.query(
       `
       UPDATE login
@@ -461,10 +403,7 @@ const changeMyPassword = async (req, res) => {
         lg_updated_at = NOW()
       WHERE pr_id = $2
       `,
-      [
-        hashedPassword,
-        prId,
-      ]
+      [hashedPassword, pr_id],
     );
 
     return res.status(200).json({
@@ -472,15 +411,11 @@ const changeMyPassword = async (req, res) => {
       message: "Password changed successfully",
     });
   } catch (error) {
-    console.error(
-      "changeMyPassword error:",
-      error
-    );
+    console.error("changeMyPassword error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Something went wrong while changing password",
+      message: "Something went wrong while changing password",
     });
   }
 };
