@@ -547,7 +547,7 @@ const getAllEmployeesPaginated = async (req, res) => {
       ${whereClause}
 
       ORDER BY
-        p.pr_is_active DESC,
+        o.or_is_active DESC,
         p.pr_created_at DESC,
         p.pr_id DESC
 
