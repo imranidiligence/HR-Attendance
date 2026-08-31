@@ -198,6 +198,70 @@ const deleteDesignation = async (req, res) => {
   }
 };
 
+const getHODsByDepartment = async (req, res) => {
+    try {
+    const { department_id } = req.params;
+
+    if (!department_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Department ID is required"
+      });
+    }
+
+    const departmentId = parseInt(department_id, 10);
+
+    if (isNaN(departmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Department ID is required"
+      });
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        p.pr_id AS employee_id,
+        p.pr_first_name,
+        p.pr_last_name,
+        p.pr_email,
+        p.pr_contact,
+        o.or_id,
+        o.or_emp_id,
+        o.or_department_id AS department_id,
+        o.or_designation_id AS designation_id,
+        d.designation_name
+      FROM personal p
+      INNER JOIN organizations o
+        ON o.pr_id = p.pr_id
+      INNER JOIN designation_master d
+        ON d.designation_id = o.or_designation_id
+      WHERE o.or_department_id = $1
+        AND d."IsHOD" = true
+        AND COALESCE(o.or_is_active, true) = true
+        AND COALESCE(p.pr_is_active, true) = true
+      ORDER BY p.pr_first_name, p.pr_last_name
+      `,
+      [departmentId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "HODs fetched successfully",
+      data: result.rows
+    });
+
+  } catch (error) {
+    console.error("Get HODs by department error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching HODs",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createDesignation,
   getDesignationById,
@@ -205,4 +269,5 @@ module.exports = {
   getPaginatedDesignations,
   updateDesignation,
   deleteDesignation,
+  getHODsByDepartment,
 };

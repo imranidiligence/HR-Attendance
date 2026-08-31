@@ -7,6 +7,7 @@ const {
   getPaginatedDesignations,
   updateDesignation,
   deleteDesignation,
+  getHODsByDepartment,
 } = require('../controllers/designationController');
 
 router.post('/', createDesignation);
@@ -15,5 +16,6 @@ router.get('/:id', getDesignationById);
 router.get('/', getAllDesignations);
 router.put('/:id', updateDesignation);
 router.delete('/:id', deleteDesignation);
+router.get('/hods/:department_id', getHODsByDepartment);
 
 module.exports = router;
