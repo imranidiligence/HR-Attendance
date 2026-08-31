@@ -4,7 +4,7 @@ const {
   successResponse,
   errorResponse,
   paginatedResponse,
-  handleDbError,    
+  handleDbError,
 } = require("../utils/response");
 
 const {
@@ -20,10 +20,10 @@ const createHoliday = async (req, res) => {
       holiday_name,
       is_paid,
       remarks,
-      holiday_type_id,
     } = req.body;
 
-    
+    const createdBy = req.user?.id || null;
+
     if (!holiday_date) {
       return errorResponse(
         res,
@@ -42,36 +42,6 @@ const createHoliday = async (req, res) => {
       );
     }
 
-    if (!holiday_type_id) {
-      return errorResponse(
-        res,
-        400,
-        "holiday_type_id is required",
-        null
-      );
-    }
-
-    
-    const holidayType = await db.query(
-      `
-      SELECT holiday_type_id
-      FROM holiday_type_master
-      WHERE holiday_type_id = $1
-        AND is_active = TRUE
-      `,
-      [holiday_type_id]
-    );
-
-    if (holidayType.rows.length === 0) {
-      return errorResponse(
-        res,
-        400,
-        "Invalid or inactive holiday_type_id",
-        null
-      );
-    }
-
-    
     const query = `
       INSERT INTO holidays
       (
@@ -81,7 +51,7 @@ const createHoliday = async (req, res) => {
         is_active,
         remarks,
         created_at,
-        holiday_type_id
+        "CreatedBy"
       )
       VALUES
       (
@@ -101,7 +71,7 @@ const createHoliday = async (req, res) => {
       holiday_name.trim(),
       is_paid !== undefined ? is_paid : null,
       remarks || null,
-      holiday_type_id,
+      createdBy,
     ];
 
     const result = await db.query(query, values);
@@ -121,7 +91,6 @@ const createHoliday = async (req, res) => {
   }
 };
 
-
 const getHolidayById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -136,13 +105,9 @@ const getHolidayById = async (req, res) => {
     }
 
     const query = `
-      SELECT
-        h.*,
-        ht.holiday_type_name
-      FROM holidays h
-      LEFT JOIN holiday_type_master ht
-        ON h.holiday_type_id = ht.holiday_type_id
-      WHERE h.holiday_id = $1
+      SELECT *
+      FROM holidays
+      WHERE holiday_id = $1
     `;
 
     const result = await db.query(query, [id]);
@@ -171,7 +136,6 @@ const getHolidayById = async (req, res) => {
   }
 };
 
-
 const getAllHolidays = async (req, res) => {
   try {
     const { is_active } = req.query;
@@ -182,12 +146,8 @@ const getAllHolidays = async (req, res) => {
     );
 
     const query = `
-      SELECT
-        h.*,
-        ht.holiday_type_name
+      SELECT *
       FROM holidays h
-      LEFT JOIN holiday_type_master ht
-        ON h.holiday_type_id = ht.holiday_type_id
       ${whereClause}
       ORDER BY h.holiday_date ASC, h.holiday_id ASC
     `;
@@ -209,7 +169,6 @@ const getAllHolidays = async (req, res) => {
   }
 };
 
-
 const getPaginatedHolidays = async (req, res) => {
   try {
     const { is_active } = req.query;
@@ -220,7 +179,10 @@ const getPaginatedHolidays = async (req, res) => {
       offset,
     } = getPaginationParams(req.query);
 
-    const whereClause = buildIsActiveClause(is_active);
+    const whereClause = buildIsActiveClause(
+      is_active,
+      "h.is_active"
+    );
 
     const countQuery = `
       SELECT COUNT(*)::int AS total
@@ -236,12 +198,8 @@ const getPaginatedHolidays = async (req, res) => {
       Math.ceil(total_records / limit) || 0;
 
     const dataQuery = `
-      SELECT
-        h.*,
-        ht.holiday_type_name
+      SELECT *
       FROM holidays h
-      LEFT JOIN holiday_type_master ht
-        ON h.holiday_type_id = ht.holiday_type_id
       ${whereClause}
       ORDER BY h.holiday_date ASC, h.holiday_id ASC
       LIMIT $1 OFFSET $2
@@ -265,7 +223,10 @@ const getPaginatedHolidays = async (req, res) => {
       }
     );
   } catch (error) {
-    console.error("getPaginatedHolidays error:", error);
+    console.error(
+      "getPaginatedHolidays error:",
+      error
+    );
 
     return handleDbError(
       res,
@@ -275,10 +236,11 @@ const getPaginatedHolidays = async (req, res) => {
   }
 };
 
-
 const updateHoliday = async (req, res) => {
   try {
     const { id } = req.params;
+
+    const updatedBy = req.user?.id || null;
 
     if (!id || isNaN(id)) {
       return errorResponse(
@@ -289,7 +251,6 @@ const updateHoliday = async (req, res) => {
       );
     }
 
-   
     const existing = await db.query(
       `
       SELECT *
@@ -314,10 +275,8 @@ const updateHoliday = async (req, res) => {
       is_paid,
       is_active,
       remarks,
-      holiday_type_id,
     } = req.body;
 
-   
     if (
       holiday_name !== undefined &&
       holiday_name.trim() === ""
@@ -330,29 +289,6 @@ const updateHoliday = async (req, res) => {
       );
     }
 
-    
-    if (holiday_type_id !== undefined) {
-      const holidayType = await db.query(
-        `
-        SELECT holiday_type_id
-        FROM holiday_type_master
-        WHERE holiday_type_id = $1
-          AND is_active = TRUE
-        `,
-        [holiday_type_id]
-      );
-
-      if (holidayType.rows.length === 0) {
-        return errorResponse(
-          res,
-          400,
-          "Invalid or inactive holiday_type_id",
-          null
-        );
-      }
-    }
-
-  
     const query = `
       UPDATE holidays
       SET
@@ -361,7 +297,8 @@ const updateHoliday = async (req, res) => {
         is_paid = COALESCE($3, is_paid),
         is_active = COALESCE($4, is_active),
         remarks = COALESCE($5, remarks),
-        holiday_type_id = COALESCE($6, holiday_type_id)
+        "UpdatedAt" = CURRENT_TIMESTAMP,
+        "UpdatedBy" = $6
       WHERE holiday_id = $7
       RETURNING *
     `;
@@ -387,9 +324,7 @@ const updateHoliday = async (req, res) => {
         ? remarks
         : null,
 
-      holiday_type_id !== undefined
-        ? holiday_type_id
-        : null,
+      updatedBy,
 
       id,
     ];
@@ -414,10 +349,11 @@ const updateHoliday = async (req, res) => {
   }
 };
 
-
 const deleteHoliday = async (req, res) => {
   try {
     const { id } = req.params;
+
+    const updatedBy = req.user?.id || null;
 
     if (!id || isNaN(id)) {
       return errorResponse(
@@ -428,7 +364,6 @@ const deleteHoliday = async (req, res) => {
       );
     }
 
-   
     const existing = await db.query(
       `
       SELECT *
@@ -447,17 +382,22 @@ const deleteHoliday = async (req, res) => {
       );
     }
 
-   
     const query = `
       UPDATE holidays
-      SET is_active = FALSE
-      WHERE holiday_id = $1
+      SET
+        is_active = FALSE,
+        "UpdatedAt" = CURRENT_TIMESTAMP,
+        "UpdatedBy" = $1
+      WHERE holiday_id = $2
       RETURNING *
     `;
 
     const result = await db.query(
       query,
-      [id]
+      [
+        updatedBy,
+        id,
+      ]
     );
 
     return successResponse(
@@ -474,7 +414,6 @@ const deleteHoliday = async (req, res) => {
     );
   }
 };
-
 
 module.exports = {
   createHoliday,
