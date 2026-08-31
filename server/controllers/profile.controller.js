@@ -2675,25 +2675,13 @@ exports.addContactInfo = async (req, res) => {
 exports.updateContactInfo = async (req, res) => {
   try {
     const { employee_id } = req.params;
-
     const employeeId = parseInt(employee_id, 10);
-    const contactId = req.body.ct_id
-      ? parseInt(req.body.ct_id, 10)
-      : null;
-
     const updatedBy = req.user?.id;
 
     if (!employee_id || isNaN(employeeId)) {
       return res.status(400).json({
         success: false,
         message: "Valid Employee ID is required"
-      });
-    }
-
-    if (req.body.ct_id && isNaN(contactId)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid Contact ID"
       });
     }
 
@@ -2704,13 +2692,7 @@ exports.updateContactInfo = async (req, res) => {
       });
     }
 
-    const {
-      phone,
-      email,
-      relation,
-      is_primary,
-      contact_type_id
-    } = req.body;
+    const contacts = Array.isArray(req.body) ? req.body : [req.body];
 
     const employeeCheck = await db.query(
       `
@@ -2728,113 +2710,149 @@ exports.updateContactInfo = async (req, res) => {
       });
     }
 
-    const contactData = [
-      phone ? phone.trim() : null,
-      email ? email.trim().toLowerCase() : null,
-      relation ? relation.trim() : null,
-      is_primary ?? false,
-      contact_type_id || null,
-      updatedBy
-    ];
+    const results = [];
 
-    if (contactId) {
-      const contactCheck = await db.query(
-        `
-        SELECT Ct_Id
-        FROM contact
-        WHERE Ct_Id = $1
-          AND Pr_Id = $2
-        `,
-        [contactId, employeeId]
-      );
+    for (const contact of contacts) {
+      const {
+        ct_id,
+        phone,
+        email,
+        relation,
+        is_primary,
+        contact_type_id
+      } = contact;
 
-      if (contactCheck.rowCount === 0) {
-        return res.status(404).json({
+      const contactId = ct_id ? parseInt(ct_id, 10) : null;
+
+      if (ct_id && isNaN(contactId)) {
+        return res.status(400).json({
           success: false,
-          message: `Contact record with ID ${contactId} was not found for employee ${employeeId}`
+          message: "Invalid Contact ID"
         });
       }
 
-      const result = await db.query(
-        `
-        UPDATE contact
-        SET
-          Ct_Phone = $1,
-          Ct_Email = $2,
-          Ct_Relation = $3,
-          Ct_Is_Primary = $4,
-          Ct_Contact_Type_Id = $5,
-          Ct_Updated_By = $6,
-          Ct_Updated_At = CURRENT_TIMESTAMP
-        WHERE Ct_Id = $7
-          AND Pr_Id = $8
-        RETURNING *
-        `,
-        [
-          ...contactData,
-          contactId,
-          employeeId
-        ]
-      );
+      const phoneValue =
+        phone !== undefined && phone !== null
+          ? String(phone).trim()
+          : null;
 
-      return res.status(200).json({
-        success: true,
-        message: "Contact updated successfully",
-        employee_id: employeeId,
-        contact_id: contactId,
-        updated_by: updatedBy,
-        action: "updated",
-        contact: result.rows[0]
-      });
+      const emailValue =
+        email !== undefined && email !== null
+          ? String(email).trim().toLowerCase()
+          : null;
+
+      const relationValue =
+        relation !== undefined && relation !== null
+          ? String(relation).trim()
+          : null;
+
+      const isPrimaryValue = is_primary ?? false;
+      const contactTypeValue = contact_type_id || null;
+
+      if (contactId) {
+        const contactCheck = await db.query(
+          `
+          SELECT Ct_Id
+          FROM contact
+          WHERE Ct_Id = $1
+            AND Pr_Id = $2
+          `,
+          [contactId, employeeId]
+        );
+
+        if (contactCheck.rowCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: `Contact record with ID ${contactId} was not found for employee ${employeeId}`
+          });
+        }
+
+        const result = await db.query(
+          `
+          UPDATE contact
+          SET
+            Ct_Phone = $1,
+            Ct_Email = $2,
+            Ct_Relation = $3,
+            Ct_Is_Primary = $4,
+            Ct_Contact_Type_Id = $5,
+            Ct_Updated_By = $6,
+            Ct_Updated_At = CURRENT_TIMESTAMP
+          WHERE Ct_Id = $7
+            AND Pr_Id = $8
+          RETURNING *
+          `,
+          [
+            phoneValue,
+            emailValue,
+            relationValue,
+            isPrimaryValue,
+            contactTypeValue,
+            updatedBy,
+            contactId,
+            employeeId
+          ]
+        );
+
+        results.push({
+          action: "updated",
+          contact_id: contactId,
+          contact: result.rows[0]
+        });
+      } else {
+        const result = await db.query(
+          `
+          INSERT INTO contact (
+            Pr_Id,
+            Ct_Phone,
+            Ct_Email,
+            Ct_Relation,
+            Ct_Is_Primary,
+            Ct_Contact_Type_Id,
+            Ct_Created_By,
+            Ct_Created_At,
+            Ct_Updated_By,
+            Ct_Updated_At
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            CURRENT_TIMESTAMP,
+            $7,
+            CURRENT_TIMESTAMP
+          )
+          RETURNING *
+          `,
+          [
+            employeeId,
+            phoneValue,
+            emailValue,
+            relationValue,
+            isPrimaryValue,
+            contactTypeValue,
+            updatedBy
+          ]
+        );
+
+        results.push({
+          action: "created",
+          contact_id: result.rows[0].ct_id,
+          contact: result.rows[0]
+        });
+      }
     }
-
-    const result = await db.query(
-      `
-      INSERT INTO contact (
-        Pr_Id,
-        Ct_Phone,
-        Ct_Email,
-        Ct_Relation,
-        Ct_Is_Primary,
-        Ct_Contact_Type_Id,
-        Ct_Created_By,
-        Ct_Created_At,
-        Ct_Updated_By,
-        Ct_Updated_At
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        CURRENT_TIMESTAMP,
-        $7,
-        CURRENT_TIMESTAMP
-      )
-      RETURNING *
-      `,
-      [
-        employeeId,
-        phone ? phone.trim() : null,
-        email ? email.trim().toLowerCase() : null,
-        relation ? relation.trim() : null,
-        is_primary ?? false,
-        contact_type_id || null,
-        updatedBy
-      ]
-    );
 
     return res.status(200).json({
       success: true,
-      message: "Contact created successfully",
+      message: "Contact information processed successfully",
       employee_id: employeeId,
-      contact_id: result.rows[0].ct_id,
       updated_by: updatedBy,
-      action: "created",
-      contact: result.rows[0]
+      results
     });
 
   } catch (error) {
