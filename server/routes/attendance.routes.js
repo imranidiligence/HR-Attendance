@@ -59,56 +59,90 @@ router.get("/all-attendance", auth, async (req, res) => {
   try {
     let { month, year } = req.query;
 
+    /*
+     * =========================================================
+     * CURRENT DATE
+     * =========================================================
+     */
     const today = new Date();
 
     const filterMonth =
-      parseInt(month) || today.getMonth() + 1;
+      parseInt(month, 10) || today.getMonth() + 1;
 
     const filterYear =
-      parseInt(year) || today.getFullYear();
+      parseInt(year, 10) || today.getFullYear();
+
+    /*
+     * =========================================================
+     * VALIDATE MONTH
+     * =========================================================
+     */
+    if (filterMonth < 1 || filterMonth > 12) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid month. Month must be between 1 and 12.",
+      });
+    }
 
     /*
      * =========================================================
      * MONTH DATE RANGE
+     *
+     * IMPORTANT:
+     * Do NOT use:
+     *
+     * new Date(...).toISOString()
+     *
+     * because toISOString() converts the date to UTC and
+     * can cause date shifting when the server is running in IST.
+     *
+     * Instead, construct the DATE strings directly.
+     *
+     * Example:
+     *
+     * August 2026
+     *
+     * fromDate = 2026-08-01
+     * toDate   = 2026-09-01
+     *
+     * generate_series() then generates:
+     *
+     * 2026-08-01 ... 2026-08-31
      * =========================================================
      */
-    const fromDate = new Date(
-      filterYear,
-      filterMonth - 1,
-      1
-    )
-      .toISOString()
-      .slice(0, 10);
 
-    const toDate = new Date(
-      filterYear,
-      filterMonth,
-      1
-    )
-      .toISOString()
-      .slice(0, 10);
+    const fromDate =
+      `${filterYear}-${String(filterMonth).padStart(2, "0")}-01`;
+
+    const nextMonth =
+      filterMonth === 12
+        ? 1
+        : filterMonth + 1;
+
+    const nextMonthYear =
+      filterMonth === 12
+        ? filterYear + 1
+        : filterYear;
+
+    const toDate =
+      `${nextMonthYear}-${String(nextMonth).padStart(2, "0")}-01`;
 
     const values = [
       fromDate,
       toDate,
     ];
 
+    console.log("Attendance Date Range:", {
+      fromDate,
+      toDate,
+      filterMonth,
+      filterYear,
+    });
+
     /*
      * =========================================================
-     * MONTHLY ATTENDANCE
+     * MONTHLY ATTENDANCE QUERY
      * =========================================================
-     *
-     * Employee:
-     * organizations + personal
-     *
-     * Department:
-     * department_master
-     *
-     * Attendance:
-     * monthly_attendance
-     *
-     * Status:
-     * attendence_status
      */
     const query = `
       WITH calendar AS
@@ -196,7 +230,8 @@ router.get("/all-attendance", auth, async (req, res) => {
           ON dm."DepartmentId" =
              o.or_department_id
 
-        WHERE o.or_emp_id IS NOT NULL
+        WHERE
+          o.or_emp_id IS NOT NULL
 
           AND TRIM(o.or_emp_id) <> ''
 
@@ -283,9 +318,11 @@ router.get("/all-attendance", auth, async (req, res) => {
          */
         COALESCE(
           ast.status_name,
+
           CASE
             WHEN ma.id IS NULL
               THEN 'Absent'
+
             ELSE 'Unknown'
           END
         ) AS status
@@ -335,11 +372,15 @@ router.get("/all-attendance", auth, async (req, res) => {
         e.emp_id;
     `;
 
-    const { rows } =
-      await db.query(
-        query,
-        values
-      );
+    /*
+     * =========================================================
+     * EXECUTE QUERY
+     * =========================================================
+     */
+    const { rows } = await db.query(
+      query,
+      values
+    );
 
     /*
      * =========================================================
@@ -350,6 +391,9 @@ router.get("/all-attendance", auth, async (req, res) => {
 
     rows.forEach((row) => {
 
+      /*
+       * Create employee object only once
+       */
       if (!employeeMap[row.emp_id]) {
 
         employeeMap[row.emp_id] = {
@@ -369,6 +413,11 @@ router.get("/all-attendance", auth, async (req, res) => {
         };
       }
 
+      /*
+       * =======================================================
+       * ADD DAILY ATTENDANCE
+       * =======================================================
+       */
       employeeMap[row.emp_id].attendance.push({
 
         date:
@@ -391,6 +440,11 @@ router.get("/all-attendance", auth, async (req, res) => {
       });
     });
 
+    /*
+     * =========================================================
+     * CONVERT MAP TO ARRAY
+     * =========================================================
+     */
     const attendance =
       Object.values(employeeMap);
 
@@ -423,7 +477,9 @@ router.get("/all-attendance", auth, async (req, res) => {
     );
 
     return res.status(500).json({
+
       success: false,
+
       message:
         "Internal Server Error",
     });
