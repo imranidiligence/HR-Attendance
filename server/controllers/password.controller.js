@@ -25,6 +25,9 @@ const sendPasswordResetOtp = async (req, res) => {
   try {
     const { email } = req.body;
 
+    // --------------------------------------------------
+    // Validate email
+    // --------------------------------------------------
     if (!email) {
       return res.status(400).json({
         success: false,
@@ -34,16 +37,20 @@ const sendPasswordResetOtp = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
+    // --------------------------------------------------
     // Find account using organization official email
+    //
+    // organizations.pr_id -> personal.pr_id
+    // --------------------------------------------------
     const result = await db.query(
       `
       SELECT
-        or_id,
-        pr_id,
-        or_official_email,
-        or_organization_name
-      FROM organizations
-      WHERE LOWER(or_official_email) = $1
+        o.or_id,
+        o.pr_id,
+        o.or_official_email,
+        o.or_organization_name
+      FROM organizations o
+      WHERE LOWER(o.or_official_email) = $1
       LIMIT 1
       `,
       [normalizedEmail]
@@ -58,7 +65,11 @@ const sendPasswordResetOtp = async (req, res) => {
 
     const organization = result.rows[0];
 
-    // Check whether login account exists
+    // --------------------------------------------------
+    // Check login account
+    //
+    // login.pr_id = organizations.pr_id
+    // --------------------------------------------------
     const loginResult = await db.query(
       `
       SELECT
@@ -78,48 +89,74 @@ const sendPasswordResetOtp = async (req, res) => {
       });
     }
 
+    // --------------------------------------------------
     // Generate OTP
+    // --------------------------------------------------
     const otp = generateOTP();
 
-    // Hash OTP before storing
+    // --------------------------------------------------
+    // Hash OTP
+    // --------------------------------------------------
     const otpHash = await bcrypt.hash(otp, 10);
 
-    // OTP valid for 10 minutes
+    // --------------------------------------------------
+    // OTP expires after 10 minutes
+    // --------------------------------------------------
     const expiresAt = new Date(
       Date.now() + 10 * 60 * 1000
     );
 
-    // Save OTP
+    // --------------------------------------------------
+    // Insert / update resetpassword
+    //
+    // Because pr_id is UNIQUE:
+    // - first request -> INSERT
+    // - next request -> UPDATE
+    // --------------------------------------------------
     await db.query(
       `
-      UPDATE organizations
-      SET
-        password_reset_otp_hash = $1,
-        password_reset_otp_expires_at = $2
-      WHERE or_id = $3
+      INSERT INTO resetpassword
+      (
+        pr_id,
+        rp_otp_hash,
+        rp_otp_expires_at,
+        rp_created_at,
+        rp_updated_at
+      )
+      VALUES ($1, $2, $3, NOW(), NOW())
+
+      ON CONFLICT (pr_id)
+      DO UPDATE SET
+        rp_otp_hash = EXCLUDED.rp_otp_hash,
+        rp_otp_expires_at = EXCLUDED.rp_otp_expires_at,
+        rp_updated_at = NOW()
       `,
       [
+        organization.pr_id,
         otpHash,
         expiresAt,
-        organization.or_id,
       ]
     );
 
-    // Send email
+    // --------------------------------------------------
+    // Send OTP email
+    // --------------------------------------------------
     await sendEmail(
       organization.or_official_email,
       "Password Reset OTP - I-Diligence Solution",
       "password_reset_otp",
       {
         name:
-          organization.or_organization_name || "User",
+          organization.or_organization_name ||
+          "User",
         otp,
       }
     );
 
     return res.status(200).json({
       success: true,
-      message: "OTP has been sent to your registered email",
+      message:
+        "OTP has been sent to your registered email",
     });
   } catch (error) {
     console.error(
@@ -154,9 +191,9 @@ const resetPassword = async (req, res) => {
       newPassword,
     } = req.body;
 
-    // ==================================================
+    // --------------------------------------------------
     // Validate request
-    // ==================================================
+    // --------------------------------------------------
     if (!email || !otp || !newPassword) {
       return res.status(400).json({
         success: false,
@@ -165,6 +202,9 @@ const resetPassword = async (req, res) => {
       });
     }
 
+    // --------------------------------------------------
+    // Password validation
+    // --------------------------------------------------
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
@@ -175,22 +215,28 @@ const resetPassword = async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // ==================================================
-    // Find employee using organization email
-    // Also get password from login table
-    // ==================================================
+    // --------------------------------------------------
+    // Find organization using email
+    // --------------------------------------------------
     const result = await db.query(
       `
       SELECT
-        o.employee_id,
+        o.or_id,
+        o.pr_id,
         o.or_official_email,
-        o.password_reset_otp_hash,
-        o.password_reset_otp_expires_at,
-        l.lg_password
+        r.rp_otp_hash,
+        r.rp_otp_expires_at,
+        l.lg_id
       FROM organizations o
-      LEFT JOIN login l
-        ON l.lg_employee_id = o.employee_id
+
+      INNER JOIN resetpassword r
+        ON r.pr_id = o.pr_id
+
+      INNER JOIN login l
+        ON l.pr_id = o.pr_id
+
       WHERE LOWER(o.or_official_email) = $1
+
       LIMIT 1
       `,
       [normalizedEmail]
@@ -199,18 +245,19 @@ const resetPassword = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message:
+          "No password reset request found for this email",
       });
     }
 
     const user = result.rows[0];
 
-    // ==================================================
+    // --------------------------------------------------
     // Check OTP exists
-    // ==================================================
+    // --------------------------------------------------
     if (
-      !user.password_reset_otp_hash ||
-      !user.password_reset_otp_expires_at
+      !user.rp_otp_hash ||
+      !user.rp_otp_expires_at
     ) {
       return res.status(400).json({
         success: false,
@@ -219,24 +266,23 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // ==================================================
+    // --------------------------------------------------
     // Check OTP expiry
-    // ==================================================
+    // --------------------------------------------------
     const currentTime = new Date();
+
     const expiryTime = new Date(
-      user.password_reset_otp_expires_at
+      user.rp_otp_expires_at
     );
 
     if (currentTime > expiryTime) {
+      // Delete expired reset request
       await db.query(
         `
-        UPDATE organizations
-        SET
-          password_reset_otp_hash = NULL,
-          password_reset_otp_expires_at = NULL
-        WHERE employee_id = $1
+        DELETE FROM resetpassword
+        WHERE pr_id = $1
         `,
-        [user.employee_id]
+        [user.pr_id]
       );
 
       return res.status(400).json({
@@ -246,12 +292,12 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // ==================================================
+    // --------------------------------------------------
     // Verify OTP
-    // ==================================================
+    // --------------------------------------------------
     const validOtp = await bcrypt.compare(
       otp.toString(),
-      user.password_reset_otp_hash
+      user.rp_otp_hash
     );
 
     if (!validOtp) {
@@ -261,49 +307,48 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // ==================================================
+    // --------------------------------------------------
     // Hash new password
-    // ==================================================
+    // --------------------------------------------------
     const hashedPassword = await bcrypt.hash(
       newPassword,
       12
     );
 
-    // ==================================================
-    // Update password in LOGIN table
-    // ==================================================
-    const updatePasswordResult = await db.query(
+    // --------------------------------------------------
+    // Update password in login table
+    // --------------------------------------------------
+    const updateResult = await db.query(
       `
       UPDATE login
-      SET lg_password = $1
-      WHERE lg_employee_id = $2
-      RETURNING lg_employee_id
+      SET
+        lg_password = $1,
+        lg_updated_at = NOW()
+      WHERE pr_id = $2
+      RETURNING lg_id
       `,
       [
         hashedPassword,
-        user.employee_id,
+        user.pr_id,
       ]
     );
 
-    if (updatePasswordResult.rowCount === 0) {
+    if (updateResult.rowCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Login account not found",
+        message: "Unable to update password",
       });
     }
 
-    // ==================================================
-    // Clear OTP after successful password reset
-    // ==================================================
+    // --------------------------------------------------
+    // Delete OTP after successful reset
+    // --------------------------------------------------
     await db.query(
       `
-      UPDATE organizations
-      SET
-        password_reset_otp_hash = NULL,
-        password_reset_otp_expires_at = NULL
-      WHERE employee_id = $1
+      DELETE FROM resetpassword
+      WHERE pr_id = $1
       `,
-      [user.employee_id]
+      [user.pr_id]
     );
 
     return res.status(200).json({
@@ -311,7 +356,10 @@ const resetPassword = async (req, res) => {
       message: "Password reset successfully",
     });
   } catch (error) {
-    console.error("resetPassword error:", error);
+    console.error(
+      "resetPassword error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -332,17 +380,18 @@ const resetPassword = async (req, res) => {
 //   "newPassword": "NewPassword@123"
 // }
 //
-// NOTE:
-// No old/current password is required.
+// No old password required.
 // ======================================================
 const changeMyPassword = async (req, res) => {
   try {
-    // ==================================================
-    // Get logged-in employee/user ID
-    // ==================================================
-    const employeeId = req.user?.id;
+    // --------------------------------------------------
+    // IMPORTANT:
+    //
+    // This assumes req.user.id contains pr_id.
+    // --------------------------------------------------
+    const prId = req.user?.id;
 
-    if (!employeeId) {
+    if (!prId) {
       return res.status(401).json({
         success: false,
         message: "Unauthorized",
@@ -351,9 +400,9 @@ const changeMyPassword = async (req, res) => {
 
     const { newPassword } = req.body;
 
-    // ==================================================
+    // --------------------------------------------------
     // Validate new password
-    // ==================================================
+    // --------------------------------------------------
     if (!newPassword) {
       return res.status(400).json({
         success: false,
@@ -369,45 +418,64 @@ const changeMyPassword = async (req, res) => {
       });
     }
 
-    // ==================================================
-    // Hash new password
-    // ==================================================
-    const hashedPassword = await bcrypt.hash(
-      newPassword,
-      12
-    );
-
-    // ==================================================
-    // Update password in LOGIN table
-    //
-    // No comparison with old password
-    // ==================================================
-    const result = await db.query(
+    // --------------------------------------------------
+    // Check login account
+    // --------------------------------------------------
+    const loginResult = await db.query(
       `
-      UPDATE login
-      SET lg_password = $1
-      WHERE lg_employee_id = $2
-      RETURNING lg_employee_id
+      SELECT
+        lg_id,
+        pr_id
+      FROM login
+      WHERE pr_id = $1
+      LIMIT 1
       `,
-      [
-        hashedPassword,
-        employeeId,
-      ]
+      [prId]
     );
 
-    if (result.rowCount === 0) {
+    if (loginResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
         message: "Login account not found",
       });
     }
 
+    // --------------------------------------------------
+    // Hash new password
+    // --------------------------------------------------
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      12
+    );
+
+    // --------------------------------------------------
+    // Update password
+    //
+    // No old password comparison.
+    // --------------------------------------------------
+    await db.query(
+      `
+      UPDATE login
+      SET
+        lg_password = $1,
+        lg_updated_at = NOW()
+      WHERE pr_id = $2
+      `,
+      [
+        hashedPassword,
+        prId,
+      ]
+    );
+
     return res.status(200).json({
       success: true,
       message: "Password changed successfully",
     });
   } catch (error) {
-    console.error("changeMyPassword error:", error);
+    console.error(
+      "changeMyPassword error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
