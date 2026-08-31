@@ -2813,7 +2813,6 @@ exports.addNomineeInfo = async (req, res) => {
       });
     }
 
-    // Check employee exists
     const employeeCheck = await client.query(
       `
       SELECT Pr_Id
@@ -2841,7 +2840,6 @@ exports.addNomineeInfo = async (req, res) => {
 
     await client.query("BEGIN");
 
-    // Existing percentage
     const percentageResult = await client.query(
       `
       SELECT COALESCE(SUM(Nm_Nominee_Percentage), 0) AS total_percentage
@@ -2855,7 +2853,6 @@ exports.addNomineeInfo = async (req, res) => {
       percentageResult.rows[0].total_percentage || 0
     );
 
-    // Validate incoming nominees
     let incomingTotal = 0;
 
     for (const nominee of nominees) {
@@ -2867,49 +2864,46 @@ exports.addNomineeInfo = async (req, res) => {
       } = nominee;
 
       if (
-        !nominee_name ||
-        !nominee_relation ||
-        nominee_contact === undefined ||
-        nominee_percentage === undefined
+        nominee_contact !== undefined &&
+        nominee_contact !== null &&
+        String(nominee_contact).trim() !== ""
       ) {
-        await client.query("ROLLBACK");
+        const contactStr = String(nominee_contact).trim();
 
-        return res.status(400).json({
-          success: false,
-          message: "All nominee fields are required"
-        });
+        if (!/^[0-9]{10}$/.test(contactStr)) {
+          await client.query("ROLLBACK");
+
+          return res.status(400).json({
+            success: false,
+            message: "Nominee contact must be exactly 10 digits"
+          });
+        }
       }
-
-      const contactStr = String(nominee_contact).trim();
-
-      if (!/^[0-9]{10}$/.test(contactStr)) {
-        await client.query("ROLLBACK");
-
-        return res.status(400).json({
-          success: false,
-          message: "Nominee contact must be exactly 10 digits"
-        });
-      }
-
-      const percentage = Number(nominee_percentage);
 
       if (
-        isNaN(percentage) ||
-        percentage <= 0 ||
-        percentage > 100
+        nominee_percentage !== undefined &&
+        nominee_percentage !== null &&
+        String(nominee_percentage).trim() !== ""
       ) {
-        await client.query("ROLLBACK");
+        const percentage = Number(nominee_percentage);
 
-        return res.status(400).json({
-          success: false,
-          message: "Nominee percentage must be between 1 and 100"
-        });
+        if (
+          isNaN(percentage) ||
+          percentage <= 0 ||
+          percentage > 100
+        ) {
+          await client.query("ROLLBACK");
+
+          return res.status(400).json({
+            success: false,
+            message: "Nominee percentage must be between 1 and 100"
+          });
+        }
+
+        incomingTotal += percentage;
       }
-
-      incomingTotal += percentage;
     }
 
-    // Check total percentage
     if (existingTotal + incomingTotal > 100) {
       await client.query("ROLLBACK");
 
@@ -2919,35 +2913,69 @@ exports.addNomineeInfo = async (req, res) => {
       });
     }
 
-    // Check duplicate contacts
     for (const nominee of nominees) {
-      const contactStr = String(nominee.nominee_contact).trim();
+      if (
+        nominee.nominee_contact !== undefined &&
+        nominee.nominee_contact !== null &&
+        String(nominee.nominee_contact).trim() !== ""
+      ) {
+        const contactStr = String(
+          nominee.nominee_contact
+        ).trim();
 
-      const duplicateCheck = await client.query(
-        `
-        SELECT Nm_Id
-        FROM nominee
-        WHERE Pr_Id = $1
-          AND Nm_Nominee_Contact = $2
-        LIMIT 1
-        `,
-        [employeeId, contactStr]
-      );
+        const duplicateCheck = await client.query(
+          `
+          SELECT Nm_Id
+          FROM nominee
+          WHERE Pr_Id = $1
+            AND Nm_Nominee_Contact = $2
+          LIMIT 1
+          `,
+          [employeeId, contactStr]
+        );
 
-      if (duplicateCheck.rowCount > 0) {
-        await client.query("ROLLBACK");
+        if (duplicateCheck.rowCount > 0) {
+          await client.query("ROLLBACK");
 
-        return res.status(409).json({
-          success: false,
-          message: `Nominee with contact ${contactStr} already exists`
-        });
+          return res.status(409).json({
+            success: false,
+            message: `Nominee with contact ${contactStr} already exists`
+          });
+        }
       }
     }
 
     const inserted = [];
 
-    // Insert nominees
     for (const nominee of nominees) {
+      const nomineeName =
+        nominee.nominee_name !== undefined &&
+        nominee.nominee_name !== null &&
+        String(nominee.nominee_name).trim() !== ""
+          ? String(nominee.nominee_name).trim()
+          : null;
+
+      const nomineeRelation =
+        nominee.nominee_relation !== undefined &&
+        nominee.nominee_relation !== null &&
+        String(nominee.nominee_relation).trim() !== ""
+          ? String(nominee.nominee_relation).trim()
+          : null;
+
+      const nomineeContact =
+        nominee.nominee_contact !== undefined &&
+        nominee.nominee_contact !== null &&
+        String(nominee.nominee_contact).trim() !== ""
+          ? String(nominee.nominee_contact).trim()
+          : null;
+
+      const nomineePercentage =
+        nominee.nominee_percentage !== undefined &&
+        nominee.nominee_percentage !== null &&
+        String(nominee.nominee_percentage).trim() !== ""
+          ? Number(nominee.nominee_percentage)
+          : null;
+
       const result = await client.query(
         `
         INSERT INTO nominee (
@@ -2972,10 +3000,10 @@ exports.addNomineeInfo = async (req, res) => {
         `,
         [
           employeeId,
-          nominee.nominee_name.trim(),
-          nominee.nominee_relation.trim(),
-          String(nominee.nominee_contact).trim(),
-          Number(nominee.nominee_percentage),
+          nomineeName,
+          nomineeRelation,
+          nomineeContact,
+          nomineePercentage,
           createdBy
         ]
       );
