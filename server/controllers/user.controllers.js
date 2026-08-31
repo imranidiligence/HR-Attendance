@@ -144,7 +144,7 @@ const loginController = async (req, res) => {
       user: {
         id: user.pr_id,
 
-        name: `${user.pr_first_name} ${user.pr_last_name}`,
+        name: `${user.pr_first_name}`,
 
         first_name: user.pr_first_name,
 
