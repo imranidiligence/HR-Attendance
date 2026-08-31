@@ -20,6 +20,10 @@ const {
 const {
   generateMonthlyAttendance,
 } = require("../services/monthly.attendance.service");
+const {
+  sendMorningAttendanceReport,
+  sendEveningAttendanceReport,
+} = require("../services/attendance.report.service");
 
 const DEFAULT_TIMEZONE = "Asia/Kolkata";
 
@@ -88,6 +92,8 @@ const jobHandlers = {
   attendance_pipeline: runPipeline,
   weekly_attendance: generateWeeklyAttendance,
   monthly_attendance: generateMonthlyAttendance,
+  daily_attendance_report_morning: sendMorningAttendanceReport,
+  daily_attendance_report_evening: sendEveningAttendanceReport,
 };
 
 
