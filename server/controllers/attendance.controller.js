@@ -1404,7 +1404,6 @@ exports.getMyAttendance = async (req, res) => {
 
     const { startDate, endDate } = req.query;
 
-    // Default: last 30 days + today
     const defaultToDate = `
       (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
     `;
@@ -1416,7 +1415,6 @@ exports.getMyAttendance = async (req, res) => {
     const fromDate = startDate || null;
     const toDate = endDate || null;
 
-    // Validate date range
     if (fromDate && toDate && new Date(fromDate) > new Date(toDate)) {
       return res.status(400).json({
         success: false,
@@ -1424,9 +1422,6 @@ exports.getMyAttendance = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------------------
-    // TOTAL ITEMS
-    // ---------------------------------------------------------
     const countResult = await db.query(
       `
       SELECT COUNT(*)::int AS total
@@ -1446,9 +1441,6 @@ exports.getMyAttendance = async (req, res) => {
 
     const totalItems = countResult.rows[0].total;
 
-    // ---------------------------------------------------------
-    // ATTENDANCE DATA
-    // ---------------------------------------------------------
     const { rows } = await db.query(
       `
       SELECT
@@ -1471,9 +1463,14 @@ exports.getMyAttendance = async (req, res) => {
           da.early_go,
           da.is_early_gone,
 
-          da.status_id
+          da.status_id,
+
+          ats.status_name
 
       FROM daily_attendance da
+
+      LEFT JOIN attendence_status ats
+          ON da.status_id = ats.id
 
       WHERE da.emp_id = $1
         AND da.attendance_date >= COALESCE(
@@ -1504,21 +1501,15 @@ exports.getMyAttendance = async (req, res) => {
       rows
     );
 
-    // ---------------------------------------------------------
-    // FORMAT RESPONSE
-    // ---------------------------------------------------------
     const attendance = rows.map((row) => {
       let total_hours = null;
 
-      // Use total_hours from DB if available
       if (
         row.total_hours !== null &&
         row.total_hours !== undefined
       ) {
         total_hours = row.total_hours;
-      }
-      // Otherwise calculate from punch_in / punch_out
-      else if (
+      } else if (
         row.punch_in &&
         row.punch_out
       ) {
@@ -1544,9 +1535,6 @@ exports.getMyAttendance = async (req, res) => {
       };
     });
 
-    // ---------------------------------------------------------
-    // RESPONSE
-    // ---------------------------------------------------------
     return res.status(200).json({
       success: true,
       attendance,
