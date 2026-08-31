@@ -36,6 +36,7 @@ const vendorDetailsRoutes = require('./routes/vendorDetailsRoutes');
 const dashboardRoutes = require("./routes/DashboardRoutes");
 const holidayTypeRoutes = require("./routes/holidayTypeRoutes");
 const degreeRoutes = require('./routes/degreeRoutes')
+const cronJobsRoutes = require("./routes/cronJobs.routes")
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
 const holidayRoutes = require("./routes/holidayRoutes");
 // const adminRoutes = require("./routes/admin.routes");
@@ -143,6 +144,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/holiday-types", holidayTypeRoutes);
 app.use("/api/holidays", holidayRoutes);
+app.use("/api/cron-jobs", cronJobsRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
