@@ -4,23 +4,42 @@ const { getPaginationParams, buildIsActiveClause } = require('../utils/paginatio
 
 const createDesignation = async (req, res) => {
   try {
-    const { designation_name, created_by } = req.body;
+    const { designation_name, created_by, IsHOD } = req.body;
 
     if (!designation_name || designation_name.trim() === '') {
       return errorResponse(res, 400, 'designation_name is required', null);
     }
 
     const query = `
-      INSERT INTO designation_master (designation_name, created_by, created_at, is_active)
-      VALUES ($1, $2, CURRENT_TIMESTAMP, TRUE)
+      INSERT INTO designation_master (
+        designation_name,
+        created_by,
+        created_at,
+        is_active,
+        "IsHOD"
+      )
+      VALUES ($1, $2, CURRENT_TIMESTAMP, TRUE, $3)
       RETURNING *
     `;
-    const result = await db.query(query, [designation_name, created_by || null]);
-    return successResponse(res, 201, 'Designation created successfully', result.rows[0]);
+
+    const result = await db.query(query, [
+      designation_name,
+      created_by || null,
+      IsHOD !== undefined ? IsHOD : false
+    ]);
+
+    return successResponse(
+      res,
+      201,
+      'Designation created successfully',
+      result.rows[0]
+    );
   } catch (error) {
     return handleDbError(res, error, 'Failed to create designation');
   }
 };
+
+
 
 const getDesignationById = async (req, res) => {
   try {
@@ -83,39 +102,79 @@ const getPaginatedDesignations = async (req, res) => {
 const updateDesignation = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!id || isNaN(id)) {
       return errorResponse(res, 400, 'Valid designation_id is required', null);
     }
 
-    const existing = await db.query('SELECT * FROM designation_master WHERE designation_id = $1', [id]);
+    const existing = await db.query(
+      'SELECT * FROM designation_master WHERE designation_id = $1',
+      [id]
+    );
+
     if (existing.rows.length === 0) {
       return errorResponse(res, 404, 'Designation not found', null);
     }
 
-    const { designation_name, updated_by, is_active } = req.body;
+    const {
+      designation_name,
+      updated_by,
+      is_active,
+      IsHOD
+    } = req.body;
 
-    if (designation_name !== undefined && designation_name.trim() === '') {
-      return errorResponse(res, 400, 'designation_name cannot be empty', null);
+    if (
+      designation_name !== undefined &&
+      designation_name.trim() === ''
+    ) {
+      return errorResponse(
+        res,
+        400,
+        'designation_name cannot be empty',
+        null
+      );
+    }
+
+    if (
+      IsHOD !== undefined &&
+      typeof IsHOD !== 'boolean'
+    ) {
+      return errorResponse(
+        res,
+        400,
+        'IsHOD must be true or false',
+        null
+      );
     }
 
     const query = `
       UPDATE designation_master
-      SET designation_name = COALESCE($1, designation_name),
-          updated_by = COALESCE($2, updated_by),
-          is_active = COALESCE($3, is_active),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE designation_id = $4
+      SET
+        designation_name = COALESCE($1, designation_name),
+        updated_by = COALESCE($2, updated_by),
+        is_active = COALESCE($3, is_active),
+        "IsHOD" = COALESCE($4, "IsHOD"),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE designation_id = $5
       RETURNING *
     `;
+
     const values = [
       designation_name !== undefined ? designation_name : null,
       updated_by !== undefined ? updated_by : null,
       is_active !== undefined ? is_active : null,
-      id,
+      IsHOD !== undefined ? IsHOD : null,
+      id
     ];
 
     const result = await db.query(query, values);
-    return successResponse(res, 200, 'Designation updated successfully', result.rows[0]);
+
+    return successResponse(
+      res,
+      200,
+      'Designation updated successfully',
+      result.rows[0]
+    );
   } catch (error) {
     return handleDbError(res, error, 'Failed to update designation');
   }
