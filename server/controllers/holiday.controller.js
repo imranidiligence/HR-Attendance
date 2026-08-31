@@ -201,7 +201,7 @@ const getPaginatedHolidays = async (req, res) => {
       SELECT *
       FROM holidays h
       ${whereClause}
-      ORDER BY h.holiday_date ASC, h.holiday_id ASC
+      ORDER BY h.created_at DESC, h.holiday_id DESC
       LIMIT $1 OFFSET $2
     `;
 
