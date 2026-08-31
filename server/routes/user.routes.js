@@ -27,7 +27,7 @@ router.put(
 router.post("/forgot-password", sendPasswordResetOtp);
 router.post("/reset-password", resetPassword);
 
-router.post("/change-password", authMiddleware, changeMyPassword);
+router.post("/change-password", changeMyPassword);
 
 
 module.exports = router;

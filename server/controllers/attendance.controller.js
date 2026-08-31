@@ -860,6 +860,7 @@ exports.processAndSendAttendanceReport = async (
 };
 
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
+// In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -869,14 +870,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     const showInactive =
       req.query.showInactive === "true";
 
-    /*
-     * =========================================================
-     * TODAY IN IST
-     * =========================================================
-     *
-     * Do not use CURRENT_DATE because PostgreSQL session timezone
-     * may not be Asia/Kolkata.
-     */
+    // =========================================================
+    // TODAY IN IST
+    // =========================================================
     const todayQuery = `
       SELECT (
         CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
@@ -888,15 +884,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
     const today = todayRows[0].today;
 
-    /*
-     * =========================================================
-     * COUNT EMPLOYEES
-     * =========================================================
-     *
-     * organizations is now the employee master.
-     *
-     * personal contains employee details.
-     */
+    // =========================================================
+    // COUNT EMPLOYEES
+    // =========================================================
     let countQuery = `
       SELECT COUNT(DISTINCT o.or_id) AS total
       FROM public.organizations o
@@ -908,58 +898,29 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         AND TRIM(o.or_emp_id) <> ''
     `;
 
-    const countParams = [];
-
     if (!showInactive) {
       countQuery += `
         AND COALESCE(o.or_is_active, TRUE) = TRUE
       `;
     }
 
-    const countResult =
-      await db.query(
-        countQuery,
-        countParams
-      );
+    const countResult = await db.query(countQuery);
 
     const totalItems = parseInt(
       countResult.rows[0].total,
       10
     );
 
-    /*
-     * =========================================================
-     * ATTENDANCE QUERY
-     * =========================================================
-     *
-     * organizations
-     *      ↓
-     * personal
-     *      ↓
-     * daily_attendance
-     *      ↓
-     * attendence_status
-     *
-     * LEFT JOIN daily_attendance because an employee without
-     * a punch must still appear as Absent.
-     */
+    // =========================================================
+    // ATTENDANCE QUERY
+    // =========================================================
     let query = `
       SELECT
 
-        /*
-         * =====================================================
-         * ATTENDANCE DATE
-         * =====================================================
-         */
         (
           CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
         )::DATE AS attendance_date,
 
-        /*
-         * =====================================================
-         * EMPLOYEE DETAILS
-         * =====================================================
-         */
         TRIM(o.or_emp_id) AS emp_id,
 
         COALESCE(
@@ -968,7 +929,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS is_active,
 
         COALESCE(
-          NULLIF(TRIM(p.pr_name), ''),
+          NULLIF(TRIM(p.pr_first_name), ''),
           TRIM(
             CONCAT_WS(
               ' ',
@@ -980,18 +941,15 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS name,
 
         /*
-         * You do not currently have a role column in the
-         * organizations schema provided.
+         * Official email from organizations table
          */
+        o."or_official_email" AS email,
+
         'employee' AS role,
 
-        /*
-         * =====================================================
-         * ATTENDANCE
-         * =====================================================
-         */
         da.punch_in,
         da.punch_out,
+
         da.status_id,
 
         COALESCE(
@@ -1000,58 +958,35 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS status,
 
         /*
-         * =====================================================
-         * TOTAL HOURS
-         * =====================================================
-         *
-         * Convert PostgreSQL INTERVAL into total seconds.
-         *
-         * Example:
-         *
-         * 00:09:48 -> 588 seconds
-         * 08:30:25 -> 30625 seconds
-         *
-         * This avoids the pg driver returning the INTERVAL
-         * as an object like:
-         *
-         * {
-         *   minutes: 9,
-         *   seconds: 48
-         * }
+         * Calculate total seconds from punch in/out
          */
-        EXTRACT(
-          EPOCH FROM COALESCE(
-            da.total_hours,
-            INTERVAL '0'
-          )
-        ) AS total_hours_seconds
+        CASE
+          WHEN da.punch_in IS NOT NULL
+               AND da.punch_out IS NOT NULL
+          THEN
+            EXTRACT(
+              EPOCH FROM (
+                da.punch_out - da.punch_in
+              )
+            )
+          ELSE 0
+        END AS total_seconds
 
       FROM public.organizations o
 
       INNER JOIN public.personal p
         ON p.pr_id = o.pr_id
 
-      /*
-       * Daily attendance is LEFT JOINed so employees with
-       * no punch are returned as well.
-       */
       LEFT JOIN public.daily_attendance da
+        ON TRIM(da.emp_id) = TRIM(o.or_emp_id)
+        AND da.attendance_date = $1
 
-        ON TRIM(da.emp_id) =
-           TRIM(o.or_emp_id)
-
-       AND da.attendance_date = $1
-
-      /*
-       * Status master
-       */
       LEFT JOIN public.attendence_status ast
         ON ast.id = da.status_id
-
-       AND COALESCE(
-         ast.is_active,
-         TRUE
-       ) = TRUE
+        AND COALESCE(
+          ast.is_active,
+          TRUE
+        ) = TRUE
 
       WHERE o.or_emp_id IS NOT NULL
         AND TRIM(o.or_emp_id) <> ''
@@ -1059,12 +994,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
     const queryParams = [today];
 
-    /*
-     * =========================================================
-     * ACTIVE / INACTIVE FILTER
-     * =========================================================
-     */
-
+    // =========================================================
+    // ACTIVE / INACTIVE FILTER
+    // =========================================================
     if (!showInactive) {
       query += `
         AND COALESCE(
@@ -1074,19 +1006,15 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       `;
     }
 
-    /*
-     * =========================================================
-     * ORDER + PAGINATION
-     * =========================================================
-     */
-
+    // =========================================================
+    // ORDER + PAGINATION
+    // =========================================================
     query += `
       ORDER BY
         COALESCE(o.or_is_active, FALSE) DESC,
-
         TRIM(
           COALESCE(
-            NULLIF(p.pr_name, ''),
+            NULLIF(p.pr_first_name, ''),
             CONCAT_WS(
               ' ',
               p.pr_first_name,
@@ -1115,58 +1043,30 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       rows
     );
 
-    /*
-     * =========================================================
-     * FORMAT DATA FOR FRONTEND
-     * =========================================================
-     */
-
+    // =========================================================
+    // FORMAT DATA
+    // =========================================================
     const formattedRows =
       rows.map((row) => {
 
-        /*
-         * -----------------------------------------------------
-         * TOTAL HOURS
-         * -----------------------------------------------------
-         *
-         * total_hours_seconds comes from:
-         *
-         * EXTRACT(EPOCH FROM da.total_hours)
-         *
-         * Example:
-         *
-         * 00:09:48
-         *      ↓
-         * 588 seconds
-         *      ↓
-         * 00:09
-         *
-         * 08:30:25
-         *      ↓
-         * 30625 seconds
-         *      ↓
-         * 08:30
-         */
+        // -----------------------------------------------------
+        // TOTAL HOURS
+        // -----------------------------------------------------
+        const totalSeconds =
+          Number(row.total_seconds) || 0;
+
         let totalHours = "00:00";
 
-        if (
-          row.total_hours_seconds !== null &&
-          row.total_hours_seconds !== undefined
-        ) {
-          const totalSeconds = Math.max(
-            0,
+        if (totalSeconds > 0) {
+          const hours =
             Math.floor(
-              Number(row.total_hours_seconds)
-            )
-          );
+              totalSeconds / 3600
+            );
 
-          const hours = Math.floor(
-            totalSeconds / 3600
-          );
-
-          const minutes = Math.floor(
-            (totalSeconds % 3600) / 60
-          );
+          const minutes =
+            Math.floor(
+              (totalSeconds % 3600) / 60
+            );
 
           totalHours =
             `${String(hours).padStart(2, "0")}:${String(
@@ -1174,11 +1074,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
             ).padStart(2, "0")}`;
         }
 
-        /*
-         * -----------------------------------------------------
-         * PUNCH IN
-         * -----------------------------------------------------
-         */
+        // -----------------------------------------------------
+        // PUNCH IN
+        // -----------------------------------------------------
         const punchIn =
           row.punch_in
             ? new Date(
@@ -1195,11 +1093,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
               )
             : "--";
 
-        /*
-         * -----------------------------------------------------
-         * PUNCH OUT
-         * -----------------------------------------------------
-         */
+        // -----------------------------------------------------
+        // PUNCH OUT
+        // -----------------------------------------------------
         const punchOut =
           row.punch_out
             ? new Date(
@@ -1216,11 +1112,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
               )
             : "--";
 
-        /*
-         * -----------------------------------------------------
-         * RESPONSE
-         * -----------------------------------------------------
-         */
+        // -----------------------------------------------------
+        // RESPONSE
+        // -----------------------------------------------------
         return {
           attendance_date:
             `${row.attendance_date}T18:30:00.000Z`,
@@ -1233,6 +1127,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           name:
             row.name,
+
+          email:
+            row.email || "-",
 
           punch_in:
             punchIn,
@@ -1254,19 +1151,18 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         };
       });
 
-    /*
-     * =========================================================
-     * RESPONSE
-     * =========================================================
-     */
-
-    res.status(200).json({
+    // =========================================================
+    // RESPONSE
+    // =========================================================
+    return res.status(200).json({
       success: true,
 
-      employees: formattedRows,
+      employees:
+        formattedRows,
 
       pagination: {
-        currentPage: page,
+        currentPage:
+          page,
 
         totalItems,
 
@@ -1285,7 +1181,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       error
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message:
         "Failed to process attendance",
@@ -1508,7 +1404,6 @@ exports.getMyAttendance = async (req, res) => {
 
     const { startDate, endDate } = req.query;
 
-    // Default: last 30 days + today
     const defaultToDate = `
       (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::date
     `;
@@ -1520,7 +1415,6 @@ exports.getMyAttendance = async (req, res) => {
     const fromDate = startDate || null;
     const toDate = endDate || null;
 
-    // Validate date range
     if (fromDate && toDate && new Date(fromDate) > new Date(toDate)) {
       return res.status(400).json({
         success: false,
@@ -1528,9 +1422,6 @@ exports.getMyAttendance = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------------------
-    // TOTAL ITEMS
-    // ---------------------------------------------------------
     const countResult = await db.query(
       `
       SELECT COUNT(*)::int AS total
@@ -1550,9 +1441,6 @@ exports.getMyAttendance = async (req, res) => {
 
     const totalItems = countResult.rows[0].total;
 
-    // ---------------------------------------------------------
-    // ATTENDANCE DATA
-    // ---------------------------------------------------------
     const { rows } = await db.query(
       `
       SELECT
@@ -1575,9 +1463,14 @@ exports.getMyAttendance = async (req, res) => {
           da.early_go,
           da.is_early_gone,
 
-          da.status_id
+          da.status_id,
+
+          ats.status_name
 
       FROM daily_attendance da
+
+      LEFT JOIN attendence_status ats
+          ON da.status_id = ats.id
 
       WHERE da.emp_id = $1
         AND da.attendance_date >= COALESCE(
@@ -1608,21 +1501,15 @@ exports.getMyAttendance = async (req, res) => {
       rows
     );
 
-    // ---------------------------------------------------------
-    // FORMAT RESPONSE
-    // ---------------------------------------------------------
     const attendance = rows.map((row) => {
       let total_hours = null;
 
-      // Use total_hours from DB if available
       if (
         row.total_hours !== null &&
         row.total_hours !== undefined
       ) {
         total_hours = row.total_hours;
-      }
-      // Otherwise calculate from punch_in / punch_out
-      else if (
+      } else if (
         row.punch_in &&
         row.punch_out
       ) {
@@ -1648,9 +1535,6 @@ exports.getMyAttendance = async (req, res) => {
       };
     });
 
-    // ---------------------------------------------------------
-    // RESPONSE
-    // ---------------------------------------------------------
     return res.status(200).json({
       success: true,
       attendance,
@@ -1686,7 +1570,7 @@ exports.getMyHolidays = async (req, res) => {
         htm.holiday_type_name
       FROM holidays h
       LEFT JOIN holiday_type_master htm
-        ON h.holiday_type_id = htm.holiday_type_id
+        ON h.holiday_id = htm.holiday_type_id
       ORDER BY h.holiday_date ASC
     `);
 
