@@ -1022,318 +1022,310 @@ exports.getPersonalInfo = async (req, res) => {
 };
 
 exports.updatePersonalInfo = async (req, res) => {
-  try {
-    const { employee_id } = req.params;
+try {
+const { employee_id } = req.params;
 
-    const {
-      first_name,
-      last_name,
-      email,
-      dob,
-      contact,
-      gender_id,
-      marital_status_id,
-      nationality_id,
-      blood_group_id,
-      password,
-      is_active
-    } = req.body;
+const {
+  first_name,
+  last_name,
+  email,
+  dob,
+  contact,
+  gender_id,
+  marital_status_id,
+  nationality_id,
+  blood_group_id,
+  password,
+  is_active
+} = req.body;
 
-    if (!employee_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Employee ID is required"
-      });
-    }
+if (!employee_id) {
+  return res.status(400).json({
+    success: false,
+    message: "Employee ID is required"
+  });
+}
 
-    if (!first_name || !last_name || !email) {
-      return res.status(400).json({
-        success: false,
-        message: "First name, last name and email are required"
-      });
-    }
+if (!first_name || !last_name || !email) {
+  return res.status(400).json({
+    success: false,
+    message: "First name, last name and email are required"
+  });
+}
 
-    const updatedBy = req.user?.id;
+const updatedBy = req.user?.id;
 
-    if (!updatedBy) {
-      return res.status(401).json({
-        success: false,
-        message: "User ID not found in JWT token"
-      });
-    }
+if (!updatedBy) {
+  return res.status(401).json({
+    success: false,
+    message: "User ID not found in JWT token"
+  });
+}
 
-    const parseDate = (dateStr) => {
-      if (dateStr === undefined || dateStr === null || String(dateStr).trim() === "") {
-        return null;
-      }
+const parseDate = (dateStr) => {
+  if (
+    dateStr === undefined ||
+    dateStr === null ||
+    String(dateStr).trim() === ""
+  ) {
+    return null;
+  }
 
-      const value = String(dateStr).trim();
+  const value = String(dateStr).trim();
 
-      if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
-        const [day, month, year] = value.split("-");
-        return `${year}-${month}-${day}`;
-      }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) {
+    const [day, month, year] = value.split("-");
+    return `${year}-${month}-${day}`;
+  }
 
-      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        return value;
-      }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
 
-      const parsedDate = new Date(value);
+  const parsedDate = new Date(value);
 
-      if (isNaN(parsedDate.getTime())) {
-        return null;
-      }
+  if (isNaN(parsedDate.getTime())) {
+    return null;
+  }
 
-      return parsedDate.toISOString().split("T")[0];
-    };
+  return parsedDate.toISOString().split("T")[0];
+};
 
-    const formattedDob = parseDate(dob);
+const formattedDob = parseDate(dob);
 
-    const employeeCheck = await db.query(
+const employeeCheck = await db.query(
+  `
+  SELECT pr_id
+  FROM personal
+  WHERE pr_id = $1
+  `,
+  [employee_id]
+);
+
+if (employeeCheck.rows.length === 0) {
+  return res.status(404).json({
+    success: false,
+    message: `Employee with ID ${employee_id} not found`
+  });
+}
+
+const personalResult = await db.query(
+  `
+  UPDATE personal
+  SET
+    pr_first_name = $1,
+    pr_last_name = $2,
+    pr_email = $3,
+    pr_dob = COALESCE($4::DATE, pr_dob),
+    pr_contact = COALESCE($5, pr_contact),
+    pr_gender_id = COALESCE($6, pr_gender_id),
+    pr_marital_status_id = COALESCE($7, pr_marital_status_id),
+    pr_nationality_id = COALESCE($8, pr_nationality_id),
+    pr_blood_group_id = COALESCE($9, pr_blood_group_id),
+    pr_is_active = COALESCE($10, pr_is_active),
+    pr_updated_at = CURRENT_TIMESTAMP,
+    pr_updated_by = $11
+  WHERE pr_id = $12
+  RETURNING
+    pr_id,
+    pr_email,
+    pr_first_name,
+    pr_last_name,
+    pr_dob,
+    pr_contact,
+    pr_gender_id,
+    pr_blood_group_id,
+    pr_marital_status_id,
+    pr_nationality_id,
+    pr_profile_image,
+    pr_is_active,
+    pr_created_at,
+    pr_updated_at,
+    pr_created_by,
+    pr_updated_by
+  `,
+  [
+    first_name.trim(),
+    last_name.trim(),
+    email.trim().toLowerCase(),
+    formattedDob,
+    contact !== undefined && contact !== null
+      ? String(contact).trim()
+      : null,
+    gender_id || null,
+    marital_status_id || null,
+    nationality_id || null,
+    blood_group_id || null,
+    is_active !== undefined ? is_active : null,
+    updatedBy,
+    employee_id
+  ]
+);
+
+let passwordUpdated = false;
+let loginData = null;
+
+if (
+  password !== undefined &&
+  password !== null &&
+  String(password).trim() !== ""
+) {
+  if (String(password).length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters long"
+    });
+  }
+
+  const hashedPassword = await bcrypt.hash(
+    String(password),
+    10
+  );
+
+  const loginCheck = await db.query(
+    `
+    SELECT lg_id, pr_id
+    FROM login
+    WHERE pr_id = $1
+    `,
+    [employee_id]
+  );
+
+  if (loginCheck.rows.length > 0) {
+    const loginResult = await db.query(
       `
-      SELECT pr_id
-      FROM personal
-      WHERE pr_id = $1
-      `,
-      [employee_id]
-    );
-
-    if (employeeCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: `Employee with ID ${employee_id} not found`
-      });
-    }
-
-    const emailCheck = await db.query(
-      `
-      SELECT pr_id
-      FROM personal
-      WHERE LOWER(pr_email) = LOWER($1)
-        AND pr_id <> $2
-      `,
-      [email.trim(), employee_id]
-    );
-
-    if (emailCheck.rows.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: "Email already exists in the system"
-      });
-    }
-
-    const personalResult = await db.query(
-      `
-      UPDATE personal
+      UPDATE login
       SET
-        pr_first_name = $1,
-        pr_last_name = $2,
-        pr_email = $3,
-        pr_dob = COALESCE($4::DATE, pr_dob),
-        pr_contact = COALESCE($5, pr_contact),
-        pr_gender_id = COALESCE($6, pr_gender_id),
-        pr_marital_status_id = COALESCE($7, pr_marital_status_id),
-        pr_nationality_id = COALESCE($8, pr_nationality_id),
-        pr_blood_group_id = COALESCE($9, pr_blood_group_id),
-        pr_is_active = COALESCE($10, pr_is_active),
-        pr_updated_at = CURRENT_TIMESTAMP,
-        pr_updated_by = $11
-      WHERE pr_id = $12
+        lg_password = $1,
+        lg_updated_by = $2,
+        lg_updated_at = CURRENT_TIMESTAMP
+      WHERE pr_id = $3
       RETURNING
+        lg_id,
         pr_id,
-        pr_email,
-        pr_first_name,
-        pr_last_name,
-        pr_dob,
-        pr_contact,
-        pr_gender_id,
-        pr_blood_group_id,
-        pr_marital_status_id,
-        pr_nationality_id,
-        pr_profile_image,
-        pr_is_active,
-        pr_created_at,
-        pr_updated_at,
-        pr_created_by,
-        pr_updated_by
+        lg_updated_at
       `,
       [
-        first_name.trim(),
-        last_name.trim(),
-        email.trim().toLowerCase(),
-        formattedDob,
-        contact !== undefined && contact !== null
-          ? String(contact).trim()
-          : null,
-        gender_id || null,
-        marital_status_id || null,
-        nationality_id || null,
-        blood_group_id || null,
-        is_active !== undefined ? is_active : null,
+        hashedPassword,
         updatedBy,
         employee_id
       ]
     );
 
-    let passwordUpdated = false;
-    let loginData = null;
+    loginData = loginResult.rows[0];
+  } else {
+    const loginResult = await db.query(
+      `
+      INSERT INTO login (
+        pr_id,
+        lg_password,
+        lg_created_by,
+        lg_updated_by,
+        lg_created_at,
+        lg_updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $3,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      RETURNING
+        lg_id,
+        pr_id,
+        lg_created_at,
+        lg_updated_at
+      `,
+      [
+        employee_id,
+        hashedPassword,
+        updatedBy
+      ]
+    );
 
-    if (
-      password !== undefined &&
-      password !== null &&
-      String(password).trim() !== ""
-    ) {
-      if (String(password).length < 6) {
-        return res.status(400).json({
-          success: false,
-          message: "Password must be at least 6 characters long"
-        });
-      }
-
-      const hashedPassword = await bcrypt.hash(
-        String(password),
-        10
-      );
-
-      const loginCheck = await db.query(
-        `
-        SELECT lg_id, pr_id
-        FROM login
-        WHERE pr_id = $1
-        `,
-        [employee_id]
-      );
-
-      if (loginCheck.rows.length > 0) {
-        const loginResult = await db.query(
-          `
-          UPDATE login
-          SET
-            lg_password = $1,
-            lg_updated_by = $2,
-            lg_updated_at = CURRENT_TIMESTAMP
-          WHERE pr_id = $3
-          RETURNING
-            lg_id,
-            pr_id,
-            lg_updated_at
-          `,
-          [
-            hashedPassword,
-            updatedBy,
-            employee_id
-          ]
-        );
-
-        loginData = loginResult.rows[0];
-      } else {
-        const loginResult = await db.query(
-          `
-          INSERT INTO login (
-            pr_id,
-            lg_password,
-            lg_created_by,
-            lg_updated_by,
-            lg_created_at,
-            lg_updated_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $3,
-            CURRENT_TIMESTAMP,
-            CURRENT_TIMESTAMP
-          )
-          RETURNING
-            lg_id,
-            pr_id,
-            lg_created_at,
-            lg_updated_at
-          `,
-          [
-            employee_id,
-            hashedPassword,
-            updatedBy
-          ]
-        );
-
-        loginData = loginResult.rows[0];
-      }
-
-      passwordUpdated = true;
-    }
-
-    const employee = personalResult.rows[0];
-
-    const response = {
-      success: true,
-      message: "Personal details updated successfully",
-      data: {
-        employee_id: employee.pr_id,
-        email: employee.pr_email,
-        first_name: employee.pr_first_name,
-        last_name: employee.pr_last_name,
-        date_of_birth: employee.pr_dob,
-        contact: employee.pr_contact,
-        gender_id: employee.pr_gender_id,
-        blood_group_id: employee.pr_blood_group_id,
-        marital_status_id: employee.pr_marital_status_id,
-        nationality_id: employee.pr_nationality_id,
-        profile_image: employee.pr_profile_image,
-        is_active: employee.pr_is_active,
-        created_at: employee.pr_created_at,
-        updated_at: employee.pr_updated_at,
-        created_by: employee.pr_created_by,
-        updated_by: employee.pr_updated_by
-      },
-      password_updated: passwordUpdated,
-      updated_by: updatedBy
-    };
-
-    if (passwordUpdated && loginData) {
-      response.login = {
-        login_id: loginData.lg_id,
-        employee_id: loginData.pr_id,
-        updated_at: loginData.lg_updated_at
-      };
-    }
-
-    return res.status(200).json(response);
-
-  } catch (error) {
-    console.error("Update Personal Info Error:", error);
-
-    if (error.code === "23505") {
-      return res.status(409).json({
-        success: false,
-        message: "Email already exists in the system",
-        error: error.detail
-      });
-    }
-
-    if (error.code === "23503") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid related record",
-        error: error.detail
-      });
-    }
-
-    if (error.code === "22007") {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid date of birth format. Use YYYY-MM-DD or DD-MM-YYYY"
-      });
-    }
-
-    return res.status(500).json({
-      success: false,
-      message: "Server error while updating personal details",
-      error: error.message
-    });
+    loginData = loginResult.rows[0];
   }
+
+  passwordUpdated = true;
+}
+
+const employee = personalResult.rows[0];
+
+const response = {
+  success: true,
+  message: "Personal details updated successfully",
+  data: {
+    employee_id: employee.pr_id,
+    email: employee.pr_email,
+    first_name: employee.pr_first_name,
+    last_name: employee.pr_last_name,
+    date_of_birth: employee.pr_dob,
+    contact: employee.pr_contact,
+    gender_id: employee.pr_gender_id,
+    blood_group_id: employee.pr_blood_group_id,
+    marital_status_id: employee.pr_marital_status_id,
+    nationality_id: employee.pr_nationality_id,
+    profile_image: employee.pr_profile_image,
+    is_active: employee.pr_is_active,
+    created_at: employee.pr_created_at,
+    updated_at: employee.pr_updated_at,
+    created_by: employee.pr_created_by,
+    updated_by: employee.pr_updated_by
+  },
+  password_updated: passwordUpdated,
+  updated_by: updatedBy
 };
+
+if (passwordUpdated && loginData) {
+  response.login = {
+    login_id: loginData.lg_id,
+    employee_id: loginData.pr_id,
+    updated_at: loginData.lg_updated_at
+  };
+}
+
+return res.status(200).json(response);
+
+
+} catch (error) {
+console.error("Update Personal Info Error:", error);
+
+
+if (error.code === "23503") {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid related record",
+    error: error.detail
+  });
+}
+
+if (error.code === "22007") {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid date of birth format. Use YYYY-MM-DD or DD-MM-YYYY"
+  });
+}
+
+if (error.code === "23505") {
+  return res.status(409).json({
+    success: false,
+    message: "Duplicate value already exists",
+    error: error.detail
+  });
+}
+
+return res.status(500).json({
+  success: false,
+  message: "Server error while updating personal details",
+  error: error.message
+});
+
+
+}
+};
+
 
 // Education
 exports.addEducationInfo = async (req, res) => {
