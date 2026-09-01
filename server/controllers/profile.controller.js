@@ -244,12 +244,26 @@ exports.getOrganizationInfo = async (req, res) => {
 
         p.pr_first_name,
         p.pr_last_name,
-        p.pr_email
+        p.pr_email,
+
+        ro.or_id AS reporting_or_id,
+        ro.pr_id AS reporting_pr_id,
+        ro.or_emp_id AS reporting_emp_id,
+
+        rp.pr_first_name AS reporting_first_name,
+        rp.pr_last_name AS reporting_last_name,
+        rp.pr_email AS reporting_email
 
       FROM organizations o
 
       INNER JOIN personal p
         ON p.pr_id = o.pr_id
+
+      LEFT JOIN organizations ro
+        ON ro.or_id = o.or_reporting_to_id
+
+      LEFT JOIN personal rp
+        ON rp.pr_id = ro.pr_id
 
       WHERE o.pr_id = $1
       `,
@@ -298,7 +312,18 @@ exports.getOrganizationInfo = async (req, res) => {
           first_name: row.pr_first_name,
           last_name: row.pr_last_name,
           email: row.pr_email
-        }
+        },
+
+        reporting_to: row.or_reporting_to_id
+          ? {
+              or_id: row.reporting_or_id,
+              pr_id: row.reporting_pr_id,
+              emp_id: row.reporting_emp_id,
+              first_name: row.reporting_first_name,
+              last_name: row.reporting_last_name,
+              email: row.reporting_email
+            }
+          : null
       }
     });
 
