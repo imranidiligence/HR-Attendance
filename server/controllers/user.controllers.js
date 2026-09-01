@@ -30,45 +30,45 @@ const loginController = async (req, res) => {
     identifier = String(identifier).trim().toLowerCase();
     password = String(password).trim();
 
-    
-const result = await db.query(
-  `
-  SELECT
-      p.pr_id,
-      p.pr_email,
+    const result = await db.query(
+      `
+      SELECT
+          p.pr_id,
+          p.pr_email,
 
-      o.or_emp_id,
+          p.pr_first_name,
+          p.pr_last_name,
+          p.pr_profile_image,
+          p.pr_is_active,
 
-      p.pr_first_name,
-      p.pr_last_name,
-      p.pr_profile_image,
-      p.pr_is_active,
+          o.or_id,
+          o.or_emp_id,
+          o.or_organization_name,
+          o.or_organization_email,
+          o.or_official_email,
+          o.or_official_contact,
 
-      o.or_id,
-      o.or_organization_name,
-      o.or_organization_email,
+          l.lg_password
 
-      l.lg_password
+      FROM personal p
 
-  FROM personal p
+      INNER JOIN login l
+          ON l.pr_id = p.pr_id
 
-  INNER JOIN login l
-      ON l.pr_id = p.pr_id
+      LEFT JOIN organizations o
+          ON o.pr_id = p.pr_id
 
-  LEFT JOIN organizations o
-      ON o.pr_id = p.pr_id
+      WHERE
+          LOWER(p.pr_email) = $1
+          OR LOWER(o.or_emp_id) = $1
+          OR LOWER(o.or_official_email) = $1
+          OR LOWER(o.or_official_contact) = $1
 
-  WHERE
-      LOWER(p.pr_email) = $1
-      OR LOWER(o.or_emp_id) = $1
-      OR LOWER(o.or_official_email) = $1
-      OR LOWER(o.or_official_contact) = $1
+      LIMIT 1
+      `,
+      [identifier]
+    );
 
-  LIMIT 1
-  `,
-  [identifier]
-);
-  
     if (result.rows.length === 0) {
       return res.status(401).json({
         message: "Invalid email or password"
@@ -77,14 +77,14 @@ const result = await db.query(
 
     const user = result.rows[0];
 
-    
+
     if (!user.pr_is_active) {
       return res.status(401).json({
         message: "User account is inactive"
       });
     }
 
-    
+
     const isMatch = await bcrypt.compare(
       password,
       user.lg_password
@@ -96,7 +96,7 @@ const result = await db.query(
       });
     }
 
-    
+
     const roleResult = await db.query(
       `
       SELECT
@@ -117,11 +117,11 @@ const result = await db.query(
 
     const roles = roleResult.rows;
 
-  
+
     const token = jwt.sign(
       {
         id: user.pr_id,
-        emp_id: user.pr_emp_id,
+        emp_id: user.or_emp_id,
         role: roles.map((r) => r.role_name)
       },
       process.env.JWT_SECRET,
@@ -130,10 +130,10 @@ const result = await db.query(
       }
     );
 
-  
+
     const decoded = jwt.decode(token);
 
-  
+
     return res.status(200).json({
       message: "Login successful",
 
@@ -144,7 +144,7 @@ const result = await db.query(
       user: {
         id: user.pr_id,
 
-        name: user.pr_first_name + user.pr_last_name,
+        name: `${user.pr_first_name}`,
 
         first_name: user.pr_first_name,
 
@@ -152,11 +152,13 @@ const result = await db.query(
 
         email: user.pr_email,
 
-        emp_id: user.pr_emp_id,
+        emp_id: user.or_emp_id,
+        official_email: user.or_official_email,
 
         organization_email: user.or_organization_email,
 
         organization_name: user.or_organization_name,
+        official_contact: user.or_official_contact,
 
         profile_image: user.pr_profile_image,
 
@@ -457,6 +459,12 @@ const getAllEmployeesPaginated = async (req, res) => {
           'organization_email',
           o.or_organization_email,
 
+          'official_email',
+          o.or_official_email,
+
+          'official_contact',
+          o.or_official_contact,
+
           'reporting_to_id',
           o.or_reporting_to_id,
 
@@ -545,7 +553,7 @@ const getAllEmployeesPaginated = async (req, res) => {
       ${whereClause}
 
       ORDER BY
-        p.pr_is_active DESC,
+        o.or_is_active DESC,
         p.pr_created_at DESC,
         p.pr_id DESC
 
