@@ -102,19 +102,19 @@ const getActive_Employee_Department_Count = async (req, res) => {
           d."DepartmentName" AS department_name,
           COUNT(o.or_id) AS number_of_users,
           ROUND(
-          COUNT(o.or_id) * 100.0 /
-          NULLIF(SUM(COUNT(o.or_id)) OVER (), 0),
-          2
+              COUNT(o.or_id) * 100.0 /
+              NULLIF(SUM(COUNT(o.or_id)) OVER (), 0),
+              2
           ) AS percent
-          FROM department_master d
-          LEFT JOIN organizations o
+      FROM department_master d
+      LEFT JOIN organizations o
           ON o.or_department_id = d."DepartmentId"
           AND o.or_is_active = TRUE
-          WHERE d."IsActive" = TRUE
-          GROUP BY
+      WHERE d."IsActive" = TRUE
+      GROUP BY
           d."DepartmentId",
           d."DepartmentName"
-          ORDER BY
+      ORDER BY
           number_of_users DESC;
     `;
 
@@ -124,7 +124,7 @@ const getActive_Employee_Department_Count = async (req, res) => {
       res,
       200,
       "Active Department employee count fetched successfully",
-      result.rows[0]
+      result.rows
     );
   } catch (error) {
     console.error("Active Department employee count error:", error);
