@@ -1257,7 +1257,9 @@ exports.getMyTodayAttendance = async (req, res) => {
 
     const formatTime = (ts) => {
       if (!ts) return null;
+
       const date = new Date(ts);
+
       return date.toLocaleTimeString("en-IN", {
         hour: "2-digit",
         minute: "2-digit",
@@ -1267,39 +1269,46 @@ exports.getMyTodayAttendance = async (req, res) => {
 
     const secondsToHHMM = (seconds) => {
       const total = Number(seconds || 0);
+
       const hrs = Math.floor(total / 3600);
       const mins = Math.floor((total % 3600) / 60);
-      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+
+      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
+        2,
+        "0"
+      )}`;
     };
 
+    // =========================
+    // TODAY ATTENDANCE
+    // =========================
     const todayResult = await db.query(
       `
-    SELECT 
-    punch_in,
+      SELECT
+        punch_in,
 
-    CASE
-        WHEN punch_out = punch_in THEN NULL
-        ELSE punch_out
-    END AS punch_out,
+        CASE
+          WHEN punch_out = punch_in THEN NULL
+          ELSE punch_out
+        END AS punch_out,
 
-    CASE
-        WHEN punch_in IS NULL THEN 'Absent'
-        WHEN punch_out IS NULL OR punch_out = punch_in THEN 'Working'
-        ELSE 'Present'
-    END AS status,
+        CASE
+          WHEN punch_in IS NULL THEN 'Absent'
+          WHEN punch_out IS NULL OR punch_out = punch_in THEN 'Working'
+          ELSE 'Present'
+        END AS status,
 
-   CASE
-    WHEN punch_out IS NULL OR punch_out = punch_in THEN '00:00'
-    ELSE TO_CHAR(punch_out - punch_in, 'HH24:MI')
-END AS total_hours
+        CASE
+          WHEN punch_out IS NULL OR punch_out = punch_in THEN '00:00'
+          ELSE TO_CHAR(punch_out - punch_in, 'HH24:MI')
+        END AS total_hours
 
-
-FROM daily_attendance
-WHERE emp_id = $1
-AND attendance_date = CURRENT_DATE
-LIMIT 1;
+      FROM daily_attendance
+      WHERE emp_id = $1
+        AND attendance_date = CURRENT_DATE
+      LIMIT 1;
       `,
-      [empId],
+      [empId]
     );
 
     let today;
@@ -1314,7 +1323,9 @@ LIMIT 1;
         status: row.status || "Absent",
       };
     } else {
-      // fallback from activity_log (if daily record not created yet)
+      // =========================
+      // FALLBACK FROM ACTIVITY LOG
+      // =========================
 
       const liveResult = await db.query(
         `
@@ -1325,7 +1336,7 @@ LIMIT 1;
         WHERE emp_id = $1
           AND punch_time::date = CURRENT_DATE
         `,
-        [empId],
+        [empId]
       );
 
       const row = liveResult.rows[0];
@@ -1345,9 +1356,14 @@ LIMIT 1;
 
         today = {
           punch_in: formatTime(row.punch_in),
+
           punch_out:
-            row.punch_out !== row.punch_in ? formatTime(row.punch_out) : null,
+            row.punch_out !== row.punch_in
+              ? formatTime(row.punch_out)
+              : null,
+
           total_hours: secondsToHHMM(totalSeconds),
+
           status:
             row.punch_out && row.punch_out !== row.punch_in
               ? "Present"
@@ -1356,34 +1372,43 @@ LIMIT 1;
       }
     }
 
+    // =========================
+    // WEEKLY ATTENDANCE DAYS
+    // =========================
+
     const weeklyResult = await db.query(
       `
-      SELECT 
-        COALESCE(
-          SUM(EXTRACT(EPOCH FROM (punch_out - punch_in))),
-          0
-        ) AS total_seconds
+      SELECT
+        COUNT(DISTINCT attendance_date) AS total_days
       FROM daily_attendance
       WHERE emp_id = $1
         AND attendance_date >= DATE_TRUNC('week', CURRENT_DATE)
         AND attendance_date <= CURRENT_DATE
-        AND punch_in IS NOT NULL
-        AND punch_out IS NOT NULL
+        AND punch_in IS NOT NULL;
       `,
-      [empId],
+      [empId]
     );
 
-    const weeklySeconds = weeklyResult.rows[0].total_seconds;
+    const weeklyDays = Number(
+      weeklyResult.rows[0]?.total_days || 0
+    );
+
+    // =========================
+    // RESPONSE
+    // =========================
 
     res.json({
       today,
       weekly: {
-        total_hours: secondsToHHMM(weeklySeconds),
+        days: weeklyDays,
       },
     });
   } catch (err) {
     console.error("getMyTodayAttendance error:", err);
-    res.status(500).json({ message: "Server error" });
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 };
 
