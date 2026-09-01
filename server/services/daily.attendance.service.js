@@ -168,7 +168,6 @@ async function generateDailyAttendance(client) {
         h.holiday_id,
         h.holiday_name,
         h.is_paid,
-        h.holiday_type_id,
         h.remarks
 
       FROM distinct_target_dates d
@@ -179,7 +178,6 @@ async function generateDailyAttendance(client) {
           h2.holiday_id,
           h2.holiday_name,
           h2.is_paid,
-          h2.holiday_type_id,
           h2.remarks
         FROM public.holidays h2
         WHERE h2.holiday_date = d.attendance_date
