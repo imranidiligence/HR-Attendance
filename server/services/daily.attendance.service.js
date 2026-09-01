@@ -173,6 +173,13 @@ async function generateDailyAttendance(client) {
 
     /* =====================================================
        DAY RULE, PER TARGET DATE ONLY
+
+       half_day_hours now resolves per-day from
+       attendance_weekly_rules first, falling back to the
+       global attendance_settings value only when a day-
+       specific value hasn't been set. This fixes shorter
+       days (e.g. a 5-hour Saturday) getting judged against
+       a half-day threshold sized for a full-length weekday.
     ===================================================== */
 
     day_rule AS
@@ -185,7 +192,8 @@ async function generateDailyAttendance(client) {
         s.grace_period_minutes,
         s.half_day_after_minutes,
         s.full_day_hours,
-        s.half_day_hours,
+
+        COALESCE(r.half_day_hours, s.half_day_hours) AS half_day_hours,
 
         COALESCE(r.is_working_day, TRUE) AS is_working_day,
         COALESCE(r.start_time, s.office_start_time) AS start_time,
