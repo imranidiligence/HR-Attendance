@@ -1,3 +1,5 @@
+const sendEmail = require("../utils/mailer"); // adjust path to your project
+
 async function generateDailyAttendance(client) {
   const query = `
     /* =====================================================
@@ -79,6 +81,28 @@ async function generateDailyAttendance(client) {
     (
       SELECT DISTINCT attendance_date
       FROM target_pairs
+    ),
+
+    /* =====================================================
+       SNAPSHOT OF daily_attendance BEFORE THIS RUN'S UPSERT
+
+       Captured here, not after — Postgres gives every CTE
+       in this statement the same snapshot, so this sees the
+       table exactly as it was before "upserted" writes to it.
+       This is what lets us detect "this is a NEW punch_in /
+       punch_out", not just "this row got touched again".
+    ===================================================== */
+
+    old_state AS
+    (
+      SELECT
+        da.emp_id,
+        da.attendance_date,
+        da.punch_in  AS old_punch_in,
+        da.punch_out AS old_punch_out
+      FROM public.daily_attendance da
+      WHERE (da.emp_id, da.attendance_date) IN
+            (SELECT emp_id, attendance_date FROM target_pairs)
     ),
 
     /* =====================================================
@@ -361,48 +385,131 @@ async function generateDailyAttendance(client) {
 
       LEFT JOIN holiday_info h
         ON h.attendance_date = p.attendance_date
+    ),
+
+    /* =====================================================
+       INSERT / UPDATE DAILY ATTENDANCE, RETURNING TOUCHED ROWS
+    ===================================================== */
+
+    upserted AS
+    (
+      INSERT INTO public.daily_attendance
+      (
+        attendance_date, punch_in, punch_out,
+        total_hours, expected_hours,
+        created_at, updated_at, emp_id,
+        late_arrival, is_late_arrived,
+        early_go, is_early_gone, status_id
+      )
+
+      SELECT
+        attendance_date, punch_in, punch_out,
+        total_hours, expected_hours,
+        CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+        CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
+        emp_id,
+        late_arrival, is_late_arrived,
+        early_go, is_early_gone, status_id
+
+      FROM calculated
+
+      ON CONFLICT (emp_id, attendance_date)
+
+      DO UPDATE SET
+        punch_in = EXCLUDED.punch_in,
+        punch_out = EXCLUDED.punch_out,
+        total_hours = EXCLUDED.total_hours,
+        expected_hours = EXCLUDED.expected_hours,
+        late_arrival = EXCLUDED.late_arrival,
+        is_late_arrived = EXCLUDED.is_late_arrived,
+        early_go = EXCLUDED.early_go,
+        is_early_gone = EXCLUDED.is_early_gone,
+        status_id = EXCLUDED.status_id,
+        updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+
+      RETURNING *
     )
 
     /* =====================================================
-       INSERT / UPDATE DAILY ATTENDANCE
+       EMAIL PAYLOAD: only rows where punch_in or punch_out
+       is NEW this run (old value was NULL, new value isn't).
+       Rows that were merely re-touched with unchanged or
+       still-null values are filtered out entirely, so a row
+       never generates an email more than once per event.
     ===================================================== */
 
-    INSERT INTO public.daily_attendance
-    (
-      attendance_date, punch_in, punch_out,
-      total_hours, expected_hours,
-      created_at, updated_at, emp_id,
-      late_arrival, is_late_arrived,
-      early_go, is_early_gone, status_id
-    )
-
     SELECT
-      attendance_date, punch_in, punch_out,
-      total_hours, expected_hours,
-      CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
-      CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
-      emp_id,
-      late_arrival, is_late_arrived,
-      early_go, is_early_gone, status_id
+      u.emp_id,
+      TRIM(COALESCE(p.pr_first_name, '') || ' ' || COALESCE(p.pr_last_name, '')) AS emp_name,
+      o.or_official_email AS emp_email,
 
-    FROM calculated
+      TO_CHAR(u.attendance_date, 'DD Mon YYYY') AS date_text,
+      TO_CHAR(u.attendance_date, 'FMDay')       AS day_text,
+      TO_CHAR(u.punch_in,  'HH12:MI AM')        AS punch_in_text,
+      TO_CHAR(u.punch_out, 'HH12:MI AM')        AS punch_out_text,
 
-    ON CONFLICT (emp_id, attendance_date)
+      CASE WHEN u.punch_out IS NOT NULL THEN
+        FLOOR(EXTRACT(EPOCH FROM u.total_hours) / 3600)::INT || 'h ' ||
+        FLOOR(MOD(EXTRACT(EPOCH FROM u.total_hours)::INT, 3600) / 60)::INT || 'm'
+      END AS duration_text,
 
-    DO UPDATE SET
-      punch_in = EXCLUDED.punch_in,
-      punch_out = EXCLUDED.punch_out,
-      total_hours = EXCLUDED.total_hours,
-      expected_hours = EXCLUDED.expected_hours,
-      late_arrival = EXCLUDED.late_arrival,
-      is_late_arrived = EXCLUDED.is_late_arrived,
-      early_go = EXCLUDED.early_go,
-      is_early_gone = EXCLUDED.is_early_gone,
-      status_id = EXCLUDED.status_id,
-      updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata';
+      (os.old_punch_in IS NULL AND u.punch_in IS NOT NULL)   AS send_punch_in,
+      (os.old_punch_out IS NULL AND u.punch_out IS NOT NULL) AS send_punch_out
+
+    FROM upserted u
+
+    JOIN public.organizations o
+      ON TRIM(o.or_emp_id) = u.emp_id
+
+    JOIN public.personal p
+      ON p.pr_id = o.pr_id
+
+    LEFT JOIN old_state os
+      ON os.emp_id = u.emp_id
+     AND os.attendance_date = u.attendance_date
+
+    WHERE (os.old_punch_in IS NULL AND u.punch_in IS NOT NULL)
+       OR (os.old_punch_out IS NULL AND u.punch_out IS NOT NULL);
   `;
 
   const result = await client.query(query);
+
+  for (const row of result.rows) {
+    if (!row.emp_email) continue; // no email on file, skip
+
+    if (row.send_punch_in) {
+      await sendEmail(
+        row.emp_email,
+        `Punch In Recorded - ${row.date_text}`,
+        "punch_in",
+        {
+          name: row.emp_name,
+          emp_id: row.emp_id,
+          date: row.date_text,
+          day: row.day_text,
+          punch_in: row.punch_in_text,
+        }
+      );
+    }
+
+    if (row.send_punch_out) {
+      await sendEmail(
+        row.emp_email,
+        `Punch Out Recorded - ${row.date_text}`,
+        "punch_out",
+        {
+          name: row.emp_name,
+          emp_id: row.emp_id,
+          date: row.date_text,
+          day: row.day_text,
+          punch_in: row.punch_in_text,
+          punch_out: row.punch_out_text,
+          duration: row.duration_text,
+        }
+      );
+    }
+  }
+
   return { touched: result.rowCount };
 }
 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    .container { font-family: 'Segoe UI', Arial, sans-serif; color: #333; margin: 0 auto; padding: 15px; max-width: 600px; }
+    .card { background-color: #f9f9f9; border: 1px solid #eeeeee; border-radius: 8px; padding: 20px; margin-top: 15px; max-width: 400px; }
+    .summary-table { width: 100%; margin-top: 15px; border-collapse: collapse; }
+    .summary-table td { padding: 8px 0; border-bottom: 1px solid #eee; }
+    .label { color: #666; font-size: 14px; }
+    .value { font-weight: 600; text-align: right; }
+    .footer { margin-top: 25px; color: #888; font-size: 13px; }
+    .summary-table tr:last-child td { border-bottom: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Hello {{name}},</h2>
+    <p>Your punch-in has been recorded:</p>
+
+    <div class="card">
+      <table class="summary-table">
+        <tr><td class="label">Employee ID</td><td class="value">{{emp_id}}</td></tr>
+        <tr><td class="label">Punch Date</td><td class="value">{{date}}</td></tr>
+        <tr><td class="label">Day of Week</td><td class="value">{{day}}</td></tr>
+        <tr><td class="label">Punch In Time</td><td class="value">{{punch_in}}</td></tr>
+      </table>
+    </div>
+
+    <p class="footer">
+      Thanks,<br>
+      <strong>HR Technical</strong><br>
+      <span style="font-size: 11px;">This is an automated system notification.</span>
+    </p>
+  </div>
+</body>
+</html>
