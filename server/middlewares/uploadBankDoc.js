@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
       .toLowerCase();
 
     const uniqueName =
-      `bank_${employeeId}_${Date.now()}${ext}`;
+      `Emp_${employeeId}_${Date.now()}${ext}`;
 
     cb(null, uniqueName);
 
@@ -87,7 +87,7 @@ const uploadBankDoc = multer({
   storage,
 
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: 10 * 1024 * 1024
   },
 
   fileFilter

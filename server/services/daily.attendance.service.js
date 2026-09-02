@@ -156,20 +156,18 @@ async function generateDailyAttendance(client) {
     ===================================================== */
 
     active_setting AS
-    (
-      SELECT
-        s.id,
-        s.office_start_time,
-        s.office_end_time,
-        s.grace_period_minutes,
-        s.half_day_after_minutes,
-        s.full_day_hours,
-        s.half_day_hours
-      FROM public.attendance_settings s
-      WHERE s.is_active = TRUE
-      ORDER BY s.id DESC
-      LIMIT 1
-    ),
+(
+  SELECT
+    s.id,
+    s.office_start_time,
+    s.office_end_time,
+    s.grace_period_minutes,
+    s.half_day_after_minutes
+  FROM public.attendance_settings s
+  WHERE s.is_active = TRUE
+  ORDER BY s.id DESC
+  LIMIT 1
+),
 
     /* =====================================================
        DAY RULE, PER TARGET DATE ONLY
@@ -183,31 +181,31 @@ async function generateDailyAttendance(client) {
     ===================================================== */
 
     day_rule AS
-    (
-      SELECT
+(
+  SELECT
 
-        d.attendance_date,
+    d.attendance_date,
 
-        s.id AS setting_id,
-        s.grace_period_minutes,
-        s.half_day_after_minutes,
-        s.full_day_hours,
+    s.id AS setting_id,
+    s.grace_period_minutes,
+    s.half_day_after_minutes,
 
-        COALESCE(r.half_day_hours, s.half_day_hours) AS half_day_hours,
+    r.full_day_hours,
+    r.half_day_hours,
 
-        COALESCE(r.is_working_day, TRUE) AS is_working_day,
-        COALESCE(r.start_time, s.office_start_time) AS start_time,
-        COALESCE(r.end_time, s.office_end_time) AS end_time
+    COALESCE(r.is_working_day, TRUE) AS is_working_day,
+    COALESCE(r.start_time, s.office_start_time) AS start_time,
+    COALESCE(r.end_time, s.office_end_time) AS end_time
 
-      FROM distinct_target_dates d
+  FROM distinct_target_dates d
 
-      CROSS JOIN active_setting s
+  CROSS JOIN active_setting s
 
-      LEFT JOIN public.attendance_weekly_rules r
-        ON r.attendance_setting_id = s.id
-       AND r.day_of_week =
-           EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
-    ),
+  LEFT JOIN public.attendance_weekly_rules r
+    ON r.attendance_setting_id = s.id
+   AND r.day_of_week =
+       EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
+),
 
     /* =====================================================
        HOLIDAY, PER TARGET DATE ONLY

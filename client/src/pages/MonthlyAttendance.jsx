@@ -2,7 +2,13 @@ import { useState, useContext, useEffect, useMemo } from "react";
 import { HiMiniAdjustmentsHorizontal } from "react-icons/hi2";
 import { ImCancelCircle } from "react-icons/im";
 import { CiStar } from "react-icons/ci";
-import { FaLongArrowAltRight, FaLongArrowAltLeft, FaRegCheckCircle, FaRegCalendarAlt, FaFileExcel } from "react-icons/fa";
+import {
+  FaLongArrowAltRight,
+  FaLongArrowAltLeft,
+  FaRegCheckCircle,
+  FaRegCalendarAlt,
+  FaFileExcel,
+} from "react-icons/fa";
 import { MdDriveEta, MdOutlineAccessTime } from "react-icons/md";
 import { BiSolidFilePdf } from "react-icons/bi";
 
@@ -25,16 +31,34 @@ export default function MonthlyAttendance() {
   const { holidays } = useContext(EmployContext);
 
   const holidayDates = useMemo(() => {
-    return holidays.map(h => h.holiday_date);
+    return holidays.map((h) => h.holiday_date);
   }, [holidays]);
 
   const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   const weekDays = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-  const departments = ["All", "Marketing", "Sales", "Engineering", "HR", "Finance"];
+  const departments = [
+    "All",
+    "Marketing",
+    "Sales",
+    "Engineering",
+    "HR",
+    "Finance",
+    "IT",
+  ];
 
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -74,8 +98,12 @@ export default function MonthlyAttendance() {
   useEffect(() => {
     const fetchAllAttendance = async () => {
       try {
+        // Use applied filters for fetching or current selection
+        const monthToFetch = filtersApplied ? appliedFilters.month + 1 : selectedMonth + 1;
+        const yearToFetch = filtersApplied ? appliedFilters.year : selectedYear;
+        
         const resp = await api.get("/admin/attendance/all-attendance", {
-          params: { month: selectedMonth + 1, year: selectedYear },
+          params: { month: monthToFetch, year: yearToFetch },
         });
         setEmployees(resp.data.attendance || []);
         setPage(1); // Reset to page 1 when data changes
@@ -84,9 +112,10 @@ export default function MonthlyAttendance() {
       }
     };
     fetchAllAttendance();
-  }, [selectedMonth, selectedYear]);
+  }, [filtersApplied ? appliedFilters.month : selectedMonth, 
+      filtersApplied ? appliedFilters.year : selectedYear]);
 
-  // Filter employees by department
+  // Filter employees by department - using applied filters
   const filteredEmployees = useMemo(() => {
     const filtered = selectedDepartment === "All"
       ? employees
@@ -181,10 +210,10 @@ Total Hours: (${totalhrs ?? "--"})`}
   };
 
   const today = new Date();
-  const date = today.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
+  const date = today.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   });
 
   return (
@@ -197,99 +226,163 @@ Total Hours: (${totalhrs ?? "--"})`}
               All Employee Attendance
             </h2>
             <div className="flex lg:flex-wrap items-center gap-1 text-xs text-gray-500">
-              <span className="px-1 py-0.5 rounded-full text-gray-600 font-medium">HR</span>
+              <span className="px-1 py-0.5 rounded-full text-gray-600 font-medium">
+                HR
+              </span>
               <span className="text-gray-300">/</span>
-              <span className="hover:text-gray-700 cursor-pointer transition">Employee Attendance</span>
+              <span className="hover:text-gray-700 cursor-pointer transition">
+                Employee Attendance
+              </span>
               <span className="text-gray-300">/</span>
-              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">Monthly Overview</span>
+              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                Monthly Overview
+              </span>
             </div>
           </div>
 
-          <div>
-            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-6 lg:gap-8 w-full">
-              {/* Month Selector */}
-              <div className="text-center w-full md:w-auto mt-2 lg:mt-0">
-                <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wider flex items-center justify-center gap-1">
-                  <svg className="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Select Month
-                </p>
-                <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-xl px-2 py-1.5 shadow-sm">
-                  <button onClick={previous} className="flex items-center justify-center rounded-lg w-8 h-8 text-gray-600 border border-gray-200 bg-white hover:bg-blue-50 transition-all group">
-                    <FaLongArrowAltLeft size={14} className="text-gray-500 group-hover:text-blue-600 transition-all" />
-                  </button>
-                  <span className="text-sm font-bold w-24 text-center text-gray-800 bg-blue-50/50 py-1.5 rounded-lg border border-blue-100">
-                    {months[selectedMonth]}
-                  </span>
-                  <button onClick={next} className="flex items-center justify-center rounded-lg w-8 h-8 text-gray-600 border border-gray-200 bg-white hover:bg-blue-50 transition-all group">
-                    <FaLongArrowAltRight size={14} className="text-gray-500 group-hover:text-blue-600 transition-all" />
-                  </button>
-                </div>
-              </div>
-
+          <div className=" border-gray-100 ">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 lg:gap-6">
               {/* Department Selector */}
-              <div className="text-center w-full md:w-auto">
-                <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wider flex items-center justify-center gap-1">
-                  <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              <div className="flex-1 w-full lg:w-auto">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <svg
+                    className="w-3.5 h-3.5 text-purple-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                    />
                   </svg>
                   Department
-                </p>
-                <div className="relative">
-                  <select
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                    className="w-full md:w-56 appearance-none border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gradient-to-r from-white to-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400 shadow-sm cursor-pointer hover:border-blue-300 transition-all"
+                </label>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => setSelectedDepartment(e.target.value)}
+                  className="w-full lg:w-48 appearance-none bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:bg-white transition-all cursor-pointer hover:border-purple-300"
+                >
+                  {departments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Month & Year Combined */}
+              <div className="flex-1 w-full lg:w-auto">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <svg
+                    className="w-3.5 h-3.5 text-blue-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    {departments.map((dept) => (
-                      <option key={dept} value={dept}>{dept}</option>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                    />
+                  </svg>
+                  Period
+                </label>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-1.5">
+                  <button
+                    onClick={previous}
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm transition-all"
+                  >
+                    <FaLongArrowAltLeft size={12} className="text-gray-500" />
+                  </button>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                    className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer px-1"
+                  >
+                    {months.map((month, index) => (
+                      <option key={index} value={index}>
+                        {month}
+                      </option>
                     ))}
                   </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                  </div>
+                  <span className="text-gray-300">|</span>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                    className="bg-transparent text-sm font-medium text-gray-700 focus:outline-none cursor-pointer px-1"
+                  >
+                    {[2023, 2024, 2025, 2026].map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={next}
+                    className="p-1.5 rounded hover:bg-white hover:shadow-sm transition-all"
+                  >
+                    <FaLongArrowAltRight size={12} className="text-gray-500" />
+                  </button>
                 </div>
               </div>
 
-              {/* Year Selector */}
-              <div className="text-center w-full md:w-auto lg:me-10">
-                <p className="text-xs text-gray-500 mb-2 font-semibold uppercase tracking-wider flex items-center justify-center gap-1">
-                  <svg className="w-3.5 h-3.5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  Select Year
-                </p>
-                <div className="flex items-center justify-center gap-2 bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-xl px-2 py-1.5 shadow-sm">
-                  <button onClick={previousYear} className="flex items-center justify-center rounded-lg w-8 h-8 text-gray-600 border border-gray-200 bg-white hover:bg-blue-50 transition-all group">
-                    <FaLongArrowAltLeft size={14} className="text-gray-500 group-hover:text-blue-600 transition-all" />
-                  </button>
-                  <span className="text-sm font-bold w-20 text-center text-gray-800 bg-green-50/50 py-1.5 rounded-lg border border-green-100">
-                    {selectedYear}
-                  </span>
-                  <button onClick={nextYear} className="flex items-center justify-center rounded-lg w-8 h-8 text-gray-600 border border-gray-200 bg-white hover:bg-blue-50 transition-all group">
-                    <FaLongArrowAltRight size={14} className="text-gray-500 group-hover:text-blue-600 transition-all" />
-                  </button>
-                </div>
+              {/* Quick Actions / Filters */}
+              <div className="flex-1 w-full pt-5 lg:w-auto flex items-end justify-end gap-3">
+                {/* Apply Filters Button */}
+                <button 
+                  onClick={applyFilters}
+                  className="w-full lg:w-auto px-5 py-2.5 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-semibold rounded-lg hover:shadow-lg hover:scale-[1.02] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  
+                </button>
+
+                {/* Refresh Filters Button */}
+                <button 
+                  onClick={refreshFilters}
+                  className={`w-full lg:w-auto px-5 py-2.5 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-2 ${
+                    isRefreshing ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  disabled={isRefreshing}
+                >
+                  <svg 
+                    className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round" 
+                      strokeWidth="2" 
+                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                    />
+                  </svg>
+                  
+                </button>
               </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button className="hidden items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition duration-200 md:flex">
-              <HiMiniAdjustmentsHorizontal className="text-blue-600" size={20} />
-              <span className="text-sm font-medium text-gray-700">Filter</span>
-            </button>
           </div>
         </div>
 
-        {/* Controls Bar */}
+        {/* Controls Bar - Keep this section unchanged */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
           <div className="items-center justify-between">
             <div className="mb-4 sm:mb-6">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 sm:p-5 border border-gray-200">
+                {/* Keep all the status indicators and export button as is */}
                 <div className="flex items-center gap-2 bg-gradient-to-br from-blue-50 to-indigo-50/50 px-4 py-2 rounded-xl border border-blue-200 shadow-sm justify-center">
                   <FaRegCalendarAlt className="text-blue-500 text-lg" />
                   <div className="flex items-baseline gap-1.5 ">
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Today</span>
+                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Today
+                    </span>
                     <span className="text-sm font-semibold text-gray-800 bg-white px-2 py-0.5 rounded-lg border border-blue-100">
                       {date}
                     </span>
@@ -297,41 +390,62 @@ Total Hours: (${totalhrs ?? "--"})`}
                 </div>
 
                 <div className="flex flex-wrap gap-3 sm:gap-4 items-center justify-center lg:justify-start max-w-full ">
+                  {/* Status indicators */}
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 border border-green-200 shadow-sm ">
-                    <FaRegCheckCircle className="text-green-500" /> <span className="text-xs font-medium text-gray-700">Present</span>
+                    <FaRegCheckCircle className="text-green-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      Present
+                    </span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 shadow-sm ">
                     <FaRegCheckCircle className="text-red-500" /> <span className="text-xs font-medium text-gray-700">Punch Miss</span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 shadow-sm">
-                    <ImCancelCircle className="text-red-500" /> <span className="text-xs font-medium text-gray-700">Absent</span>
+                    <ImCancelCircle className="text-red-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      Absent
+                    </span>
                   </span>
-                  
+
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 border border-purple-200 shadow-sm">
-                    <CiStar className="text-purple-500" /> <span className="text-xs font-medium text-gray-700">Holiday</span>
+                    <CiStar className="text-purple-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      Holiday
+                    </span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200 shadow-sm">
-                    <FaRegCalendarAlt className="text-orange-500" /> <span className="text-xs font-medium text-gray-700">Leave</span>
+                    <FaRegCalendarAlt className="text-orange-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      Leave
+                    </span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-50 border border-yellow-200 shadow-sm">
-                    <MdOutlineAccessTime className="text-yellow-500" /> <span className="text-xs font-medium text-gray-700">Late/EarlyGo</span>
+                    <MdOutlineAccessTime className="text-yellow-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      Late/EarlyGo
+                    </span>
                   </span>
                   <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 shadow-sm">
-                    <MdDriveEta className="text-blue-500" /> <span className="text-xs font-medium text-gray-700">OD</span>
+                    <MdDriveEta className="text-blue-500" />{" "}
+                    <span className="text-xs font-medium text-gray-700">
+                      OD
+                    </span>
                   </span>
                 </div>
 
                 <div className="flex items-center justify-center lg:justify-end gap-3">
                   <button className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-200 hover:border-green-300 transition-all" onClick={() => exportMonthlyAttendance(filteredEmployees)}>
                     <FaFileExcel size={18} className="text-green-600" />
-                    <span className="text-xs font-medium text-gray-700 hidden sm:inline">Excel</span>
+                    <span className="text-xs font-medium text-gray-700 hidden sm:inline">
+                      Excel
+                    </span>
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table - Keep this section unchanged */}
           <div className="overflow-x-auto m-2 sm:m-4 rounded-xl border border-gray-200">
             <table className="w-full text-xs sm:text-sm text-left border-collapse min-w-max border-separate border-spacing-0">
               <thead className="bg-blue-100 text-gray-800">
@@ -343,7 +457,10 @@ Total Hours: (${totalhrs ?? "--"})`}
                     const weekDay = weekDays[new Date(selectedYear, selectedMonth, day).getDay()];
                     const isSunday = weekDay === "SUN";
                     return (
-                      <th key={day} className={`border border-gray-300 px-2 py-2 text-center ${isSunday ? "bg-orange-300" : ""}`}>
+                      <th
+                        key={day}
+                        className={`border border-gray-300 px-2 py-2 text-center ${isSunday ? "bg-orange-300" : ""}`}
+                      >
                         <div className="text-xs text-gray-800">{day}</div>
                         <div className="text-xs text-gray-600">{weekDay}</div>
                       </th>
