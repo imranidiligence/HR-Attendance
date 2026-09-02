@@ -26,7 +26,8 @@ exports.addOrganizationInfo = async (req, res) => {
       department_id,
       designation_id,
       joining_date,
-      leaving_date
+      leaving_date,
+      or_company_id 
     } = req.body;
 
     const createdBy = req.user?.id;
@@ -43,6 +44,20 @@ exports.addOrganizationInfo = async (req, res) => {
         success: false,
         message: "Employee ID is required"
       });
+    }
+
+    if (or_company_id) {
+      const companyCheck = await db.query(
+        `SELECT cpt_id FROM companies_master WHERE cpt_id = $1`,
+        [or_company_id]
+      );
+      
+      if (companyCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Company with ID ${or_company_id} not found`
+        });
+      }
     }
 
     const personalResult = await db.query(
@@ -123,7 +138,8 @@ exports.addOrganizationInfo = async (req, res) => {
         or_designation_id,
         or_joining_date,
         or_leaving_date,
-        or_created_by
+        or_created_by,
+        or_company_id 
       )
       VALUES (
         $1,
@@ -142,7 +158,8 @@ exports.addOrganizationInfo = async (req, res) => {
         $13,
         $14,
         $15,
-        $16
+        $16,
+        $17 
       )
       RETURNING *
       `,
@@ -162,7 +179,8 @@ exports.addOrganizationInfo = async (req, res) => {
         designation_id || null,
         joining_date || null,
         leaving_date || null,
-        createdBy
+        createdBy,
+        or_company_id || null 
       ]
     );
 
@@ -241,6 +259,7 @@ exports.getOrganizationInfo = async (req, res) => {
         o.or_leaving_date,
         o.or_created_by,
         o.or_updated_by,
+        o.or_company_id,
 
         p.pr_first_name,
         p.pr_last_name,
@@ -252,7 +271,19 @@ exports.getOrganizationInfo = async (req, res) => {
 
         rp.pr_first_name AS reporting_first_name,
         rp.pr_last_name AS reporting_last_name,
-        rp.pr_email AS reporting_email
+        rp.pr_email AS reporting_email,
+        cm.cpt_id AS company_id,
+        cm.cpt_name AS company_name,
+        cm.cpt_email AS company_email,
+        cm.cpt_contact_number AS company_contact_number,
+        cm.cpt_website AS company_website,
+        cm.cpt_logopath AS company_logo_path,
+        cm.cpt_city_id AS company_city_id,
+        cm.cpt_state_id AS company_state_id,
+        cm.cpt_country_id AS company_country_id,
+        cm.cpt_is_active AS company_is_active,
+        cm.cpt_created_at AS company_created_at,
+        cm.cpt_updated_at AS company_updated_at
 
       FROM organizations o
 
@@ -264,6 +295,9 @@ exports.getOrganizationInfo = async (req, res) => {
 
       LEFT JOIN personal rp
         ON rp.pr_id = ro.pr_id
+
+      LEFT JOIN companies_master cm -- New JOIN added
+        ON cm.cpt_id = o.or_company_id
 
       WHERE o.pr_id = $1
       `,
@@ -278,6 +312,21 @@ exports.getOrganizationInfo = async (req, res) => {
     }
 
     const row = result.rows[0];
+
+    const companyData = row.or_company_id ? {
+      id: row.company_id,
+      name: row.company_name,
+      email: row.company_email,
+      contact_number: row.company_contact_number,
+      website: row.company_website,
+      logo_path: row.company_logo_path,
+      city_id: row.company_city_id,
+      state_id: row.company_state_id,
+      country_id: row.company_country_id,
+      is_active: row.company_is_active,
+      created_at: row.company_created_at,
+      updated_at: row.company_updated_at
+    } : null;
 
     return res.status(200).json({
       success: true,
@@ -307,6 +356,9 @@ exports.getOrganizationInfo = async (req, res) => {
         updated_at: row.or_updated_at,
         created_by: row.or_created_by,
         updated_by: row.or_updated_by,
+
+        or_company_id: row.or_company_id,
+        company: companyData,
 
         employee: {
           first_name: row.pr_first_name,
@@ -357,7 +409,8 @@ exports.updateOrganizationInfo = async (req, res) => {
       department_id,
       designation_id,
       joining_date,
-      leaving_date
+      leaving_date,
+      or_company_id
     } = req.body;
 
     const updatedBy = req.user?.id;
@@ -383,6 +436,20 @@ exports.updateOrganizationInfo = async (req, res) => {
         success: false,
         message: "Invalid Employee ID"
       });
+    }
+
+    if (or_company_id) {
+      const companyCheck = await client.query(
+        `SELECT cpt_id FROM companies_master WHERE cpt_id = $1`,
+        [or_company_id]
+      );
+      
+      if (companyCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Company with ID ${or_company_id} not found`
+        });
+      }
     }
 
     const personalCheck = await client.query(
@@ -441,8 +508,9 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Joining_Date = $13,
           Or_Leaving_Date = $14,
           Or_Updated_At = CURRENT_TIMESTAMP,
-          Or_Updated_By = $15
-        WHERE Pr_Id = $16
+          Or_Updated_By = $15,
+          Or_Company_Id = $16 -- New field added
+        WHERE Pr_Id = $17
         RETURNING *
         `,
         [
@@ -461,6 +529,7 @@ exports.updateOrganizationInfo = async (req, res) => {
           joining_date || null,
           leaving_date || null,
           updatedBy,
+          or_company_id || null, // New field added
           employeeId
         ]
       );
@@ -489,7 +558,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Created_At,
           Or_Created_By,
           Or_Updated_At,
-          Or_Updated_By
+          Or_Updated_By,
+          Or_Company_Id -- New column added
         )
         VALUES (
           $1,
@@ -510,7 +580,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           CURRENT_TIMESTAMP,
           $16,
           CURRENT_TIMESTAMP,
-          $16
+          $16,
+          $17 -- New value added
         )
         RETURNING *
         `,
@@ -530,7 +601,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           designation_id || null,
           joining_date || null,
           leaving_date || null,
-          updatedBy
+          updatedBy,
+          or_company_id || null // New field added
         ]
       );
 
