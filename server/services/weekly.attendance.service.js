@@ -1,3 +1,10 @@
+/*
+  BACKFILL_START_DATE controls how far back backfill_pairs reaches.
+  Set this to your earliest employee joining date, or the date you
+  want attendance history to start from.
+*/
+const BACKFILL_START_DATE = process.env.ATTENDANCE_BACKFILL_START_DATE || "2025-07-01";
+
 async function generateWeeklyAttendance(client) {
   const query = `
     WITH stale_pairs AS
@@ -50,11 +57,69 @@ async function generateWeeklyAttendance(client) {
         )
     ),
 
+    /* =====================================================
+       BACKFILL: every (active employee, date) pair across
+       full history — including dates with ZERO punches.
+
+       This is what makes a delete-and-rerun produce complete
+       data instead of only punch-driven dates. Holidays and
+       weekly-offs with no punches will now correctly get a
+       row (classified by day_rule/holiday_info below) instead
+       of being skipped entirely.
+    ===================================================== */
+
+    backfill_pairs AS
+    (
+      SELECT
+        TRIM(o.or_emp_id) AS emp_id,
+        d.attendance_date
+
+      FROM (
+        SELECT generate_series(
+          '${BACKFILL_START_DATE}'::DATE,
+          (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::DATE,
+          INTERVAL '1 day'
+        )::DATE AS attendance_date
+      ) d
+
+      CROSS JOIN public.organizations o
+
+      WHERE o.or_emp_id IS NOT NULL
+        AND TRIM(o.or_emp_id) <> ''
+        AND COALESCE(o.or_is_active, TRUE) = TRUE
+
+        AND (
+          o.or_joining_date IS NULL
+          OR o.or_joining_date <= d.attendance_date
+        )
+
+        AND (
+          o.or_leaving_date IS NULL
+          OR o.or_leaving_date >= d.attendance_date
+        )
+
+        /*
+          Only include dates NOT already correctly recorded —
+          keeps this cheap on repeat runs once history is
+          backfilled once, instead of recomputing everything
+          every single run forever.
+        */
+        AND NOT EXISTS
+        (
+          SELECT 1
+          FROM public.weekly_attendance da
+          WHERE da.emp_id = TRIM(o.or_emp_id)
+            AND da.attendance_date = d.attendance_date
+        )
+    ),
+
     target_pairs AS
     (
       SELECT emp_id, attendance_date FROM stale_pairs
       UNION
       SELECT emp_id, attendance_date FROM today_pairs
+      UNION
+      SELECT emp_id, attendance_date FROM backfill_pairs
     ),
 
     distinct_target_dates AS
@@ -64,46 +129,45 @@ async function generateWeeklyAttendance(client) {
     ),
 
     active_setting AS
-    (
-      SELECT
-        s.id,
-        s.office_start_time,
-        s.office_end_time,
-        s.grace_period_minutes,
-        s.half_day_after_minutes,
-        s.full_day_hours,
-        s.half_day_hours
-      FROM public.attendance_settings s
-      WHERE s.is_active = TRUE
-      ORDER BY s.id DESC
-      LIMIT 1
-    ),
+(
+  SELECT
+    s.id,
+    s.office_start_time,
+    s.office_end_time,
+    s.grace_period_minutes,
+    s.half_day_after_minutes
+  FROM public.attendance_settings s
+  WHERE s.is_active = TRUE
+  ORDER BY s.id DESC
+  LIMIT 1
+),
 
     day_rule AS
-    (
-      SELECT
+(
+  SELECT
 
-        d.attendance_date,
+    d.attendance_date,
 
-        s.id AS setting_id,
-        s.grace_period_minutes,
-        s.half_day_after_minutes,
-        s.full_day_hours,
-        s.half_day_hours,
+    s.id AS setting_id,
+    s.grace_period_minutes,
+    s.half_day_after_minutes,
 
-        COALESCE(r.is_working_day, TRUE) AS is_working_day,
-        COALESCE(r.start_time, s.office_start_time) AS start_time,
-        COALESCE(r.end_time, s.office_end_time) AS end_time
+    r.full_day_hours,
+    r.half_day_hours,
 
-      FROM distinct_target_dates d
+    COALESCE(r.is_working_day, TRUE) AS is_working_day,
+    COALESCE(r.start_time, s.office_start_time) AS start_time,
+    COALESCE(r.end_time, s.office_end_time) AS end_time
 
-      CROSS JOIN active_setting s
+  FROM distinct_target_dates d
 
-      LEFT JOIN public.attendance_weekly_rules r
-        ON r.attendance_setting_id = s.id
-       AND r.day_of_week =
-           EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
-    ),
+  CROSS JOIN active_setting s
+
+  LEFT JOIN public.attendance_weekly_rules r
+    ON r.attendance_setting_id = s.id
+   AND r.day_of_week =
+       EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
+),
 
     holiday_info AS
     (
