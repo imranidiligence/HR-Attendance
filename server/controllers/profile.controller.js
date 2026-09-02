@@ -3922,7 +3922,7 @@ exports.addBankDocInfo = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Bank document is required"
+        message: "document is required"
       });
     }
 
@@ -3981,7 +3981,7 @@ exports.addBankDocInfo = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Bank document uploaded successfully",
+      message: "document uploaded successfully",
       employee_id: employeeId,
       document: {
         id: result.rows[0].dc_id,
