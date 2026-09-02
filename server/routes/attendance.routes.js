@@ -87,27 +87,6 @@ router.get("/all-attendance", auth, async (req, res) => {
     /*
      * =========================================================
      * MONTH DATE RANGE
-     *
-     * IMPORTANT:
-     * Do NOT use:
-     *
-     * new Date(...).toISOString()
-     *
-     * because toISOString() converts the date to UTC and
-     * can cause date shifting when the server is running in IST.
-     *
-     * Instead, construct the DATE strings directly.
-     *
-     * Example:
-     *
-     * August 2026
-     *
-     * fromDate = 2026-08-01
-     * toDate   = 2026-09-01
-     *
-     * generate_series() then generates:
-     *
-     * 2026-08-01 ... 2026-08-31
      * =========================================================
      */
 
@@ -159,18 +138,8 @@ router.get("/all-attendance", auth, async (req, res) => {
       (
         SELECT DISTINCT
 
-          /*
-           * ===================================================
-           * EMPLOYEE ID
-           * ===================================================
-           */
           TRIM(o.or_emp_id) AS emp_id,
 
-          /*
-           * ===================================================
-           * EMPLOYEE NAME
-           * ===================================================
-           */
           COALESCE(
             NULLIF(
               TRIM(p.pr_first_name),
@@ -191,21 +160,11 @@ router.get("/all-attendance", auth, async (req, res) => {
             '-'
           ) AS name,
 
-          /*
-           * ===================================================
-           * DEPARTMENT NAME
-           * ===================================================
-           */
           COALESCE(
             dm."DepartmentName",
             '-'
           ) AS department,
 
-          /*
-           * ===================================================
-           * ACTIVE STATUS
-           * ===================================================
-           */
           COALESCE(
             o.or_is_active,
             FALSE
@@ -213,19 +172,9 @@ router.get("/all-attendance", auth, async (req, res) => {
 
         FROM public.organizations o
 
-        /*
-         * =====================================================
-         * PERSONAL
-         * =====================================================
-         */
         INNER JOIN public.personal p
           ON p.pr_id = o.pr_id
 
-        /*
-         * =====================================================
-         * DEPARTMENT
-         * =====================================================
-         */
         LEFT JOIN public.department_master dm
           ON dm."DepartmentId" =
              o.or_department_id
@@ -246,54 +195,37 @@ router.get("/all-attendance", auth, async (req, res) => {
 
       SELECT
 
-        /*
-         * =====================================================
-         * EMPLOYEE
-         * =====================================================
-         */
         e.emp_id,
-
         e.name,
-
         e.department,
-
         e.is_active,
 
-        /*
-         * =====================================================
-         * DATE
-         * =====================================================
-         */
         c.date_only,
 
+        TO_CHAR(
+          c.date_only,
+          'YYYY-MM-DD'
+        ) AS date,
+
+        EXTRACT(
+          ISODOW FROM c.date_only
+        )::INTEGER AS day_of_week,
+
         /*
-         * =====================================================
-         * MONTHLY ATTENDANCE
-         * =====================================================
+         * Is this date in the future relative to "today" in IST?
+         * Computed in SQL, from IST "today", so it's consistent
+         * regardless of server timezone.
          */
+        (
+          c.date_only >
+          (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata')::DATE
+        ) AS is_future,
+
         ma.id AS attendance_id,
-
         ma.attendance_date,
-
-        /*
-         * =====================================================
-         * PUNCH IN
-         * =====================================================
-         */
         ma.punch_in AS first_in,
-
-        /*
-         * =====================================================
-         * PUNCH OUT
-         * =====================================================
-         */
         ma.punch_out AS last_out,
 
-        /*
-         * =====================================================
-         * TOTAL HOURS
-         * =====================================================
-         */
         COALESCE(
           ROUND(
             EXTRACT(
@@ -304,18 +236,9 @@ router.get("/all-attendance", auth, async (req, res) => {
           0.00
         ) AS hours_worked,
 
-        /*
-         * =====================================================
-         * STATUS ID
-         * =====================================================
-         */
         ma.status_id,
+        ma.is_late_arrived,
 
-        /*
-         * =====================================================
-         * STATUS NAME
-         * =====================================================
-         */
         COALESCE(
           ast.status_name,
 
@@ -329,18 +252,8 @@ router.get("/all-attendance", auth, async (req, res) => {
 
       FROM employees e
 
-      /*
-       * =======================================================
-       * EVERY EMPLOYEE × EVERY DAY
-       * =======================================================
-       */
       CROSS JOIN calendar c
 
-      /*
-       * =======================================================
-       * MONTHLY ATTENDANCE
-       * =======================================================
-       */
       LEFT JOIN public.monthly_attendance ma
 
         ON TRIM(
@@ -352,11 +265,6 @@ router.get("/all-attendance", auth, async (req, res) => {
         AND ma.attendance_date =
             c.date_only
 
-      /*
-       * =======================================================
-       * ATTENDANCE STATUS
-       * =======================================================
-       */
       LEFT JOIN public.attendence_status ast
 
         ON ast.id =
@@ -391,9 +299,6 @@ router.get("/all-attendance", auth, async (req, res) => {
 
     rows.forEach((row) => {
 
-      /*
-       * Create employee object only once
-       */
       if (!employeeMap[row.emp_id]) {
 
         employeeMap[row.emp_id] = {
@@ -413,15 +318,16 @@ router.get("/all-attendance", auth, async (req, res) => {
         };
       }
 
-      /*
-       * =======================================================
-       * ADD DAILY ATTENDANCE
-       * =======================================================
-       */
       employeeMap[row.emp_id].attendance.push({
 
         date:
-          row.date_only,
+          row.date,
+
+        day_of_week:
+          row.day_of_week,
+
+        is_future:
+          row.is_future === true,
 
         first_in:
           row.first_in,
@@ -437,14 +343,108 @@ router.get("/all-attendance", auth, async (req, res) => {
 
         status:
           row.status,
+
+        is_late_arrived:
+          row.is_late_arrived === true,
       });
     });
 
     /*
      * =========================================================
-     * CONVERT MAP TO ARRAY
+     * PER-EMPLOYEE SUMMARY
+     * =========================================================
+     *
+     * Rules:
+     *
+     * - Future dates (is_future === true) are SKIPPED entirely
+     *   from every count — they don't count as absent, present,
+     *   or anything else, since that data doesn't exist yet.
+     *
+     * - "Present" AND "Working" both count as present_days.
+     *   "Working" means punched in with no punch_out yet, which
+     *   in practice only ever appears on today's row (an
+     *   in-progress day) — treated as present, not left uncounted.
+     *
+     * - absent_days counts ONLY "Absent" status, and only for
+     *   past/today dates. Holiday and Weekly Off both resolve to
+     *   the "Holiday" status upstream, and Leave resolves to its
+     *   own "Leave" status — neither is "Absent", so both are
+     *   naturally excluded without extra filtering.
+     *
+     * - leave_days counts "Leave" status days.
+     * - holiday_days counts "Holiday" status days (declared
+     *   holidays + weekly-offs, since they share one status).
+     * - late_mark_days counts is_late_arrived === true days.
+     *
+     * SATURDAY HALF-DAY PAIRING (unchanged from before):
+     * two Half Day Saturdays => 1 present day; unpaired
+     * Saturday half day or any non-Saturday half day => 0.5
+     * present day.
      * =========================================================
      */
+    function summarizeAttendance(attendanceList) {
+      let presentDays = 0;
+      let absentDays = 0;
+      let leaveDays = 0;
+      let holidayDays = 0;
+      let lateMarkDays = 0;
+      let halfDayCount = 0;
+      let saturdayHalfDayCount = 0;
+
+      for (const day of attendanceList) {
+        if (day.is_future) {
+          continue; // skip future dates entirely — no data yet
+        }
+
+        const statusLower = (day.status || "").toLowerCase().trim();
+
+        if (day.is_late_arrived) {
+          lateMarkDays += 1;
+        }
+
+        if (statusLower === "present" || statusLower === "working") {
+          presentDays += 1;
+        } else if (statusLower === "absent") {
+          absentDays += 1;
+        } else if (statusLower === "leave") {
+          leaveDays += 1;
+        } else if (statusLower === "holiday") {
+          holidayDays += 1;
+        } else if (statusLower === "half day") {
+          halfDayCount += 1;
+
+          if (day.day_of_week === 6) {
+            saturdayHalfDayCount += 1;
+          }
+        }
+      }
+
+      const saturdayPairedDays = Math.floor(saturdayHalfDayCount / 2);
+      const saturdayLeftover = saturdayHalfDayCount % 2;
+
+      presentDays += saturdayPairedDays;
+
+      const nonSaturdayHalfDays = halfDayCount - saturdayHalfDayCount;
+      const fractionalHalfDays = nonSaturdayHalfDays + saturdayLeftover;
+
+      const presentDaysTotal =
+        presentDays + fractionalHalfDays * 0.5;
+
+      return {
+        present_days: Number(presentDaysTotal.toFixed(2)),
+        absent_days: absentDays,
+        leave_days: leaveDays,
+        holiday_days: holidayDays,
+        late_mark_days: lateMarkDays,
+        half_day_count: halfDayCount,
+        saturday_half_day_pairs_applied: saturdayPairedDays,
+      };
+    }
+
+    Object.values(employeeMap).forEach((employee) => {
+      employee.summary = summarizeAttendance(employee.attendance);
+    });
+
     const attendance =
       Object.values(employeeMap);
 
@@ -1179,7 +1179,13 @@ router.get("/all-attendance", auth, async (req, res) => {
 // });
 router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
   try {
-    const { search, page = 1, limit = 10 } = req.query;
+    const {
+      search,
+      page = 1,
+      limit = 10,
+      weekStart,
+      weekEnd,
+    } = req.query;
 
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const limitInt = Math.max(parseInt(limit) || 10, 1);
@@ -1195,26 +1201,78 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
     /*
      * =========================================================
-     * GET TODAY + LAST 7 DAYS IN IST
+     * RESOLVE DATE RANGE
      * =========================================================
      */
-    const dateQuery = `
-      SELECT
-        (
-          CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
-        )::DATE AS today,
+    const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-        (
+    let fromDate;
+    let today;
+
+    if (weekStart || weekEnd) {
+      if (!weekStart || !weekEnd) {
+        return res.status(400).json({
+          success: false,
+          message: "Both weekStart and weekEnd are required together",
+        });
+      }
+
+      if (!DATE_REGEX.test(weekStart) || !DATE_REGEX.test(weekEnd)) {
+        return res.status(400).json({
+          success: false,
+          message: "weekStart and weekEnd must be in YYYY-MM-DD format",
+        });
+      }
+
+      const startDate = new Date(weekStart);
+      const endDate = new Date(weekEnd);
+
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "weekStart or weekEnd is not a valid date",
+        });
+      }
+
+      if (startDate > endDate) {
+        return res.status(400).json({
+          success: false,
+          message: "weekStart must be before or equal to weekEnd",
+        });
+      }
+
+      const MAX_RANGE_DAYS = 31;
+      const rangeDays =
+        Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+
+      if (rangeDays > MAX_RANGE_DAYS) {
+        return res.status(400).json({
+          success: false,
+          message: `Date range cannot exceed ${MAX_RANGE_DAYS} days`,
+        });
+      }
+
+      fromDate = weekStart;
+      today = weekEnd;
+    } else {
+      const dateQuery = `
+        SELECT
           (
             CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
-          )::DATE - 6
-        ) AS from_date
-    `;
+          )::DATE AS today,
 
-    const { rows: dateRows } = await db.query(dateQuery);
+          (
+            (
+              CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+            )::DATE - 6
+          ) AS from_date
+      `;
 
-    const today = dateRows[0].today;
-    const fromDate = dateRows[0].from_date;
+      const { rows: dateRows } = await db.query(dateQuery);
+
+      today = dateRows[0].today;
+      fromDate = dateRows[0].from_date;
+    }
 
     /*
      * =========================================================
@@ -1316,11 +1374,6 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
       SELECT
 
-        /*
-         * =====================================================
-         * DATE
-         * =====================================================
-         */
         c.date_only,
 
         TO_CHAR(
@@ -1328,50 +1381,26 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
           'YYYY-MM-DD'
         ) AS date,
 
-        /*
-         * =====================================================
-         * EMPLOYEE
-         * =====================================================
-         */
         e.emp_id,
-
         e.name,
-
         e.role,
-
         e.is_active,
 
-        /*
-         * =====================================================
-         * ATTENDANCE
-         * =====================================================
-         */
         wa.id AS attendance_id,
-
         wa.attendance_date,
-
-        /*
-         * Punch In
-         *
-         * timestamp without time zone
-         * Stored directly as local/IST time.
-         */
         wa.punch_in,
-
-        /*
-         * Punch Out
-         */
         wa.punch_out,
 
         /*
-         * =====================================================
-         * TOTAL HOURS
-         * =====================================================
-         *
-         * Convert PostgreSQL interval to HH:MM.
-         *
-         * EXTRACT(EPOCH) gives total seconds.
+         * Raw seconds — used for accurate summation across
+         * the date range. Formatted total_hours below is for
+         * per-day display only; don't sum the formatted string.
          */
+        COALESCE(
+          EXTRACT(EPOCH FROM wa.total_hours),
+          0
+        )::BIGINT AS total_seconds,
+
         CASE
           WHEN wa.total_hours IS NULL THEN
             '00:00'
@@ -1397,11 +1426,6 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
             )
         END AS total_hours,
 
-        /*
-         * =====================================================
-         * EXPECTED HOURS
-         * =====================================================
-         */
         CASE
           WHEN wa.expected_hours IS NULL THEN
             '09:00'
@@ -1427,31 +1451,12 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
             )
         END AS expected_hours,
 
-        /*
-         * =====================================================
-         * LATE / EARLY DETAILS
-         * =====================================================
-         */
         wa.late_arrival,
-
         wa.is_late_arrived,
-
         wa.early_go,
-
         wa.is_early_gone,
-
-        /*
-         * =====================================================
-         * STATUS ID
-         * =====================================================
-         */
         wa.status_id,
 
-        /*
-         * =====================================================
-         * STATUS NAME
-         * =====================================================
-         */
         COALESCE(
           ast.status_name,
           CASE
@@ -1465,21 +1470,11 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
       CROSS JOIN calendar c
 
-      /*
-       * =====================================================
-       * WEEKLY ATTENDANCE
-       * =====================================================
-       */
       LEFT JOIN public.weekly_attendance wa
         ON TRIM(wa.emp_id) = TRIM(e.emp_id)
 
         AND wa.attendance_date = c.date_only
 
-      /*
-       * =====================================================
-       * ATTENDANCE STATUS
-       * =====================================================
-       */
       LEFT JOIN public.attendence_status ast
         ON ast.id = wa.status_id
 
@@ -1488,11 +1483,6 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
           TRUE
         ) = TRUE
 
-      /*
-       * =====================================================
-       * SEARCH
-       * =====================================================
-       */
       WHERE
       (
         $5::TEXT IS NULL
@@ -1576,22 +1566,21 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
     /*
      * =========================================================
-     * FORMAT PUNCH TIMES
+     * FORMAT HELPER: seconds -> "HH:MM"
+     *
+     * Deliberately does NOT wrap at 24 — a week's total can
+     * legitimately exceed 24 hours (e.g. "48:30").
      * =========================================================
-     *
-     * punch_in and punch_out are:
-     *
-     * timestamp without time zone
-     *
-     * Therefore, no UTC -> IST conversion is performed here.
      */
+    function formatSecondsToHHMM(totalSeconds) {
+      const safeSeconds = Number(totalSeconds) || 0;
+      const hours = Math.floor(safeSeconds / 3600);
+      const minutes = Math.floor((safeSeconds % 3600) / 60);
+      return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    }
+
     const formattedRows = rows.map((row) => {
 
-      /*
-       * -------------------------------------------------------
-       * PUNCH IN
-       * -------------------------------------------------------
-       */
       const punchIn =
         row.punch_in
           ? new Date(row.punch_in).toLocaleTimeString(
@@ -1604,11 +1593,6 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
             )
           : "-";
 
-      /*
-       * -------------------------------------------------------
-       * PUNCH OUT
-       * -------------------------------------------------------
-       */
       const punchOut =
         row.punch_out
           ? new Date(row.punch_out).toLocaleTimeString(
@@ -1623,57 +1607,31 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
       return {
         date: row.date,
-
-        emp_id:
-          row.emp_id,
-
-        name:
-          row.name,
-
-        role:
-          row.role,
-
-        first_in:
-          punchIn,
-
-        last_out:
-          punchOut,
-
-        total_hours:
-          row.total_hours || "00:00",
-
-        expected_hours:
-          row.expected_hours || "09:00",
-
-        late_arrival:
-          row.late_arrival,
-
-        is_late_arrived:
-          row.is_late_arrived,
-
-        early_go:
-          row.early_go,
-
-        is_early_gone:
-          row.is_early_gone,
-
-        status_id:
-          row.status_id,
-
-        status:
-          row.status,
+        emp_id: row.emp_id,
+        name: row.name,
+        role: row.role,
+        first_in: punchIn,
+        last_out: punchOut,
+        total_hours: row.total_hours || "00:00",
+        total_seconds: Number(row.total_seconds) || 0,
+        expected_hours: row.expected_hours || "09:00",
+        late_arrival: row.late_arrival,
+        is_late_arrived: row.is_late_arrived,
+        early_go: row.early_go,
+        is_early_gone: row.is_early_gone,
+        status_id: row.status_id,
+        status: row.status,
       };
     });
 
     /*
      * =========================================================
-     * GROUP BY DATE
+     * GROUP BY DATE (unchanged)
      * =========================================================
      */
     const grouped = {};
 
     formattedRows.forEach((row) => {
-
       if (!grouped[row.date]) {
         grouped[row.date] = {
           date: row.date,
@@ -1682,52 +1640,22 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
       }
 
       grouped[row.date].employees.push({
-        emp_id:
-          row.emp_id,
-
-        name:
-          row.name,
-
-        role:
-          row.role,
-
-        first_in:
-          row.first_in,
-
-        last_out:
-          row.last_out,
-
-        total_hours:
-          row.total_hours,
-
-        expected_hours:
-          row.expected_hours,
-
-        late_arrival:
-          row.late_arrival,
-
-        is_late_arrived:
-          row.is_late_arrived,
-
-        early_go:
-          row.early_go,
-
-        is_early_gone:
-          row.is_early_gone,
-
-        status_id:
-          row.status_id,
-
-        status:
-          row.status,
+        emp_id: row.emp_id,
+        name: row.name,
+        role: row.role,
+        first_in: row.first_in,
+        last_out: row.last_out,
+        total_hours: row.total_hours,
+        expected_hours: row.expected_hours,
+        late_arrival: row.late_arrival,
+        is_late_arrived: row.is_late_arrived,
+        early_go: row.early_go,
+        is_early_gone: row.is_early_gone,
+        status_id: row.status_id,
+        status: row.status,
       });
     });
 
-    /*
-     * =========================================================
-     * SORT RESULT BY DATE DESC
-     * =========================================================
-     */
     const result = Object.values(grouped).sort(
       (a, b) =>
         new Date(b.date) -
@@ -1736,27 +1664,53 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
     /*
      * =========================================================
-     * RESPONSE
+     * TOTAL HOURS WITHIN THE DATE RANGE
      * =========================================================
+     *
+     * - employeeTotals: sum per employee across every date
+     *   returned (respects current pagination — only the
+     *   employees on this page are summed).
+     * - grandTotalHours: sum across all employees + all dates
+     *   in this response.
      */
+    const employeeTotalsMap = {};
+
+    formattedRows.forEach((row) => {
+      if (!employeeTotalsMap[row.emp_id]) {
+        employeeTotalsMap[row.emp_id] = {
+          emp_id: row.emp_id,
+          name: row.name,
+          total_seconds: 0,
+        };
+      }
+      employeeTotalsMap[row.emp_id].total_seconds += row.total_seconds;
+    });
+
+    const employeeTotals = Object.values(employeeTotalsMap).map((e) => ({
+      emp_id: e.emp_id,
+      name: e.name,
+      total_hours: formatSecondsToHHMM(e.total_seconds),
+    }));
+
+    const grandTotalSeconds = formattedRows.reduce(
+      (sum, row) => sum + row.total_seconds,
+      0
+    );
+
     res.status(200).json({
       success: true,
-
-      message:
-        "Weekly attendance fetched successfully",
-
+      message: "Weekly attendance fetched successfully",
       data: result,
-
-      // Optional pagination information
-      // Remove these if your existing response must be
-      // exactly unchanged.
       totalItems,
       page: pageInt,
       limit: limitInt,
+      weekStart: fromDate,
+      weekEnd: today,
+      employeeTotals,
+      grandTotalHours: formatSecondsToHHMM(grandTotalSeconds),
     });
 
   } catch (error) {
-
     console.error(
       "Weekly Attendance API Error:",
       error
