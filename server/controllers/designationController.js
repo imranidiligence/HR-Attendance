@@ -48,7 +48,7 @@ const getDesignationById = async (req, res) => {
       return errorResponse(res, 400, 'Valid designation_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM designation_master WHERE designation_id = $1', [id]);
+    const result = await db.query('SELECT *,cp.pr_first_name as CreatedByName,up.pr_first_name as UpdatedByName FROM designation_master dm left join personal cp on cp.pr_id = dm.created_by left join personal up on up.pr_id = dm.updated_by WHERE designation_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Designation not found', null);
     }
