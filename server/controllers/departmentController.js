@@ -33,7 +33,10 @@ const getDepartmentById = async (req, res) => {
       return errorResponse(res, 400, 'Valid DepartmentId is required', null);
     }
 
-    const query = `SELECT * FROM "department_master" WHERE "DepartmentId" = $1`;
+    const query = `SELECT *,cp.pr_first_name as CreatedByName,up.pr_first_name as UpdatedByName FROM department_master dm  
+          left join personal cp on cp.pr_id = dm."CreatedBy" 
+          left join personal up on up.pr_id = dm."UpdatedBy"
+          where "DepartmentId" = $1`;
     const result = await db.query(query, [id]);
 
     if (result.rows.length === 0) {

@@ -29,7 +29,7 @@ const getMaritalStatusById = async (req, res) => {
       return errorResponse(res, 400, 'Valid marital_status_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM marital_status_master WHERE marital_status_id = $1', [id]);
+    const result = await db.query('SELECT msm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM marital_status_master msm LEFT JOIN personal cp ON cp.pr_id = msm.created_by LEFT JOIN personal up ON up.pr_id = msm.updated_by WHERE msm.marital_status_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Marital status not found', null);
     }

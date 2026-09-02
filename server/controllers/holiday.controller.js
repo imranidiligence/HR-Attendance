@@ -105,9 +105,7 @@ const getHolidayById = async (req, res) => {
     }
 
     const query = `
-      SELECT *
-      FROM holidays
-      WHERE holiday_id = $1
+     SELECT h.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM holidays h LEFT JOIN personal cp ON cp.pr_id = h."CreatedBy" LEFT JOIN personal up ON up.pr_id = h."UpdatedBy" WHERE h.holiday_id = $1
     `;
 
     const result = await db.query(query, [id]);
