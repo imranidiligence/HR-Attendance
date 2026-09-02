@@ -41,7 +41,7 @@ const storage = multer.diskStorage({
       .toLowerCase();
 
     const uniqueName =
-      `bank_${employeeId}_${Date.now()}${ext}`;
+      `Emp_${employeeId}_${Date.now()}${ext}`;
 
     cb(null, uniqueName);
 
