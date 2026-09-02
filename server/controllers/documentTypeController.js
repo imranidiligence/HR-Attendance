@@ -35,7 +35,7 @@ const getDocumentTypeById = async (req, res) => {
       return errorResponse(res, 400, 'Valid document_type_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM document_type_master WHERE document_type_id = $1', [id]);
+    const result = await db.query('SELECT dtm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM document_type_master dtm LEFT JOIN personal cp ON cp.pr_id = dtm.created_by LEFT JOIN personal up ON up.pr_id = dtm.updated_by WHERE dtm.document_type_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Document type not found', null);
     }
