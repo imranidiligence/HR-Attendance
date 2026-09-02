@@ -198,7 +198,7 @@ const resetPassword = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // --------------------------------------------------
-    // Find organization using email
+    // Find organization + reset request + login
     // --------------------------------------------------
     const result = await db.query(
       `
@@ -206,9 +206,13 @@ const resetPassword = async (req, res) => {
         o.or_id,
         o.pr_id,
         o.or_official_email,
+        o.or_organization_name,
+
         r.rp_otp_hash,
         r.rp_otp_expires_at,
+
         l.lg_id
+
       FROM organizations o
 
       INNER JOIN resetpassword r
@@ -247,11 +251,9 @@ const resetPassword = async (req, res) => {
     // Check OTP expiry
     // --------------------------------------------------
     const currentTime = new Date();
-
     const expiryTime = new Date(user.rp_otp_expires_at);
 
     if (currentTime > expiryTime) {
-      // Delete expired reset request
       await db.query(
         `
         DELETE FROM resetpassword
@@ -269,7 +271,10 @@ const resetPassword = async (req, res) => {
     // --------------------------------------------------
     // Verify OTP
     // --------------------------------------------------
-    const validOtp = await bcrypt.compare(otp.toString(), user.rp_otp_hash);
+    const validOtp = await bcrypt.compare(
+      otp.toString(),
+      user.rp_otp_hash,
+    );
 
     if (!validOtp) {
       return res.status(400).json({
@@ -284,7 +289,7 @@ const resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // --------------------------------------------------
-    // Update password in login table
+    // Update password
     // --------------------------------------------------
     const updateResult = await db.query(
       `
@@ -316,6 +321,33 @@ const resetPassword = async (req, res) => {
       [user.pr_id],
     );
 
+    // --------------------------------------------------
+    // Send password reset success email
+    // --------------------------------------------------
+    try {
+      await sendEmail(
+        user.or_official_email,
+        "Password Reset Successful - I-Diligence Solution",
+        "password_reset_success",
+        {
+          name: user.or_organization_name || "User",
+          email: user.or_official_email,
+          resetTime: new Date().toLocaleString("en-IN", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: "Asia/Kolkata",
+          }),
+        },
+      );
+    } catch (emailError) {
+      // Password was already changed successfully.
+      // Don't return 500 just because email failed.
+      console.error(
+        "Password reset success email error:",
+        emailError,
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "Password reset successfully",
@@ -329,7 +361,6 @@ const resetPassword = async (req, res) => {
     });
   }
 };
-
 // ======================================================
 // CHANGE PASSWORD
 //
