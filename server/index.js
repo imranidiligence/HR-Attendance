@@ -39,6 +39,7 @@ const degreeRoutes = require('./routes/degreeRoutes')
 const cronJobsRoutes = require("./routes/cronJobs.routes")
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
 const holidayRoutes = require("./routes/holidayRoutes");
+const companyRoutes = require('./routes/CompanyRoutes');
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -144,6 +145,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/holiday-types", holidayTypeRoutes);
 app.use("/api/holidays", holidayRoutes);
+app.use('/api', companyRoutes);
 app.use("/api/cron-jobs", cronJobsRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
