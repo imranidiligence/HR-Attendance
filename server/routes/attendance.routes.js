@@ -382,64 +382,68 @@ router.get("/all-attendance", auth, async (req, res) => {
      * present day.
      * =========================================================
      */
-    function summarizeAttendance(attendanceList) {
-      let presentDays = 0;
-      let absentDays = 0;
-      let leaveDays = 0;
-      let holidayDays = 0;
-      let lateMarkDays = 0;
-      let halfDayCount = 0;
-      let saturdayHalfDayCount = 0;
+function summarizeAttendance(attendanceList) {
+  let presentDays = 0;
+  let absentDays = 0;
+  let leaveDays = 0;
+  let holidayDays = 0;
+  let weeklyOffDays = 0;   // ← new
+  let lateMarkDays = 0;
+  let halfDayCount = 0;
+  let saturdayHalfDayCount = 0;
 
-      for (const day of attendanceList) {
-        if (day.is_future) {
-          continue; // skip future dates entirely — no data yet
-        }
-
-        const statusLower = (day.status || "").toLowerCase().trim();
-
-        if (day.is_late_arrived) {
-          lateMarkDays += 1;
-        }
-
-        if (statusLower === "present" || statusLower === "working") {
-          presentDays += 1;
-        } else if (statusLower === "absent") {
-          absentDays += 1;
-        } else if (statusLower === "leave") {
-          leaveDays += 1;
-        } else if (statusLower === "holiday") {
-          holidayDays += 1;
-        } else if (statusLower === "half day") {
-          halfDayCount += 1;
-
-          if (day.day_of_week === 6) {
-            saturdayHalfDayCount += 1;
-          }
-        }
-      }
-
-      const saturdayPairedDays = Math.floor(saturdayHalfDayCount / 2);
-      const saturdayLeftover = saturdayHalfDayCount % 2;
-
-      presentDays += saturdayPairedDays;
-
-      const nonSaturdayHalfDays = halfDayCount - saturdayHalfDayCount;
-      const fractionalHalfDays = nonSaturdayHalfDays + saturdayLeftover;
-
-      const presentDaysTotal =
-        presentDays + fractionalHalfDays * 0.5;
-
-      return {
-        present_days: Number(presentDaysTotal.toFixed(2)),
-        absent_days: absentDays,
-        leave_days: leaveDays,
-        holiday_days: holidayDays,
-        late_mark_days: lateMarkDays,
-        half_day_count: halfDayCount,
-        saturday_half_day_pairs_applied: saturdayPairedDays,
-      };
+  for (const day of attendanceList) {
+    if (day.is_future) {
+      continue;
     }
+
+    const statusLower = (day.status || "").toLowerCase().trim();
+
+    if (day.is_late_arrived) {
+      lateMarkDays += 1;
+    }
+
+    if (statusLower === "present" || statusLower === "working") {
+      presentDays += 1;
+    } else if (statusLower === "absent") {
+      absentDays += 1;
+    } else if (statusLower === "leave") {
+      leaveDays += 1;
+    } else if (statusLower === "holiday") {
+      holidayDays += 1;
+    } else if (statusLower === "weekly off") {   // ← new
+      weeklyOffDays += 1;
+    } else if (statusLower === "half day") {
+      halfDayCount += 1;
+
+      if (day.day_of_week === 6) {
+        saturdayHalfDayCount += 1;
+      }
+    }
+  }
+
+  const saturdayPairedDays = Math.floor(saturdayHalfDayCount / 2);
+  const saturdayLeftover = saturdayHalfDayCount % 2;
+
+  presentDays += saturdayPairedDays;
+
+  const nonSaturdayHalfDays = halfDayCount - saturdayHalfDayCount;
+  const fractionalHalfDays = nonSaturdayHalfDays + saturdayLeftover;
+
+  const presentDaysTotal =
+    presentDays + fractionalHalfDays * 0.5;
+
+  return {
+    present_days: Number(presentDaysTotal.toFixed(2)),
+    absent_days: absentDays,
+    leave_days: leaveDays,
+    holiday_days: holidayDays,
+    weekly_off_days: weeklyOffDays,   // ← new
+    late_mark_days: lateMarkDays,
+    half_day_count: halfDayCount,
+    saturday_half_day_pairs_applied: saturdayPairedDays,
+  };
+}
 
     Object.values(employeeMap).forEach((employee) => {
       employee.summary = summarizeAttendance(employee.attendance);
