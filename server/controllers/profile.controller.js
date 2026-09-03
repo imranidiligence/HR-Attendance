@@ -27,7 +27,8 @@ exports.addOrganizationInfo = async (req, res) => {
       designation_id,
       joining_date,
       leaving_date,
-      or_company_id 
+      or_company_id,
+      or_vendor_id
     } = req.body;
 
     const createdBy = req.user?.id;
@@ -96,6 +97,25 @@ exports.addOrganizationInfo = async (req, res) => {
       });
     }
 
+if (or_vendor_id) {
+      const vendorCheck = await db.query(
+        `
+        SELECT id, vendor_code, vendor_name
+        FROM vendor_master
+        WHERE id = $1
+          AND is_active = TRUE
+        `,
+        [or_vendor_id]
+      );
+
+      if (vendorCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Active vendor with ID ${or_vendor_id} not found`
+        });
+      }
+    }
+
     if (emp_id) {
       const employeeCodeCheck = await db.query(
         `
@@ -139,7 +159,8 @@ exports.addOrganizationInfo = async (req, res) => {
         or_joining_date,
         or_leaving_date,
         or_created_by,
-        or_company_id 
+        or_company_id,
+        or_vendor_id
       )
       VALUES (
         $1,
@@ -159,7 +180,8 @@ exports.addOrganizationInfo = async (req, res) => {
         $14,
         $15,
         $16,
-        $17 
+        $17,
+        $18
       )
       RETURNING *
       `,
@@ -180,7 +202,8 @@ exports.addOrganizationInfo = async (req, res) => {
         joining_date || null,
         leaving_date || null,
         createdBy,
-        or_company_id || null 
+        or_company_id || null,
+          or_vendor_id || null
       ]
     );
 
@@ -260,6 +283,7 @@ exports.getOrganizationInfo = async (req, res) => {
         o.or_created_by,
         o.or_updated_by,
         o.or_company_id,
+        o.or_vendor_id,
 
         p.pr_first_name,
         p.pr_last_name,
@@ -283,7 +307,18 @@ exports.getOrganizationInfo = async (req, res) => {
         cm.cpt_country_id AS company_country_id,
         cm.cpt_is_active AS company_is_active,
         cm.cpt_created_at AS company_created_at,
-        cm.cpt_updated_at AS company_updated_at
+        cm.cpt_updated_at AS company_updated_at,
+        vm.id AS vendor_id,
+        vm.vendor_code,
+        vm.vendor_name,
+        vm.description AS vendor_description,
+        vm.is_active AS vendor_is_active,
+        vm.vendor_email,
+        vm.vendor_number,
+        vm.created_by AS vendor_created_by,
+        vm.created_at AS vendor_created_at,
+        vm.updated_by AS vendor_updated_by,
+        vm.updated_at AS vendor_updated_at
 
       FROM organizations o
 
@@ -296,9 +331,11 @@ exports.getOrganizationInfo = async (req, res) => {
       LEFT JOIN personal rp
         ON rp.pr_id = ro.pr_id
 
-      LEFT JOIN companies_master cm -- New JOIN added
+      LEFT JOIN companies_master cm
         ON cm.cpt_id = o.or_company_id
 
+      LEFT JOIN vendor_master vm
+        ON vm.id = o.or_vendor_id
       WHERE o.pr_id = $1
       `,
       [employee_id]
@@ -313,20 +350,37 @@ exports.getOrganizationInfo = async (req, res) => {
 
     const row = result.rows[0];
 
-    const companyData = row.or_company_id ? {
-      id: row.company_id,
-      name: row.company_name,
-      email: row.company_email,
-      contact_number: row.company_contact_number,
-      website: row.company_website,
-      logo_path: row.company_logo_path,
-      city_id: row.company_city_id,
-      state_id: row.company_state_id,
-      country_id: row.company_country_id,
-      is_active: row.company_is_active,
-      created_at: row.company_created_at,
-      updated_at: row.company_updated_at
-    } : null;
+    const companyData = row.or_company_id
+      ? {
+          id: row.company_id,
+          name: row.company_name,
+          email: row.company_email,
+          contact_number: row.company_contact_number,
+          website: row.company_website,
+          logo_path: row.company_logo_path,
+          city_id: row.company_city_id,
+          state_id: row.company_state_id,
+          country_id: row.company_country_id,
+          is_active: row.company_is_active,
+          created_at: row.company_created_at,
+          updated_at: row.company_updated_at
+        }
+      : null;
+    const vendorData = row.or_vendor_id
+      ? {
+          id: row.vendor_id,
+          vendor_code: row.vendor_code,
+          vendor_name: row.vendor_name,
+          description: row.vendor_description,
+          is_active: row.vendor_is_active,
+          vendor_email: row.vendor_email,
+          vendor_number: row.vendor_number,
+          created_by: row.vendor_created_by,
+          created_at: row.vendor_created_at,
+          updated_by: row.vendor_updated_by,
+          updated_at: row.vendor_updated_at
+        }
+      : null;
 
     return res.status(200).json({
       success: true,
@@ -359,6 +413,8 @@ exports.getOrganizationInfo = async (req, res) => {
 
         or_company_id: row.or_company_id,
         company: companyData,
+        or_vendor_id: row.or_vendor_id,
+        vendor: vendorData,
 
         employee: {
           first_name: row.pr_first_name,
@@ -410,7 +466,8 @@ exports.updateOrganizationInfo = async (req, res) => {
       designation_id,
       joining_date,
       leaving_date,
-      or_company_id
+      or_company_id,
+      or_vendor_id
     } = req.body;
 
     const updatedBy = req.user?.id;
@@ -437,13 +494,17 @@ exports.updateOrganizationInfo = async (req, res) => {
         message: "Invalid Employee ID"
       });
     }
-
+  
     if (or_company_id) {
       const companyCheck = await client.query(
-        `SELECT cpt_id FROM companies_master WHERE cpt_id = $1`,
+        `
+        SELECT cpt_id
+        FROM companies_master
+        WHERE cpt_id = $1
+        `,
         [or_company_id]
       );
-      
+
       if (companyCheck.rowCount === 0) {
         return res.status(404).json({
           success: false,
@@ -452,6 +513,25 @@ exports.updateOrganizationInfo = async (req, res) => {
       }
     }
 
+    if (or_vendor_id) {
+      const vendorCheck = await client.query(
+        `
+        SELECT id, vendor_code, vendor_name
+        FROM vendor_master
+        WHERE id = $1
+          AND is_active = TRUE
+        `,
+        [or_vendor_id]
+      );
+
+      if (vendorCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Active vendor with ID ${or_vendor_id} not found`
+        });
+      }
+    }
+ 
     const personalCheck = await client.query(
       `
       SELECT Pr_Id
@@ -474,7 +554,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         : leaving_date
           ? false
           : true;
-
+   
     const existingOrganization = await client.query(
       `
       SELECT Or_Id
@@ -487,7 +567,7 @@ exports.updateOrganizationInfo = async (req, res) => {
     let orgResult;
     let message;
     let operation;
-
+  
     if (existingOrganization.rowCount > 0) {
       orgResult = await client.query(
         `
@@ -509,8 +589,9 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Leaving_Date = $14,
           Or_Updated_At = CURRENT_TIMESTAMP,
           Or_Updated_By = $15,
-          Or_Company_Id = $16 -- New field added
-        WHERE Pr_Id = $17
+          Or_Company_Id = $16,
+          Or_Vendor_Id = $17
+        WHERE Pr_Id = $18
         RETURNING *
         `,
         [
@@ -529,7 +610,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           joining_date || null,
           leaving_date || null,
           updatedBy,
-          or_company_id || null, // New field added
+          or_company_id || null,
+          or_vendor_id || null,
           employeeId
         ]
       );
@@ -559,7 +641,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Created_By,
           Or_Updated_At,
           Or_Updated_By,
-          Or_Company_Id -- New column added
+          Or_Company_Id,
+          Or_Vendor_Id
         )
         VALUES (
           $1,
@@ -581,7 +664,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           $16,
           CURRENT_TIMESTAMP,
           $16,
-          $17 -- New value added
+          $17,
+          $18
         )
         RETURNING *
         `,
@@ -602,7 +686,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           joining_date || null,
           leaving_date || null,
           updatedBy,
-          or_company_id || null // New field added
+          or_company_id || null,
+          or_vendor_id || null
         ]
       );
 
