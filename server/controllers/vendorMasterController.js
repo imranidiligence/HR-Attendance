@@ -13,6 +13,7 @@ const createVendorType = async (req, res) => {
     if (!vendor_name || vendor_name.trim() === '') {
       return errorResponse(res, 400, 'vendor_name is required', null);
     }
+    
 
     const query = `
       INSERT INTO vendor_master (vendor_code, vendor_name, vendor_email, vendor_number, description, created_by, created_at, is_active)

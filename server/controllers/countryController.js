@@ -29,7 +29,7 @@ const getCountryById = async (req, res) => {
       return errorResponse(res, 400, 'Valid country_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM country_master WHERE country_id = $1', [id]);
+    const result = await db.query('SELECT cm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM country_master cm LEFT JOIN personal cp ON cp.pr_id = cm.created_by LEFT JOIN personal up ON up.pr_id = cm.updated_by WHERE cm.country_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Country not found', null);
     }

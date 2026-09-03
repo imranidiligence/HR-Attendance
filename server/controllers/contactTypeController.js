@@ -29,7 +29,7 @@ const getContactTypeById = async (req, res) => {
       return errorResponse(res, 400, 'Valid contact_type_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM contact_type_master WHERE contact_type_id = $1', [id]);
+    const result = await db.query('SELECT ctm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM contact_type_master ctm LEFT JOIN personal cp ON cp.pr_id = ctm.created_by LEFT JOIN personal up ON up.pr_id = ctm.updated_by WHERE ctm.contact_type_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Contact type not found', null);
     }

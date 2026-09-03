@@ -31,7 +31,7 @@ const getStateById = async (req, res) => {
       return errorResponse(res, 400, 'Valid state_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM state_master WHERE state_id = $1', [id]);
+    const result = await db.query('SELECT sm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName, cm.country_name FROM state_master sm LEFT JOIN personal cp ON cp.pr_id = sm.created_by LEFT JOIN personal up ON up.pr_id = sm.updated_by LEFT JOIN country_master cm ON cm.country_id = sm.country_id WHERE sm.state_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'State not found', null);
     }
