@@ -239,16 +239,7 @@ router.get("/all-attendance", auth, async (req, res) => {
         ma.status_id,
         ma.is_late_arrived,
 
-        COALESCE(
-          ast.status_name,
-
-          CASE
-            WHEN ma.id IS NULL
-              THEN 'Absent'
-
-            ELSE 'Unknown'
-          END
-        ) AS status
+        ast.status_name AS status
 
       FROM employees e
 
@@ -1461,14 +1452,7 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
         wa.is_early_gone,
         wa.status_id,
 
-        COALESCE(
-          ast.status_name,
-          CASE
-            WHEN wa.id IS NULL
-              THEN 'Absent'
-            ELSE 'Unknown'
-          END
-        ) AS status
+        ast.status_name AS status
 
       FROM employees e
 
