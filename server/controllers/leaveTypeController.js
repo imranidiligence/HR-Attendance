@@ -20,6 +20,9 @@ const createLeaveType = async (req, res) => {
       leave_type_name,
       total_days_per_year,
       is_paid,
+      from_date,
+      to_date,
+      emptype,
       created_by
     } = req.body;
 
@@ -81,6 +84,30 @@ const createLeaveType = async (req, res) => {
       );
     }
 
+    // Validate emptype
+    if (
+      emptype === undefined ||
+      emptype === null ||
+      !Number.isInteger(Number(emptype))
+    ) {
+      return errorResponse(
+        res,
+        400,
+        "valid emptype is required",
+        null
+      );
+    }
+
+    // Validate from_date and to_date
+    if (from_date && to_date && new Date(to_date) < new Date(from_date)) {
+      return errorResponse(
+        res,
+        400,
+        "to_date must be greater than or equal to from_date",
+        null
+      );
+    }
+
     const query = `
       INSERT INTO public.leave_types
       (
@@ -88,6 +115,9 @@ const createLeaveType = async (req, res) => {
         lt_leave_type_name,
         lt_total_days_per_year,
         lt_is_paid,
+        lt_from_date,
+        lt_to_date,
+        lt_emptype,
         lt_is_active,
         lt_created_at,
         lt_created_by
@@ -98,9 +128,12 @@ const createLeaveType = async (req, res) => {
         $2,
         $3,
         $4,
+        $5,
+        $6,
+        $7,
         TRUE,
         CURRENT_TIMESTAMP,
-        $5
+        $8
       )
       RETURNING *
     `;
@@ -110,6 +143,9 @@ const createLeaveType = async (req, res) => {
       leave_type_name.trim(),
       Number(total_days_per_year),
       is_paid !== undefined ? is_paid : true,
+      from_date || null,
+      to_date || null,
+      Number(emptype),
       created_by || null
     ]);
 
@@ -327,6 +363,9 @@ const updateLeaveType = async (req, res) => {
       leave_type_name,
       total_days_per_year,
       is_paid,
+      from_date,
+      to_date,
+      emptype,
       is_active,
       updated_by
     } = req.body;
@@ -392,6 +431,28 @@ const updateLeaveType = async (req, res) => {
       );
     }
 
+    // Validate emptype
+    if (
+      emptype !== undefined &&
+      !Number.isInteger(Number(emptype))
+    ) {
+      return errorResponse(
+        res,
+        400,
+        "emptype must be a valid integer",
+        null
+      );
+    }
+
+    // Validate from_date and to_date
+    if (from_date && to_date && new Date(to_date) < new Date(from_date)) {
+      return errorResponse(
+        res,
+        400,
+        "to_date must be greater than or equal to from_date",
+        null
+      );
+    }
 
     // Validate is_active
     if (
@@ -422,16 +483,25 @@ const updateLeaveType = async (req, res) => {
         lt_is_paid =
           COALESCE($4, lt_is_paid),
 
+        lt_from_date =
+          COALESCE($5, lt_from_date),
+
+        lt_to_date =
+          COALESCE($6, lt_to_date),
+
+        lt_emptype =
+          COALESCE($7, lt_emptype),
+
         lt_is_active =
-          COALESCE($5, lt_is_active),
+          COALESCE($8, lt_is_active),
 
         lt_updated_by =
-          COALESCE($6, lt_updated_by),
+          COALESCE($9, lt_updated_by),
 
         lt_updated_at =
           CURRENT_TIMESTAMP
 
-      WHERE lt_leave_type_id = $7
+      WHERE lt_leave_type_id = $10
 
       RETURNING *
     `;
@@ -451,6 +521,18 @@ const updateLeaveType = async (req, res) => {
 
       is_paid !== undefined
         ? is_paid
+        : null,
+
+      from_date !== undefined
+        ? from_date
+        : null,
+
+      to_date !== undefined
+        ? to_date
+        : null,
+
+      emptype !== undefined
+        ? Number(emptype)
         : null,
 
       is_active !== undefined
