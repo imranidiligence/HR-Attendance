@@ -26,7 +26,9 @@ exports.addOrganizationInfo = async (req, res) => {
       department_id,
       designation_id,
       joining_date,
-      leaving_date
+      leaving_date,
+      or_company_id,
+      or_vendor_id
     } = req.body;
 
     const createdBy = req.user?.id;
@@ -43,6 +45,20 @@ exports.addOrganizationInfo = async (req, res) => {
         success: false,
         message: "Employee ID is required"
       });
+    }
+
+    if (or_company_id) {
+      const companyCheck = await db.query(
+        `SELECT cpt_id FROM companies_master WHERE cpt_id = $1`,
+        [or_company_id]
+      );
+      
+      if (companyCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Company with ID ${or_company_id} not found`
+        });
+      }
     }
 
     const personalResult = await db.query(
@@ -79,6 +95,25 @@ exports.addOrganizationInfo = async (req, res) => {
         success: false,
         message: `Organization information already exists for employee Pr_Id ${employee_id}`
       });
+    }
+
+if (or_vendor_id) {
+      const vendorCheck = await db.query(
+        `
+        SELECT id, vendor_code, vendor_name
+        FROM vendor_master
+        WHERE id = $1
+          AND is_active = TRUE
+        `,
+        [or_vendor_id]
+      );
+
+      if (vendorCheck.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Active vendor with ID ${or_vendor_id} not found`
+        });
+      }
     }
 
     if (emp_id) {
@@ -123,7 +158,9 @@ exports.addOrganizationInfo = async (req, res) => {
         or_designation_id,
         or_joining_date,
         or_leaving_date,
-        or_created_by
+        or_created_by,
+        or_company_id,
+        or_vendor_id
       )
       VALUES (
         $1,
@@ -142,7 +179,9 @@ exports.addOrganizationInfo = async (req, res) => {
         $13,
         $14,
         $15,
-        $16
+        $16,
+        $17,
+        $18
       )
       RETURNING *
       `,
@@ -162,7 +201,9 @@ exports.addOrganizationInfo = async (req, res) => {
         designation_id || null,
         joining_date || null,
         leaving_date || null,
-        createdBy
+        createdBy,
+        or_company_id || null,
+          or_vendor_id || null
       ]
     );
 
@@ -221,51 +262,116 @@ exports.getOrganizationInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        o.or_id,
-        o.pr_id,
-        o.or_organization_name,
-        o.or_organization_location,
-        o.or_emp_id,
-        o.or_is_active,
-        o.or_created_at,
-        o.or_updated_at,
-        o.or_employee_type_id,
-        o.or_reporting_location_id,
-        o.or_organization_email,
-        o.or_official_email,
-        o.or_official_contact,
-        o.or_reporting_to_id,
-        o.or_department_id,
-        o.or_designation_id,
-        o.or_joining_date,
-        o.or_leaving_date,
-        o.or_created_by,
-        o.or_updated_by,
+    o.or_id,
+    o.pr_id,
+    o.or_organization_name,
+    o.or_organization_location,
+    o.or_emp_id,
+    o.or_is_active,
+    o.or_created_at,
+    o.or_updated_at,
+    o.or_employee_type_id,
+    o.or_reporting_location_id,
+    o.or_organization_email,
+    o.or_official_email,
+    o.or_official_contact,
+    o.or_reporting_to_id,
+    o.or_department_id,
+    o.or_designation_id,
+    o.or_joining_date,
+    o.or_leaving_date,
+    o.or_created_by,
+    o.or_updated_by,
+    o.or_company_id,
+    o.or_vendor_id,
 
-        p.pr_first_name,
-        p.pr_last_name,
-        p.pr_email,
+    -- Personal
+    p.pr_first_name,
+    p.pr_last_name,
+    p.pr_email,
 
-        ro.or_id AS reporting_or_id,
-        ro.pr_id AS reporting_pr_id,
-        ro.or_emp_id AS reporting_emp_id,
+    -- Reporting Person
+    ro.or_id AS reporting_or_id,
+    ro.pr_id AS reporting_pr_id,
+    ro.or_emp_id AS reporting_emp_id,
 
-        rp.pr_first_name AS reporting_first_name,
-        rp.pr_last_name AS reporting_last_name,
-        rp.pr_email AS reporting_email
+    rp.pr_first_name AS reporting_first_name,
+    rp.pr_last_name AS reporting_last_name,
+    rp.pr_email AS reporting_email,
 
-      FROM organizations o
+    -- Company
+    cm.cpt_id AS company_id,
+    cm.cpt_name AS company_name,
+    cm.cpt_email AS company_email,
+    cm.cpt_contact_number AS company_contact_number,
+    cm.cpt_website AS company_website,
+    cm.cpt_logopath AS company_logo_path,
+    cm.cpt_city_id AS company_city_id,
+    cm.cpt_state_id AS company_state_id,
+    cm.cpt_country_id AS company_country_id,
+    cm.cpt_is_active AS company_is_active,
+    cm.cpt_created_at AS company_created_at,
+    cm.cpt_updated_at AS company_updated_at,
 
-      INNER JOIN personal p
-        ON p.pr_id = o.pr_id
+    -- Vendor
+    vm.id AS vendor_id,
+    vm.vendor_code,
+    vm.vendor_name,
+    vm.description AS vendor_description,
+    vm.is_active AS vendor_is_active,
+    vm.vendor_email,
+    vm.vendor_number,
+    vm.created_by AS vendor_created_by,
+    vm.created_at AS vendor_created_at,
+    vm.updated_by AS vendor_updated_by,
+    vm.updated_at AS vendor_updated_at,
 
-      LEFT JOIN organizations ro
-        ON ro.or_id = o.or_reporting_to_id
+    -- Department
+    dm."DepartmentId" AS department_id,
+    dm."DepartmentName" AS department_name,
 
-      LEFT JOIN personal rp
-        ON rp.pr_id = ro.pr_id
+    -- Designation
+    dsg.designation_id,
+    dsg.designation_name,
 
-      WHERE o.pr_id = $1
+    -- Employee Type
+    etm.employee_type_id,
+    etm.employee_type_name
+
+FROM organizations o
+
+-- Personal
+INNER JOIN personal p
+    ON p.pr_id = o.pr_id
+
+-- Reporting Person
+LEFT JOIN organizations ro
+    ON ro.or_id = o.or_reporting_to_id
+
+LEFT JOIN personal rp
+    ON rp.pr_id = ro.pr_id
+
+-- Company
+LEFT JOIN companies_master cm
+    ON cm.cpt_id = o.or_company_id
+
+-- Vendor
+LEFT JOIN vendor_master vm
+    ON vm.id = o.or_vendor_id
+
+-- Department
+LEFT JOIN department_master dm
+    ON dm."DepartmentId" = o.or_department_id
+
+-- Designation
+LEFT JOIN designation_master dsg
+    ON dsg.designation_id = o.or_designation_id
+
+-- Employee Type
+LEFT JOIN employee_type_master etm
+    ON etm.employee_type_id = o.or_employee_type_id
+
+WHERE o.pr_id = $1;
       `,
       [employee_id]
     );
@@ -278,6 +384,38 @@ exports.getOrganizationInfo = async (req, res) => {
     }
 
     const row = result.rows[0];
+
+    const companyData = row.or_company_id
+      ? {
+          id: row.company_id,
+          name: row.company_name,
+          email: row.company_email,
+          contact_number: row.company_contact_number,
+          website: row.company_website,
+          logo_path: row.company_logo_path,
+          city_id: row.company_city_id,
+          state_id: row.company_state_id,
+          country_id: row.company_country_id,
+          is_active: row.company_is_active,
+          created_at: row.company_created_at,
+          updated_at: row.company_updated_at
+        }
+      : null;
+    const vendorData = row.or_vendor_id
+      ? {
+          id: row.vendor_id,
+          vendor_code: row.vendor_code,
+          vendor_name: row.vendor_name,
+          description: row.vendor_description,
+          is_active: row.vendor_is_active,
+          vendor_email: row.vendor_email,
+          vendor_number: row.vendor_number,
+          created_by: row.vendor_created_by,
+          created_at: row.vendor_created_at,
+          updated_by: row.vendor_updated_by,
+          updated_at: row.vendor_updated_at
+        }
+      : null;
 
     return res.status(200).json({
       success: true,
@@ -307,6 +445,11 @@ exports.getOrganizationInfo = async (req, res) => {
         updated_at: row.or_updated_at,
         created_by: row.or_created_by,
         updated_by: row.or_updated_by,
+
+        or_company_id: row.or_company_id,
+        company: companyData,
+        or_vendor_id: row.or_vendor_id,
+        vendor: vendorData,
 
         employee: {
           first_name: row.pr_first_name,
@@ -357,7 +500,9 @@ exports.updateOrganizationInfo = async (req, res) => {
       department_id,
       designation_id,
       joining_date,
-      leaving_date
+      leaving_date,
+      or_company_id,
+      or_vendor_id
     } = req.body;
 
     const updatedBy = req.user?.id;
@@ -384,7 +529,44 @@ exports.updateOrganizationInfo = async (req, res) => {
         message: "Invalid Employee ID"
       });
     }
+  
+    if (or_company_id) {
+      const companyCheck = await client.query(
+        `
+        SELECT cpt_id
+        FROM companies_master
+        WHERE cpt_id = $1
+        `,
+        [or_company_id]
+      );
 
+      if (companyCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Company with ID ${or_company_id} not found`
+        });
+      }
+    }
+
+    if (or_vendor_id) {
+      const vendorCheck = await client.query(
+        `
+        SELECT id, vendor_code, vendor_name
+        FROM vendor_master
+        WHERE id = $1
+          AND is_active = TRUE
+        `,
+        [or_vendor_id]
+      );
+
+      if (vendorCheck.rowCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: `Active vendor with ID ${or_vendor_id} not found`
+        });
+      }
+    }
+ 
     const personalCheck = await client.query(
       `
       SELECT Pr_Id
@@ -407,7 +589,7 @@ exports.updateOrganizationInfo = async (req, res) => {
         : leaving_date
           ? false
           : true;
-
+   
     const existingOrganization = await client.query(
       `
       SELECT Or_Id
@@ -420,7 +602,7 @@ exports.updateOrganizationInfo = async (req, res) => {
     let orgResult;
     let message;
     let operation;
-
+  
     if (existingOrganization.rowCount > 0) {
       orgResult = await client.query(
         `
@@ -441,8 +623,10 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Joining_Date = $13,
           Or_Leaving_Date = $14,
           Or_Updated_At = CURRENT_TIMESTAMP,
-          Or_Updated_By = $15
-        WHERE Pr_Id = $16
+          Or_Updated_By = $15,
+          Or_Company_Id = $16,
+          Or_Vendor_Id = $17
+        WHERE Pr_Id = $18
         RETURNING *
         `,
         [
@@ -461,6 +645,8 @@ exports.updateOrganizationInfo = async (req, res) => {
           joining_date || null,
           leaving_date || null,
           updatedBy,
+          or_company_id || null,
+          or_vendor_id || null,
           employeeId
         ]
       );
@@ -489,7 +675,9 @@ exports.updateOrganizationInfo = async (req, res) => {
           Or_Created_At,
           Or_Created_By,
           Or_Updated_At,
-          Or_Updated_By
+          Or_Updated_By,
+          Or_Company_Id,
+          Or_Vendor_Id
         )
         VALUES (
           $1,
@@ -510,7 +698,9 @@ exports.updateOrganizationInfo = async (req, res) => {
           CURRENT_TIMESTAMP,
           $16,
           CURRENT_TIMESTAMP,
-          $16
+          $16,
+          $17,
+          $18
         )
         RETURNING *
         `,
@@ -530,7 +720,9 @@ exports.updateOrganizationInfo = async (req, res) => {
           designation_id || null,
           joining_date || null,
           leaving_date || null,
-          updatedBy
+          updatedBy,
+          or_company_id || null,
+          or_vendor_id || null
         ]
       );
 

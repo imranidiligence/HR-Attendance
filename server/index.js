@@ -39,6 +39,11 @@ const degreeRoutes = require('./routes/degreeRoutes')
 const cronJobsRoutes = require("./routes/cronJobs.routes")
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
 const holidayRoutes = require("./routes/holidayRoutes");
+const mobilePunchLogRoutes = require("./routes/activityLogRoutes");
+const punchTypeRoutes = require("./routes/punchTypeRoutes");
+const companyRoutes = require('./routes/CompanyRoutes');
+const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
+const leaveStatusRoutes = require("./routes/LeaveStatusRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -133,6 +138,8 @@ app.use('/vendor-details', vendorDetailsRoutes);
 app.use('/api/vendor-master', vendorTypeRoutes);
 app.use('/api/degrees', degreeRoutes);
 app.use('/api/bank-account-types', bankAccountTypeRoutes);
+app.use('/api/leave-types', leaveTypeRoutes);
+app.use("/api/leave-status",leaveStatusRoutes);
 // Leaves
 
 app.use("/api/leaves/types", leavesRoutes);
@@ -144,7 +151,10 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/holiday-types", holidayTypeRoutes);
 app.use("/api/holidays", holidayRoutes);
+app.use('/api', companyRoutes);
 app.use("/api/cron-jobs", cronJobsRoutes);
+app.use('/api/mobile-activity-logs', mobilePunchLogRoutes);
+app.use('/api/punch-types', punchTypeRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {

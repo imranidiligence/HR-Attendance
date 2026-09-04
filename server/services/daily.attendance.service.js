@@ -244,18 +244,19 @@ async function generateDailyAttendance(client) {
     ===================================================== */
 
     statuses AS
-    (
-      SELECT
+(
+  SELECT
 
-        MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'present')  AS present_id,
-        MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'working')  AS working_id,
-        MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'half day') AS half_day_id,
-        MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'holiday')  AS holiday_id,
-        MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'absent')   AS absent_id
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'present')    AS present_id,
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'working')    AS working_id,
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'half day')   AS half_day_id,
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'holiday')    AS holiday_id,
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'weekly off') AS weekly_off_id,
+    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'absent')     AS absent_id
 
-      FROM public.attendence_status
-      WHERE is_active = TRUE
-    ),
+  FROM public.attendence_status
+  WHERE is_active = TRUE
+),
 
     /* =====================================================
        EMPLOYEES, RESTRICTED TO target_pairs
@@ -410,17 +411,17 @@ async function generateDailyAttendance(client) {
         END AS is_early_gone,
 
         CASE
-          WHEN h.holiday_id IS NOT NULL THEN sid.holiday_id
-          WHEN dr.is_working_day = FALSE THEN sid.holiday_id
-          WHEN p.punch_in IS NULL THEN sid.absent_id
-          WHEN p.punch_in::TIME >=
-               (dr.start_time + MAKE_INTERVAL(mins => dr.half_day_after_minutes))
-            THEN sid.half_day_id
-          WHEN p.punch_out IS NULL THEN sid.working_id
-          WHEN (p.punch_out - p.punch_in) < (dr.half_day_hours * INTERVAL '1 hour')
-            THEN sid.half_day_id
-          ELSE sid.present_id
-        END AS status_id
+        WHEN h.holiday_id IS NOT NULL THEN sid.holiday_id
+        WHEN dr.is_working_day = FALSE THEN sid.weekly_off_id
+        WHEN p.punch_in IS NULL THEN sid.absent_id
+        WHEN p.punch_in::TIME >=
+            (dr.start_time + MAKE_INTERVAL(mins => dr.half_day_after_minutes))
+          THEN sid.half_day_id
+        WHEN p.punch_out IS NULL THEN sid.working_id
+        WHEN (p.punch_out - p.punch_in) < (dr.half_day_hours * INTERVAL '1 hour')
+          THEN sid.half_day_id
+        ELSE sid.present_id
+      END AS status_id
 
       FROM punches p
 

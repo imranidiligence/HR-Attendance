@@ -299,7 +299,7 @@ const getEmployeeWeeklyPieChartData = async (req, res) => {
 const getMonthlyEmployeesData = async (req, res) => {
   try {
     const { emp_id } = req.params;
-    
+
     if (!emp_id) {
       return res.status(400).json({
         success: false,
@@ -312,7 +312,7 @@ const getMonthlyEmployeesData = async (req, res) => {
         SELECT 
           generate_series(
             DATE_TRUNC('month', CURRENT_DATE)::date,
-            DATE_TRUNC('month', CURRENT_DATE)::date + INTERVAL '1 month' - INTERVAL '1 day',
+            (DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::date,
             INTERVAL '1 day'
           )::date AS attendance_date
       ),
@@ -320,16 +320,12 @@ const getMonthlyEmployeesData = async (req, res) => {
         SELECT 
           attendance_date,
           TO_CHAR(attendance_date, 'Dy') AS day_name,
-          TO_CHAR(attendance_date, 'DD') AS day_number,
-          EXTRACT(DOW FROM attendance_date) AS day_of_week,
-          EXTRACT(DAY FROM attendance_date) AS day_of_month
+          EXTRACT(DOW FROM attendance_date) AS day_of_week
         FROM date_series
       )
       SELECT 
         md.attendance_date,
         md.day_name,
-        md.day_number,
-        md.day_of_month,
         wa.punch_in,
         wa.punch_out,
         wa.total_hours,
@@ -339,51 +335,42 @@ const getMonthlyEmployeesData = async (req, res) => {
         wa.early_go,
         wa.is_early_gone,
         wa.status_id,
+
         CASE 
-          WHEN wa.attendance_date IS NULL THEN 'No Data'
-          ELSE 'Present'
+          WHEN wa.status_id = 1 THEN 'Present'
+          WHEN wa.status_id = 2 THEN 'Absent'
+          WHEN wa.status_id = 3 THEN 'Working'
+          WHEN wa.status_id = 4 THEN 'Half Day'
+          WHEN wa.status_id = 5 THEN 'Holiday'
+          WHEN wa.status_id = 6 THEN 'Leave'
+          WHEN wa.status_id = 7 THEN 'Weekly Off'
+          ELSE 'Absent'
         END AS attendance_status,
+
         CASE 
-          WHEN EXTRACT(DOW FROM md.attendance_date) IN (0, 6) THEN INTERVAL '0 hours'
+          WHEN EXTRACT(DOW FROM md.attendance_date) IN (0, 6) 
+            THEN INTERVAL '0 hours'
           ELSE INTERVAL '9 hours 18 minutes'
         END AS target_hours
-      FROM 
-        month_days md
-      LEFT JOIN 
-        weekly_attendance wa 
+
+      FROM month_days md
+
+      LEFT JOIN weekly_attendance wa 
         ON md.attendance_date = wa.attendance_date 
         AND wa.emp_id = $1
-      ORDER BY 
-        md.attendance_date
+
+      ORDER BY md.attendance_date;
     `;
 
     const result = await db.query(query, [emp_id]);
-
-    
-    const totalDays = result.rows.length;
-    const presentDays = result.rows.filter(row => row.attendance_status === 'Present').length;
-    const absentDays = result.rows.filter(row => row.attendance_status === 'No Data' && row.day_of_week !== 0 && row.day_of_week !== 6).length;
-    const weekendDays = result.rows.filter(row => row.day_of_week === 0 || row.day_of_week === 6).length;
-    const noDataDays = result.rows.filter(row => row.attendance_status === 'No Data').length;
-
-    const responseData = {
-      monthly_data: result.rows,
-      summary: {
-        total_days: totalDays,
-        present_days: presentDays,
-        absent_days: absentDays,
-        weekend_days: weekendDays,
-        no_data_days: noDataDays,
-        attendance_percentage: totalDays > 0 ? ((presentDays / (totalDays - weekendDays)) * 100).toFixed(2) : 0
-      }
-    };
 
     return successResponse(
       res,
       200,
       "Monthly employee data fetched successfully",
-      responseData
+      result.rows
     );
+
   } catch (error) {
     console.error("Monthly employee data error:", error);
 
@@ -395,6 +382,83 @@ const getMonthlyEmployeesData = async (req, res) => {
   }
 };
 
+const getYearlyEmployeesData = async (req, res) => {
+  try {
+    const { emp_id } = req.params;
+
+    if (!emp_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
+
+    const query = `
+      WITH months AS (
+    SELECT 
+        generate_series(
+            DATE_TRUNC('year', CURRENT_DATE),
+            DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '11 months',
+            INTERVAL '1 month'
+        )::date AS month_start
+),
+attendance_data AS (
+    SELECT
+        ad.emp_id,
+        DATE(ad.attendance_date) AS attendance_date,
+        ats.status_name
+    FROM daily_attendance ad
+    LEFT JOIN attendence_status ats 
+        ON ad.status_id = ats.id
+    WHERE ad.emp_id = $1
+)
+SELECT
+    TO_CHAR(m.month_start, 'Mon - YYYY') AS month,
+    
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Present'
+    ) AS present_days,
+
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Leave'
+    ) AS leave_days,
+
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Absent'
+    ) AS absent_days,
+
+    22 AS target_days
+
+FROM months m
+LEFT JOIN attendance_data ad
+    ON ad.attendance_date >= m.month_start
+    AND ad.attendance_date < m.month_start + INTERVAL '1 month'
+
+GROUP BY m.month_start
+ORDER BY m.month_start;
+    `;
+
+    const result = await db.query(query, [emp_id]);
+
+    return successResponse(
+      res,
+      200,
+      "Monthly employee data fetched successfully",
+      result.rows
+    );
+
+  } catch (error) {
+    console.error("Monthly employee data error:", error);
+
+    return handleDbError(
+      res,
+      error,
+      "Failed to fetch monthly employee data"
+    );
+  }
+};
+
+
 module.exports = {
   getActiveEmployeeCount,
   getActive_Present_EmployeeCount,
@@ -402,5 +466,6 @@ module.exports = {
   getActive_Employee_Department_Count,
   getWeeklyEmployeesData,
   getEmployeeWeeklyPieChartData,
-  getMonthlyEmployeesData
+  getMonthlyEmployeesData,
+  getYearlyEmployeesData
 };

@@ -29,7 +29,7 @@ const getGenderById = async (req, res) => {
       return errorResponse(res, 400, 'Valid gender_id is required', null);
     }
 
-    const result = await db.query('SELECT * FROM gender_master WHERE gender_id = $1', [id]);
+    const result = await db.query('SELECT dm.*, cp.pr_first_name as CreatedByName, up.pr_first_name as UpdatedByName FROM gender_master dm LEFT JOIN personal cp ON cp.pr_id = dm.created_by LEFT JOIN personal up ON up.pr_id = dm.updated_by WHERE dm.gender_id = $1', [id]);
     if (result.rows.length === 0) {
       return errorResponse(res, 404, 'Gender not found', null);
     }

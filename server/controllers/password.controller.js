@@ -38,7 +38,7 @@ const sendPasswordResetOtp = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // --------------------------------------------------
-    // Find account using organization official email
+    // Find account
     //
     // organizations.pr_id -> personal.pr_id
     // --------------------------------------------------
@@ -48,9 +48,18 @@ const sendPasswordResetOtp = async (req, res) => {
         o.or_id,
         o.pr_id,
         o.or_official_email,
-        o.or_organization_name
+        o.or_organization_name,
+
+        p.pr_first_name,
+        p.pr_last_name
+
       FROM organizations o
+
+      INNER JOIN personal p
+        ON p.pr_id = o.pr_id
+
       WHERE LOWER(o.or_official_email) = $1
+
       LIMIT 1
       `,
       [normalizedEmail],
@@ -64,6 +73,17 @@ const sendPasswordResetOtp = async (req, res) => {
     }
 
     const organization = result.rows[0];
+
+    // --------------------------------------------------
+    // Create full name
+    // --------------------------------------------------
+    const fullName = [organization.pr_first_name, organization.pr_last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    // Fallback if name is not available
+    const userName = fullName || "User";
 
     // --------------------------------------------------
     // Check login account
@@ -107,9 +127,7 @@ const sendPasswordResetOtp = async (req, res) => {
     // --------------------------------------------------
     // Insert / update resetpassword
     //
-    // Because pr_id is UNIQUE:
-    // - first request -> INSERT
-    // - next request -> UPDATE
+    // pr_id is UNIQUE
     // --------------------------------------------------
     await db.query(
       `
@@ -140,11 +158,14 @@ const sendPasswordResetOtp = async (req, res) => {
       "Password Reset OTP - I-Diligence Solution",
       "password_reset_otp",
       {
-        name: organization.or_organization_name || "User",
+        name: userName,
         otp,
       },
     );
 
+    // --------------------------------------------------
+    // Success response
+    // --------------------------------------------------
     return res.status(200).json({
       success: true,
       message: "OTP has been sent to your registered email",
@@ -198,7 +219,11 @@ const resetPassword = async (req, res) => {
     const normalizedEmail = email.trim().toLowerCase();
 
     // --------------------------------------------------
-    // Find organization using email
+    // Find organization + personal + reset request + login
+    //
+    // organizations.pr_id -> personal.pr_id
+    // organizations.pr_id -> resetpassword.pr_id
+    // organizations.pr_id -> login.pr_id
     // --------------------------------------------------
     const result = await db.query(
       `
@@ -206,10 +231,23 @@ const resetPassword = async (req, res) => {
         o.or_id,
         o.pr_id,
         o.or_official_email,
+        o.or_organization_name,
+
+        -- Personal information
+        p.pr_first_name,
+        p.pr_last_name,
+
+        -- Reset password information
         r.rp_otp_hash,
         r.rp_otp_expires_at,
+
+        -- Login information
         l.lg_id
+
       FROM organizations o
+
+      INNER JOIN personal p
+        ON p.pr_id = o.pr_id
 
       INNER JOIN resetpassword r
         ON r.pr_id = o.pr_id
@@ -224,6 +262,9 @@ const resetPassword = async (req, res) => {
       [normalizedEmail],
     );
 
+    // --------------------------------------------------
+    // Check account
+    // --------------------------------------------------
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -232,6 +273,16 @@ const resetPassword = async (req, res) => {
     }
 
     const user = result.rows[0];
+
+    // --------------------------------------------------
+    // Create full name
+    // --------------------------------------------------
+    const fullName = [user.pr_first_name, user.pr_last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+    const userName = fullName || "User";
 
     // --------------------------------------------------
     // Check OTP exists
@@ -247,11 +298,9 @@ const resetPassword = async (req, res) => {
     // Check OTP expiry
     // --------------------------------------------------
     const currentTime = new Date();
-
     const expiryTime = new Date(user.rp_otp_expires_at);
 
     if (currentTime > expiryTime) {
-      // Delete expired reset request
       await db.query(
         `
         DELETE FROM resetpassword
@@ -284,7 +333,7 @@ const resetPassword = async (req, res) => {
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // --------------------------------------------------
-    // Update password in login table
+    // Update password
     // --------------------------------------------------
     const updateResult = await db.query(
       `
@@ -298,6 +347,9 @@ const resetPassword = async (req, res) => {
       [hashedPassword, user.pr_id],
     );
 
+    // --------------------------------------------------
+    // Check password update
+    // --------------------------------------------------
     if (updateResult.rowCount === 0) {
       return res.status(404).json({
         success: false,
@@ -316,6 +368,36 @@ const resetPassword = async (req, res) => {
       [user.pr_id],
     );
 
+    // --------------------------------------------------
+    // Send password reset success email
+    // --------------------------------------------------
+    try {
+      await sendEmail(
+        user.or_official_email,
+        "Password Reset Successful - I-Diligence Solution",
+        "password_reset_success",
+        {
+          // Full name from personal table
+          name: userName,
+
+          email: user.or_official_email,
+
+          resetTime: new Date().toLocaleString("en-IN", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: "Asia/Kolkata",
+          }),
+        },
+      );
+    } catch (emailError) {
+      // Password has already been changed successfully.
+      // Do not return 500 because only the email failed.
+      console.error("Password reset success email error:", emailError);
+    }
+
+    // --------------------------------------------------
+    // Success
+    // --------------------------------------------------
     return res.status(200).json({
       success: true,
       message: "Password reset successfully",
@@ -329,7 +411,6 @@ const resetPassword = async (req, res) => {
     });
   }
 };
-
 // ======================================================
 // CHANGE PASSWORD
 //
