@@ -40,6 +40,8 @@ const cronJobsRoutes = require("./routes/cronJobs.routes")
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
 const holidayRoutes = require("./routes/holidayRoutes");
 const companyRoutes = require('./routes/CompanyRoutes');
+const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
+const leaveStatusRoutes = require("./routes/LeaveStatusRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
 // require("dotenv").config();
@@ -134,6 +136,8 @@ app.use('/vendor-details', vendorDetailsRoutes);
 app.use('/api/vendor-master', vendorTypeRoutes);
 app.use('/api/degrees', degreeRoutes);
 app.use('/api/bank-account-types', bankAccountTypeRoutes);
+app.use('/api/leave-types', leaveTypeRoutes);
+app.use("/api/leave-status",leaveStatusRoutes);
 // Leaves
 
 app.use("/api/leaves/types", leavesRoutes);

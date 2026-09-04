@@ -8,7 +8,8 @@ const {
   getActive_Employee_Department_Count,
   getWeeklyEmployeesData,
   getEmployeeWeeklyPieChartData,
-  getMonthlyEmployeesData
+  getMonthlyEmployeesData,
+  getYearlyEmployeesData
 } = require("../controllers/DashboardController");
 
 router.get("/active/count", getActiveEmployeeCount);
@@ -18,5 +19,6 @@ router.get("/active_Department/count",getActive_Employee_Department_Count);
 router.get("/weekly/:emp_id", getWeeklyEmployeesData);
 router.get("/weekly-pie/:emp_id", getEmployeeWeeklyPieChartData);
 router.get("/monthly/:emp_id", getMonthlyEmployeesData);
+router.get("/yearly/:emp_id", getYearlyEmployeesData);
 
 module.exports = router;

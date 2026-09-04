@@ -262,81 +262,116 @@ exports.getOrganizationInfo = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        o.or_id,
-        o.pr_id,
-        o.or_organization_name,
-        o.or_organization_location,
-        o.or_emp_id,
-        o.or_is_active,
-        o.or_created_at,
-        o.or_updated_at,
-        o.or_employee_type_id,
-        o.or_reporting_location_id,
-        o.or_organization_email,
-        o.or_official_email,
-        o.or_official_contact,
-        o.or_reporting_to_id,
-        o.or_department_id,
-        o.or_designation_id,
-        o.or_joining_date,
-        o.or_leaving_date,
-        o.or_created_by,
-        o.or_updated_by,
-        o.or_company_id,
-        o.or_vendor_id,
+    o.or_id,
+    o.pr_id,
+    o.or_organization_name,
+    o.or_organization_location,
+    o.or_emp_id,
+    o.or_is_active,
+    o.or_created_at,
+    o.or_updated_at,
+    o.or_employee_type_id,
+    o.or_reporting_location_id,
+    o.or_organization_email,
+    o.or_official_email,
+    o.or_official_contact,
+    o.or_reporting_to_id,
+    o.or_department_id,
+    o.or_designation_id,
+    o.or_joining_date,
+    o.or_leaving_date,
+    o.or_created_by,
+    o.or_updated_by,
+    o.or_company_id,
+    o.or_vendor_id,
 
-        p.pr_first_name,
-        p.pr_last_name,
-        p.pr_email,
+    -- Personal
+    p.pr_first_name,
+    p.pr_last_name,
+    p.pr_email,
 
-        ro.or_id AS reporting_or_id,
-        ro.pr_id AS reporting_pr_id,
-        ro.or_emp_id AS reporting_emp_id,
+    -- Reporting Person
+    ro.or_id AS reporting_or_id,
+    ro.pr_id AS reporting_pr_id,
+    ro.or_emp_id AS reporting_emp_id,
 
-        rp.pr_first_name AS reporting_first_name,
-        rp.pr_last_name AS reporting_last_name,
-        rp.pr_email AS reporting_email,
-        cm.cpt_id AS company_id,
-        cm.cpt_name AS company_name,
-        cm.cpt_email AS company_email,
-        cm.cpt_contact_number AS company_contact_number,
-        cm.cpt_website AS company_website,
-        cm.cpt_logopath AS company_logo_path,
-        cm.cpt_city_id AS company_city_id,
-        cm.cpt_state_id AS company_state_id,
-        cm.cpt_country_id AS company_country_id,
-        cm.cpt_is_active AS company_is_active,
-        cm.cpt_created_at AS company_created_at,
-        cm.cpt_updated_at AS company_updated_at,
-        vm.id AS vendor_id,
-        vm.vendor_code,
-        vm.vendor_name,
-        vm.description AS vendor_description,
-        vm.is_active AS vendor_is_active,
-        vm.vendor_email,
-        vm.vendor_number,
-        vm.created_by AS vendor_created_by,
-        vm.created_at AS vendor_created_at,
-        vm.updated_by AS vendor_updated_by,
-        vm.updated_at AS vendor_updated_at
+    rp.pr_first_name AS reporting_first_name,
+    rp.pr_last_name AS reporting_last_name,
+    rp.pr_email AS reporting_email,
 
-      FROM organizations o
+    -- Company
+    cm.cpt_id AS company_id,
+    cm.cpt_name AS company_name,
+    cm.cpt_email AS company_email,
+    cm.cpt_contact_number AS company_contact_number,
+    cm.cpt_website AS company_website,
+    cm.cpt_logopath AS company_logo_path,
+    cm.cpt_city_id AS company_city_id,
+    cm.cpt_state_id AS company_state_id,
+    cm.cpt_country_id AS company_country_id,
+    cm.cpt_is_active AS company_is_active,
+    cm.cpt_created_at AS company_created_at,
+    cm.cpt_updated_at AS company_updated_at,
 
-      INNER JOIN personal p
-        ON p.pr_id = o.pr_id
+    -- Vendor
+    vm.id AS vendor_id,
+    vm.vendor_code,
+    vm.vendor_name,
+    vm.description AS vendor_description,
+    vm.is_active AS vendor_is_active,
+    vm.vendor_email,
+    vm.vendor_number,
+    vm.created_by AS vendor_created_by,
+    vm.created_at AS vendor_created_at,
+    vm.updated_by AS vendor_updated_by,
+    vm.updated_at AS vendor_updated_at,
 
-      LEFT JOIN organizations ro
-        ON ro.or_id = o.or_reporting_to_id
+    -- Department
+    dm."DepartmentId" AS department_id,
+    dm."DepartmentName" AS department_name,
 
-      LEFT JOIN personal rp
-        ON rp.pr_id = ro.pr_id
+    -- Designation
+    dsg.designation_id,
+    dsg.designation_name,
 
-      LEFT JOIN companies_master cm
-        ON cm.cpt_id = o.or_company_id
+    -- Employee Type
+    etm.employee_type_id,
+    etm.employee_type_name
 
-      LEFT JOIN vendor_master vm
-        ON vm.id = o.or_vendor_id
-      WHERE o.pr_id = $1
+FROM organizations o
+
+-- Personal
+INNER JOIN personal p
+    ON p.pr_id = o.pr_id
+
+-- Reporting Person
+LEFT JOIN organizations ro
+    ON ro.or_id = o.or_reporting_to_id
+
+LEFT JOIN personal rp
+    ON rp.pr_id = ro.pr_id
+
+-- Company
+LEFT JOIN companies_master cm
+    ON cm.cpt_id = o.or_company_id
+
+-- Vendor
+LEFT JOIN vendor_master vm
+    ON vm.id = o.or_vendor_id
+
+-- Department
+LEFT JOIN department_master dm
+    ON dm."DepartmentId" = o.or_department_id
+
+-- Designation
+LEFT JOIN designation_master dsg
+    ON dsg.designation_id = o.or_designation_id
+
+-- Employee Type
+LEFT JOIN employee_type_master etm
+    ON etm.employee_type_id = o.or_employee_type_id
+
+WHERE o.pr_id = $1;
       `,
       [employee_id]
     );

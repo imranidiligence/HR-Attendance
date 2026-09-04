@@ -382,6 +382,82 @@ const getMonthlyEmployeesData = async (req, res) => {
   }
 };
 
+const getYearlyEmployeesData = async (req, res) => {
+  try {
+    const { emp_id } = req.params;
+
+    if (!emp_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Employee ID is required"
+      });
+    }
+
+    const query = `
+      WITH months AS (
+    SELECT 
+        generate_series(
+            DATE_TRUNC('year', CURRENT_DATE),
+            DATE_TRUNC('year', CURRENT_DATE) + INTERVAL '11 months',
+            INTERVAL '1 month'
+        )::date AS month_start
+),
+attendance_data AS (
+    SELECT
+        ad.emp_id,
+        DATE(ad.attendance_date) AS attendance_date,
+        ats.status_name
+    FROM daily_attendance ad
+    LEFT JOIN attendence_status ats 
+        ON ad.status_id = ats.id
+    WHERE ad.emp_id = $1
+)
+SELECT
+    TO_CHAR(m.month_start, 'Mon - YYYY') AS month,
+    
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Present'
+    ) AS present_days,
+
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Leave'
+    ) AS leave_days,
+
+    COUNT(*) FILTER (
+        WHERE ad.status_name = 'Absent'
+    ) AS absent_days,
+
+    22 AS target_days
+
+FROM months m
+LEFT JOIN attendance_data ad
+    ON ad.attendance_date >= m.month_start
+    AND ad.attendance_date < m.month_start + INTERVAL '1 month'
+
+GROUP BY m.month_start
+ORDER BY m.month_start;
+    `;
+
+    const result = await db.query(query, [emp_id]);
+
+    return successResponse(
+      res,
+      200,
+      "Monthly employee data fetched successfully",
+      result.rows
+    );
+
+  } catch (error) {
+    console.error("Monthly employee data error:", error);
+
+    return handleDbError(
+      res,
+      error,
+      "Failed to fetch monthly employee data"
+    );
+  }
+};
+
 
 module.exports = {
   getActiveEmployeeCount,
@@ -390,5 +466,6 @@ module.exports = {
   getActive_Employee_Department_Count,
   getWeeklyEmployeesData,
   getEmployeeWeeklyPieChartData,
-  getMonthlyEmployeesData
+  getMonthlyEmployeesData,
+  getYearlyEmployeesData
 };
