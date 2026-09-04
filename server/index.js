@@ -39,6 +39,8 @@ const degreeRoutes = require('./routes/degreeRoutes')
 const cronJobsRoutes = require("./routes/cronJobs.routes")
 const bankAccountTypeRoutes = require('./routes/bankAccountTypeRoutes')
 const holidayRoutes = require("./routes/holidayRoutes");
+const mobilePunchLogRoutes = require("./routes/activityLogRoutes");
+const punchTypeRoutes = require("./routes/punchTypeRoutes");
 const companyRoutes = require('./routes/CompanyRoutes');
 const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const leaveStatusRoutes = require("./routes/LeaveStatusRoutes");
@@ -151,6 +153,8 @@ app.use("/api/holiday-types", holidayTypeRoutes);
 app.use("/api/holidays", holidayRoutes);
 app.use('/api', companyRoutes);
 app.use("/api/cron-jobs", cronJobsRoutes);
+app.use('/api/mobile-activity-logs', mobilePunchLogRoutes);
+app.use('/api/punch-types', punchTypeRoutes);
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
