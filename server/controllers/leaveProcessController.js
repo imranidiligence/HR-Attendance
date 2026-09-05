@@ -607,6 +607,39 @@ exports.applyLeave = async (req, res) => {
                 prId
             );
 
+            const reportingResult = await client.query(
+                `
+                SELECT
+                    o.or_reporting_to_id
+                FROM public.organizations o
+                WHERE o.pr_id = $1
+                  AND o.or_is_active = TRUE
+                LIMIT 1
+                `,
+                [prId]
+            );
+
+            if (reportingResult.rows.length === 0) {
+                const error = new Error(
+                    "Employee organization information not found."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const reportingTo =
+                reportingResult.rows[0].or_reporting_to_id;
+
+            if (!reportingTo) {
+                const error = new Error(
+                    "Reporting manager is not assigned to this employee."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
             const leaveType =
                 await getApplicableLeaveType(
                     client,
@@ -687,14 +720,27 @@ exports.applyLeave = async (req, res) => {
                     `
                     SELECT
                         lq_id,
-                        COALESCE(lq_allocated_days, 0)
-                            AS lq_allocated_days,
-                        COALESCE(lq_carry_forward_days, 0)
-                            AS lq_carry_forward_days,
-                        COALESCE(lq_used_days, 0)
-                            AS lq_used_days,
-                        COALESCE(lq_pending_days, 0)
-                            AS lq_pending_days,
+
+                        COALESCE(
+                            lq_allocated_days,
+                            0
+                        ) AS lq_allocated_days,
+
+                        COALESCE(
+                            lq_carry_forward_days,
+                            0
+                        ) AS lq_carry_forward_days,
+
+                        COALESCE(
+                            lq_used_days,
+                            0
+                        ) AS lq_used_days,
+
+                        COALESCE(
+                            lq_pending_days,
+                            0
+                        ) AS lq_pending_days,
+
                         (
                             COALESCE(lq_allocated_days, 0)
                             +
@@ -733,7 +779,7 @@ exports.applyLeave = async (req, res) => {
 
             if (isPaid && availableDays < totalDays) {
                 const error = new Error(
-                    `Insufficient leave balance. Available: ${availableDays}, Requested: ${totalDays}.Use Unpaid Quota.`
+                    `Insufficient leave balance. Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
                 );
 
                 error.statusCode = 400;
@@ -752,6 +798,7 @@ exports.applyLeave = async (req, res) => {
                         lr_total_days,
                         lr_reason,
                         lr_status_id,
+                        lr_reporting_to,
                         lr_ismailfromrequester,
                         lr_ismailfromapprover,
                         lr_applied_at,
@@ -767,6 +814,7 @@ exports.applyLeave = async (req, res) => {
                         $5,
                         $6,
                         $7,
+                        $8,
                         FALSE,
                         FALSE,
                         CURRENT_TIMESTAMP,
@@ -782,7 +830,8 @@ exports.applyLeave = async (req, res) => {
                         to_date,
                         totalDays,
                         reason || null,
-                        pendingStatusId
+                        pendingStatusId,
+                        reportingTo
                     ]
                 );
 
@@ -808,11 +857,18 @@ exports.applyLeave = async (req, res) => {
                 request: insertResult.rows[0],
                 employee_type_id:
                     employee.employee_type_id,
-                leave_type: leaveType,
-                total_days: totalDays,
-                is_paid: isPaid,
+                reporting_to:
+                    reportingTo,
+                leave_type:
+                    leaveType,
+                total_days:
+                    totalDays,
+                is_paid:
+                    isPaid,
                 available_before:
-                    isPaid ? availableDays : null,
+                    isPaid
+                        ? availableDays
+                        : null,
                 available_after:
                     isPaid
                         ? availableDays - totalDays
@@ -828,6 +884,7 @@ exports.applyLeave = async (req, res) => {
         );
 
     } catch (error) {
+
         return handleDbError(
             res,
             error
