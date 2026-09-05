@@ -1297,6 +1297,89 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
       countResult.rows[0].total,
       10
     );
+    /*
+ * =========================================================
+ * TODAY ATTENDANCE SUMMARY
+ * =========================================================
+ */
+
+const todayAttendanceQuery = `
+  WITH active_employees AS (
+    SELECT DISTINCT
+      TRIM(o.or_emp_id) AS emp_id
+    FROM public.organizations o
+    INNER JOIN public.personal p
+      ON p.pr_id = o.pr_id
+    WHERE o.or_emp_id IS NOT NULL
+      AND TRIM(o.or_emp_id) <> ''
+      AND COALESCE(o.or_is_active, FALSE) = TRUE
+  ),
+
+  today_attendance AS (
+    SELECT DISTINCT
+      TRIM(wa.emp_id) AS emp_id,
+      wa.punch_in,
+      wa.punch_out
+    FROM public.weekly_attendance wa
+    WHERE wa.attendance_date = (
+      CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata'
+    )::DATE
+  )
+
+  SELECT
+    COUNT(a.emp_id) AS total_employees,
+
+    COUNT(
+      CASE
+        WHEN ta.punch_in IS NOT NULL
+        THEN 1
+      END
+    ) AS present,
+
+    COUNT(
+      CASE
+        WHEN ta.punch_in IS NOT NULL
+         AND ta.punch_out IS NULL
+        THEN 1
+      END
+    ) AS working,
+
+    COUNT(
+      CASE
+        WHEN ta.punch_in IS NULL
+        THEN 1
+      END
+    ) AS absent
+
+  FROM active_employees a
+
+  LEFT JOIN today_attendance ta
+    ON ta.emp_id = a.emp_id;
+`;
+
+const todayAttendanceResult = await db.query(todayAttendanceQuery);
+
+const todaySummary = {
+  totalEmployees: parseInt(
+    todayAttendanceResult.rows[0].total_employees,
+    10
+  ),
+
+  present: parseInt(
+    todayAttendanceResult.rows[0].present,
+    10
+  ),
+
+  working: parseInt(
+    todayAttendanceResult.rows[0].working,
+    10
+  ),
+
+  absent: parseInt(
+    todayAttendanceResult.rows[0].absent,
+    10
+  ),
+};
 
     /*
      * =========================================================
@@ -1686,17 +1769,25 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
     );
 
     res.status(200).json({
-      success: true,
-      message: "Weekly attendance fetched successfully",
-      data: result,
-      totalItems,
-      page: pageInt,
-      limit: limitInt,
-      weekStart: fromDate,
-      weekEnd: today,
-      employeeTotals,
-      grandTotalHours: formatSecondsToHHMM(grandTotalSeconds),
-    });
+  success: true,
+  message: "Weekly attendance fetched successfully",
+
+  data: result,
+
+  // Pagination
+  totalItems,
+  page: pageInt,
+  limit: limitInt,
+  weekStart: fromDate,
+  weekEnd: today,
+
+  // Existing totals
+  employeeTotals,
+  grandTotalHours: formatSecondsToHHMM(grandTotalSeconds),
+
+  // Today's attendance summary
+  todaySummary,
+});
 
   } catch (error) {
     console.error(

@@ -863,8 +863,16 @@ exports.processAndSendAttendanceReport = async (
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.max(parseInt(req.query.limit) || 15, 1);
+    const page = Math.max(
+      parseInt(req.query.page) || 1,
+      1
+    );
+
+    const limit = Math.max(
+      parseInt(req.query.limit) || 15,
+      1
+    );
+
     const offset = (page - 1) * limit;
 
     const showInactive =
@@ -885,7 +893,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     const today = todayRows[0].today;
 
     // =========================================================
-    // COUNT EMPLOYEES
+    // COUNT TOTAL EMPLOYEES
     // =========================================================
     let countQuery = `
       SELECT COUNT(DISTINCT o.or_id) AS total
@@ -898,18 +906,126 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         AND TRIM(o.or_emp_id) <> ''
     `;
 
+    // =========================================================
+    // ACTIVE / INACTIVE FILTER
+    // =========================================================
     if (!showInactive) {
       countQuery += `
-        AND COALESCE(o.or_is_active, TRUE) = TRUE
+        AND COALESCE(
+          o.or_is_active,
+          TRUE
+        ) = TRUE
       `;
     }
 
-    const countResult = await db.query(countQuery);
+    const countResult =
+      await db.query(countQuery);
 
     const totalItems = parseInt(
       countResult.rows[0].total,
       10
     );
+
+    // =========================================================
+    // TODAY ATTENDANCE SUMMARY
+    // =========================================================
+    let summaryQuery = `
+      SELECT
+
+        COUNT(DISTINCT o.or_id)
+          AS total_employees,
+
+        /*
+         * Employees who have punched in
+         */
+        COUNT(
+          DISTINCT CASE
+            WHEN da.punch_in IS NOT NULL
+            THEN o.or_id
+          END
+        ) AS punch_in,
+
+        /*
+         * Employees who have punched out
+         */
+        COUNT(
+          DISTINCT CASE
+            WHEN da.punch_out IS NOT NULL
+            THEN o.or_id
+          END
+        ) AS punch_out,
+
+        /*
+         * Employees who have not punched in
+         */
+        COUNT(
+          DISTINCT CASE
+            WHEN da.punch_in IS NULL
+            THEN o.or_id
+          END
+        ) AS absent
+
+      FROM public.organizations o
+
+      INNER JOIN public.personal p
+        ON p.pr_id = o.pr_id
+
+      LEFT JOIN public.daily_attendance da
+        ON TRIM(da.emp_id) = TRIM(o.or_emp_id)
+        AND da.attendance_date = $1
+
+      WHERE o.or_emp_id IS NOT NULL
+        AND TRIM(o.or_emp_id) <> ''
+    `;
+
+    const summaryParams = [today];
+
+    // =========================================================
+    // ACTIVE / INACTIVE FILTER FOR SUMMARY
+    // =========================================================
+    if (!showInactive) {
+      summaryQuery += `
+        AND COALESCE(
+          o.or_is_active,
+          TRUE
+        ) = TRUE
+      `;
+    }
+
+    const summaryResult =
+      await db.query(
+        summaryQuery,
+        summaryParams
+      );
+
+    const summaryRow =
+      summaryResult.rows[0];
+
+    const attendanceSummary = {
+      total_employees:
+        parseInt(
+          summaryRow.total_employees,
+          10
+        ) || 0,
+
+      punch_in:
+        parseInt(
+          summaryRow.punch_in,
+          10
+        ) || 0,
+
+      punch_out:
+        parseInt(
+          summaryRow.punch_out,
+          10
+        ) || 0,
+
+      absent:
+        parseInt(
+          summaryRow.absent,
+          10
+        ) || 0,
+    };
 
     // =========================================================
     // ATTENDANCE QUERY
@@ -922,7 +1038,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         )::DATE AS attendance_date,
 
         TRIM(o.or_emp_id) AS emp_id,
-        ui.Ui_ImagePath AS profile_image,
+
+        ui."Ui_ImagePath" AS profile_image,
 
         COALESCE(
           o.or_is_active,
@@ -930,7 +1047,10 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS is_active,
 
         COALESCE(
-          NULLIF(TRIM(p.pr_first_name), ''),
+          NULLIF(
+            TRIM(p.pr_first_name),
+            ''
+          ),
           TRIM(
             CONCAT_WS(
               ' ',
@@ -942,13 +1062,14 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS name,
 
         /*
-         * Official email from organizations table
+         * Official email
          */
         o."or_official_email" AS email,
 
         'employee' AS role,
 
         da.punch_in,
+
         da.punch_out,
 
         da.status_id,
@@ -959,7 +1080,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         ) AS status,
 
         /*
-         * Calculate total seconds from punch in/out
+         * Calculate total seconds
          */
         CASE
           WHEN da.punch_in IS NOT NULL
@@ -978,8 +1099,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       INNER JOIN public.personal p
         ON p.pr_id = o.pr_id
 
-        left join public.User_Image ui
-        ON  ui.pr_id = p.pr_id
+      LEFT JOIN public.User_Image ui
+        ON ui.pr_id = p.pr_id
+
       LEFT JOIN public.daily_attendance da
         ON TRIM(da.emp_id) = TRIM(o.or_emp_id)
         AND da.attendance_date = $1
@@ -1014,10 +1136,18 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     // =========================================================
     query += `
       ORDER BY
-        COALESCE(o.or_is_active, FALSE) DESC,
+
+        COALESCE(
+          o.or_is_active,
+          FALSE
+        ) DESC,
+
         TRIM(
           COALESCE(
-            NULLIF(p.pr_first_name, ''),
+            NULLIF(
+              p.pr_first_name,
+              ''
+            ),
             CONCAT_WS(
               ' ',
               p.pr_first_name,
@@ -1052,15 +1182,16 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     const formattedRows =
       rows.map((row) => {
 
-        // -----------------------------------------------------
+        // =====================================================
         // TOTAL HOURS
-        // -----------------------------------------------------
+        // =====================================================
         const totalSeconds =
           Number(row.total_seconds) || 0;
 
         let totalHours = "00:00";
 
         if (totalSeconds > 0) {
+
           const hours =
             Math.floor(
               totalSeconds / 3600
@@ -1077,9 +1208,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
             ).padStart(2, "0")}`;
         }
 
-        // -----------------------------------------------------
+        // =====================================================
         // PUNCH IN
-        // -----------------------------------------------------
+        // =====================================================
         const punchIn =
           row.punch_in
             ? new Date(
@@ -1096,9 +1227,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
               )
             : "--";
 
-        // -----------------------------------------------------
+        // =====================================================
         // PUNCH OUT
-        // -----------------------------------------------------
+        // =====================================================
         const punchOut =
           row.punch_out
             ? new Date(
@@ -1115,10 +1246,11 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
               )
             : "--";
 
-        // -----------------------------------------------------
-        // RESPONSE
-        // -----------------------------------------------------
+        // =====================================================
+        // RESPONSE ROW
+        // =====================================================
         return {
+
           attendance_date:
             `${row.attendance_date}T18:30:00.000Z`,
 
@@ -1151,45 +1283,78 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           total_hours:
             totalHours,
-            profile_image:
+
+          profile_image:
             row.profile_image || "-",
         };
       });
 
     // =========================================================
-    // RESPONSE
+    // FINAL RESPONSE
     // =========================================================
     return res.status(200).json({
+
       success: true,
 
+      // =======================================================
+      // TODAY ATTENDANCE SUMMARY
+      // =======================================================
+      summary: {
+
+        total_employees:
+          attendanceSummary.total_employees,
+
+        punch_in:
+          attendanceSummary.punch_in,
+
+        punch_out:
+          attendanceSummary.punch_out,
+
+        absent:
+          attendanceSummary.absent,
+      },
+
+      // =======================================================
+      // EMPLOYEE DATA
+      // =======================================================
       employees:
         formattedRows,
 
+      // =======================================================
+      // PAGINATION
+      // =======================================================
       pagination: {
+
         currentPage:
           page,
 
-        totalItems,
+        totalItems:
+          totalItems,
 
         totalPages:
           Math.ceil(
             totalItems / limit
           ),
 
-        limit,
+        limit:
+          limit,
       },
     });
 
   } catch (error) {
+
     console.error(
       "Organization attendance error:",
       error
     );
 
     return res.status(500).json({
+
       success: false,
+
       message:
         "Failed to process attendance",
+
     });
   }
 };
