@@ -8,12 +8,23 @@ const auth = require("../middlewares/authMiddleware");
 // EMPLOYEE SELF-SERVICE APIs
 // ============================================================
 
+
+router.get("/my-summary", auth,leaveProcessController.getMyLeaveSummary);
+
 // Get leave types applicable to logged-in employee
 router.get(
     "/my-leave-types",
     auth,
     leaveProcessController.getMyLeaveTypes
 );
+
+
+router.put(
+    "/request/:id/edit",
+    auth,
+    leaveProcessController.editLeave
+);
+
 
 // Get leave balance/quota of logged-in employee
 router.get(
@@ -41,6 +52,12 @@ router.get(
     "/my-requests",
     auth,
     leaveProcessController.getMyLeaveRequests
+);
+
+router.get(
+    "/manager/requests",
+    auth,
+    leaveProcessController.getManagerLeaveRequests
 );
 
 // Get logged-in employee's particular leave request

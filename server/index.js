@@ -45,9 +45,10 @@ const companyRoutes = require('./routes/CompanyRoutes');
 const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const leaveStatusRoutes = require("./routes/LeaveStatusRoutes");
 const leaveProcessRoutes = require("./routes/leaveProcessRoutes");
+const leaveQuotaRoutes = require("./routes/LeaveQuotaRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
-require("./cron/leaveQuota.cron");
+//require("./cron/leaveQuota.cron");
 // require("dotenv").config();
 const path = require("path");
 
@@ -147,6 +148,7 @@ app.use("/api/leave", leaveProcessRoutes);
 
 app.use("/api/leaves/types", leavesRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/leave-quota", leaveQuotaRoutes);
 
 // Cron Schedule Route
 

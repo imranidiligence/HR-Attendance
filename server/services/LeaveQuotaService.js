@@ -1,7 +1,50 @@
-const cron = require("node-cron");
 const { db } = require("../db/connectDB");
 
 const CARRY_FORWARD_PERCENTAGE = 0.50;
+
+function calculateAllocatedDays(
+    annualQuota,
+    joiningDate,
+    currentYear,
+    isPaid
+) {
+    if (!isPaid) {
+        return 0;
+    }
+
+    annualQuota = Number(annualQuota) || 0;
+
+    if (annualQuota <= 0) {
+        return 0;
+    }
+
+    if (!joiningDate) {
+        return annualQuota;
+    }
+
+    const joining = new Date(joiningDate);
+
+    if (Number.isNaN(joining.getTime())) {
+        return annualQuota;
+    }
+
+    const joiningYear = joining.getFullYear();
+    const joiningMonth = joining.getMonth() + 1;
+
+    if (joiningYear < currentYear) {
+        return annualQuota;
+    }
+
+    if (joiningYear > currentYear) {
+        return 0;
+    }
+
+    const remainingMonths = 12 - joiningMonth + 1;
+
+    return Math.floor(
+        (annualQuota / 12) * remainingMonths
+    );
+}
 
 async function syncEmployeeLeaveQuota() {
     const client = await db.connect();
@@ -14,19 +57,23 @@ async function syncEmployeeLeaveQuota() {
         const employeesResult = await client.query(`
             SELECT
                 o.or_id,
-                o.Pr_Id,
-                o.or_employee_type_id
+                o.pr_id,
+                o.or_employee_type_id,
+                o.or_joining_date
             FROM public.organizations o
             WHERE o.or_is_active = TRUE
-              AND o.Pr_Id IS NOT NULL
+              AND o.pr_id IS NOT NULL
               AND o.or_employee_type_id IS NOT NULL
         `);
+
+        let createdCount = 0;
+        let skippedCount = 0;
 
         for (const employee of employeesResult.rows) {
 
             const prId = employee.pr_id;
-            const employeeTypeId =
-                employee.or_employee_type_id;
+            const employeeTypeId = employee.or_employee_type_id;
+            const joiningDate = employee.or_joining_date;
 
             const leaveTypesResult = await client.query(
                 `
@@ -48,13 +95,11 @@ async function syncEmployeeLeaveQuota() {
                   AND lt.lt_is_active = TRUE
                   AND (
                         lt.lt_from_date IS NULL
-                        OR lt.lt_from_date <=
-                           make_date($2, 12, 31)
+                        OR lt.lt_from_date <= make_date($2, 12, 31)
                   )
                   AND (
                         lt.lt_to_date IS NULL
-                        OR lt.lt_to_date >=
-                           make_date($2, 1, 1)
+                        OR lt.lt_to_date >= make_date($2, 1, 1)
                   )
                 ORDER BY lt.lt_leave_type_id
                 `,
@@ -66,24 +111,27 @@ async function syncEmployeeLeaveQuota() {
 
             for (const leaveType of leaveTypesResult.rows) {
 
-                const existingQuotaResult =
-                    await client.query(
-                        `
-                        SELECT lq_id
-                        FROM public.leave_quota
-                        WHERE lq_pr_id = $1
-                          AND lq_leave_type_id = $2
-                          AND lq_leave_year = $3
-                        LIMIT 1
-                        `,
-                        [
-                            prId,
-                            leaveType.lt_leave_type_id,
-                            currentYear
-                        ]
-                    );
+                const leaveTypeId =
+                    leaveType.lt_leave_type_id;
+
+                const existingQuotaResult = await client.query(
+                    `
+                    SELECT lq_id
+                    FROM public.leave_quota
+                    WHERE lq_pr_id = $1
+                      AND lq_leave_type_id = $2
+                      AND lq_leave_year = $3
+                    LIMIT 1
+                    `,
+                    [
+                        prId,
+                        leaveTypeId,
+                        currentYear
+                    ]
+                );
 
                 if (existingQuotaResult.rows.length > 0) {
+                    skippedCount++;
                     continue;
                 }
 
@@ -96,7 +144,12 @@ async function syncEmployeeLeaveQuota() {
                     ) || 0;
 
                 const allocatedDays =
-                    isPaid ? masterDays : 0;
+                    calculateAllocatedDays(
+                        masterDays,
+                        joiningDate,
+                        currentYear,
+                        isPaid
+                    );
 
                 let carryForwardDays = 0;
 
@@ -133,14 +186,12 @@ async function syncEmployeeLeaveQuota() {
                             `,
                             [
                                 prId,
-                                leaveType.lt_leave_type_id,
+                                leaveTypeId,
                                 previousYear
                             ]
                         );
 
-                    if (
-                        previousQuotaResult.rows.length > 0
-                    ) {
+                    if (previousQuotaResult.rows.length > 0) {
 
                         const previous =
                             previousQuotaResult.rows[0];
@@ -182,7 +233,7 @@ async function syncEmployeeLeaveQuota() {
                     }
                 }
 
-                await client.query(
+                const insertResult = await client.query(
                     `
                     INSERT INTO public.leave_quota
                     (
@@ -217,10 +268,11 @@ async function syncEmployeeLeaveQuota() {
                         lq_leave_year
                     )
                     DO NOTHING
+                    RETURNING lq_id
                     `,
                     [
                         prId,
-                        leaveType.lt_leave_type_id,
+                        leaveTypeId,
                         employeeTypeId,
                         currentYear,
                         allocatedDays,
@@ -229,14 +281,24 @@ async function syncEmployeeLeaveQuota() {
                     ]
                 );
 
-                console.log(
-                    `[LEAVE QUOTA CREATED] ` +
-                    `PR=${prId} ` +
-                    `TYPE=${leaveType.lt_leave_type_id} ` +
-                    `PAID=${isPaid} ` +
-                    `ALLOCATED=${allocatedDays} ` +
-                    `CARRY=${carryForwardDays}`
-                );
+                if (insertResult.rows.length > 0) {
+
+                    createdCount++;
+
+                    console.log(
+                        `[LEAVE QUOTA CREATED] ` +
+                        `PR=${prId} ` +
+                        `TYPE=${leaveTypeId} ` +
+                        `PAID=${isPaid} ` +
+                        `ANNUAL=${masterDays} ` +
+                        `ALLOCATED=${allocatedDays} ` +
+                        `CARRY=${carryForwardDays} ` +
+                        `JOINING_DATE=${joiningDate || "NULL"}`
+                    );
+
+                } else {
+                    skippedCount++;
+                }
             }
         }
 
@@ -245,6 +307,15 @@ async function syncEmployeeLeaveQuota() {
         console.log(
             `[LEAVE QUOTA SYNC] Completed ${new Date().toISOString()}`
         );
+
+        return {
+            success: true,
+            year: currentYear,
+            employeesProcessed:
+                employeesResult.rows.length,
+            quotasCreated: createdCount,
+            quotasSkipped: skippedCount
+        };
 
     } catch (error) {
 
@@ -255,15 +326,13 @@ async function syncEmployeeLeaveQuota() {
             error
         );
 
+        throw error;
+
     } finally {
+
         client.release();
     }
 }
-
-cron.schedule("*/1 * * * *", async () => {
-    console.log("[LEAVE QUOTA SYNC] Running...");
-    await syncEmployeeLeaveQuota();
-});
 
 module.exports = {
     syncEmployeeLeaveQuota
