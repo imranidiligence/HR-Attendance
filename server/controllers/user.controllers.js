@@ -5,25 +5,17 @@ const { db } = require("../db/connectDB");
 const {
   successResponse,
   errorResponse,
-  handleDbError
+  handleDbError,
 } = require("../utils/response");
 const sendNotification = require("../services/notification.services");
 
-
-
-  
-
-
 const loginController = async (req, res) => {
   try {
-    let {
-      email: identifier,
-      password
-    } = req.body;
+    let { email: identifier, password } = req.body;
 
     if (!identifier || !password) {
       return res.status(400).json({
-        message: "All fields are required"
+        message: "All fields are required",
       });
     }
 
@@ -66,36 +58,30 @@ const loginController = async (req, res) => {
 
       LIMIT 1
       `,
-      [identifier]
+      [identifier],
     );
 
     if (result.rows.length === 0) {
       return res.status(401).json({
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
 
     const user = result.rows[0];
 
-
     if (!user.pr_is_active) {
       return res.status(401).json({
-        message: "User account is inactive"
+        message: "User account is inactive",
       });
     }
 
-
-    const isMatch = await bcrypt.compare(
-      password,
-      user.lg_password
-    );
+    const isMatch = await bcrypt.compare(password, user.lg_password);
 
     if (!isMatch) {
       return res.status(401).json({
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
-
 
     const roleResult = await db.query(
       `
@@ -112,27 +98,24 @@ const loginController = async (req, res) => {
 
       ORDER BY rm.rm_role_id
       `,
-      [user.pr_id]
+      [user.pr_id],
     );
 
     const roles = roleResult.rows;
-
 
     const token = jwt.sign(
       {
         id: user.pr_id,
         emp_id: user.or_emp_id,
-        role: roles.map((r) => r.role_name)
+        role: roles.map((r) => r.role_name),
       },
       process.env.JWT_SECRET,
       {
-        expiresIn: "1h"
-      }
+        expiresIn: "1h",
+      },
     );
 
-
     const decoded = jwt.decode(token);
-
 
     return res.status(200).json({
       message: "Login successful",
@@ -162,19 +145,17 @@ const loginController = async (req, res) => {
 
         profile_image: user.pr_profile_image,
 
-        role: roles.map((r) => r.role_name)
-      }
+        role: roles.map((r) => r.role_name),
+      },
     });
-
   } catch (error) {
     console.error("Login Error:", error);
 
     return res.status(500).json({
-      message: "Internal Server Error"
+      message: "Internal Server Error",
     });
   }
 };
-
 
 const changeMyPassword = async (req, res) => {
   try {
@@ -185,14 +166,14 @@ const changeMyPassword = async (req, res) => {
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required"
+        message: "All fields are required",
       });
     }
 
     if (String(newPassword).length < 8) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters"
+        message: "Password must be at least 8 characters",
       });
     }
 
@@ -210,13 +191,13 @@ const changeMyPassword = async (req, res) => {
         ON p.pr_id = l.pr_id
       WHERE l.pr_id = $1
       `,
-      [employeeId]
+      [employeeId],
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Employee login not found"
+        message: "Employee login not found",
       });
     }
 
@@ -225,21 +206,18 @@ const changeMyPassword = async (req, res) => {
     // Check current password
     const isMatch = await bcrypt.compare(
       String(currentPassword),
-      user.lg_password
+      user.lg_password,
     );
 
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: "Current password is incorrect"
+        message: "Current password is incorrect",
       });
     }
 
     // Hash new password
-    const newHashedPassword = await bcrypt.hash(
-      String(newPassword),
-      10
-    );
+    const newHashedPassword = await bcrypt.hash(String(newPassword), 10);
 
     // Update password in LOGIN table
     await db.query(
@@ -248,27 +226,26 @@ const changeMyPassword = async (req, res) => {
       SET lg_password = $1
       WHERE pr_id = $2
       `,
-      [newHashedPassword, employeeId]
+      [newHashedPassword, employeeId],
     );
 
     // Notification
     await sendNotification(
       user.pr_emp_id,
       "Your password has been changed successfully.",
-      `${user.pr_first_name || ""} ${user.pr_last_name || ""}`.trim()
+      `${user.pr_first_name || ""} ${user.pr_last_name || ""}`.trim(),
     );
 
     return res.status(200).json({
       success: true,
-      message: "Password changed successfully"
+      message: "Password changed successfully",
     });
-
   } catch (error) {
     console.error("Change Password Error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Internal Server Error"
+      message: "Internal Server Error",
     });
   }
 };
@@ -281,7 +258,7 @@ const getAllEmployees = async (req, res) => {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
-}
+};
 
 const getAllEmployeesPaginated = async (req, res) => {
   try {
@@ -289,12 +266,7 @@ const getAllEmployeesPaginated = async (req, res) => {
     const limit = Math.max(parseInt(req.query.limit) || 10, 1);
     const offset = (page - 1) * limit;
 
-    const {
-      search = "",
-      department,
-      designation,
-      status,
-    } = req.query;
+    const { search = "", department, designation, status } = req.query;
 
     const searchValue = search.trim();
 
@@ -346,9 +318,7 @@ const getAllEmployeesPaginated = async (req, res) => {
     }
 
     const whereClause =
-      conditions.length > 0
-        ? `WHERE ${conditions.join(" AND ")}`
-        : "";
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const countQuery = `
       SELECT COUNT(DISTINCT p.pr_id)::int AS total
@@ -358,10 +328,7 @@ const getAllEmployeesPaginated = async (req, res) => {
       ${whereClause}
     `;
 
-    const countResult = await db.query(
-      countQuery,
-      values
-    );
+    const countResult = await db.query(countQuery, values);
 
     const total = countResult.rows[0]?.total || 0;
 
@@ -553,18 +520,15 @@ const getAllEmployeesPaginated = async (req, res) => {
       ${whereClause}
 
       ORDER BY
-        o.or_is_active DESC,
-        p.pr_created_at DESC,
-        p.pr_id DESC
+       o.or_is_active DESC,
+       NULLIF(o.or_emp_id, '')::BIGINT ASC NULLS LAST,
+       p.pr_id ASC
 
       LIMIT $${limitParam}
       OFFSET $${offsetParam}
     `;
 
-    const result = await db.query(
-      dataQuery,
-      dataValues
-    );
+    const result = await db.query(dataQuery, dataValues);
 
     const totalPages = Math.ceil(total / limit);
 
@@ -585,9 +549,7 @@ const getAllEmployeesPaginated = async (req, res) => {
         department: department || null,
         designation: designation || null,
         status:
-          status === undefined || status === ""
-            ? null
-            : status === "true",
+          status === undefined || status === "" ? null : status === "true",
       },
 
       employees: result.rows,
@@ -603,23 +565,29 @@ const getAllEmployeesPaginated = async (req, res) => {
   }
 };
 
-
 const getCountOfEmployees = async (req, res) => {
   try {
-        const totalEmployees = await db.query
-    (`SELECT COUNT(*) AS total FROM users`);
-    const activeCount = await db.query
-    (`SELECT COUNT(*) AS total FROM users WHERE is_active = true`);
+    const totalEmployees = await db.query(
+      `SELECT COUNT(*) AS total FROM users`,
+    );
+    const activeCount = await db.query(
+      `SELECT COUNT(*) AS total FROM users WHERE is_active = true`,
+    );
     const totalActiveEmployees = activeCount.rows[0].total;
-    const inactiveCount = await db.query
-    (`SELECT COUNT(*) AS total FROM users WHERE is_active = false`);
+    const inactiveCount = await db.query(
+      `SELECT COUNT(*) AS total FROM users WHERE is_active = false`,
+    );
     const totalInactiveEmployees = inactiveCount.rows[0].total;
-    const newJoinersCount = await db.query
-    (`SELECT COUNT(*) AS total
+    const newJoinersCount = await db.query(`SELECT COUNT(*) AS total
 FROM organizations
 WHERE EXTRACT(YEAR FROM joining_date) = EXTRACT(YEAR FROM CURRENT_DATE);`);
     const totalNewJoiners = newJoinersCount.rows[0].total;
-    res.status(200).json({totalEmployees: totalEmployees.rows[0].total, totalActiveEmployees, totalInactiveEmployees, totalNewJoiners });
+    res.status(200).json({
+      totalEmployees: totalEmployees.rows[0].total,
+      totalActiveEmployees,
+      totalInactiveEmployees,
+      totalNewJoiners,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
@@ -632,27 +600,22 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
     const { id } = req.params;
 
     if (!id || isNaN(id)) {
-      return errorResponse(res, 400, 'Valid User ID is required', null);
+      return errorResponse(res, 400, "Valid User ID is required", null);
     }
 
     const existing = await db.query(
       `SELECT * FROM organizations WHERE pr_id = $1`,
-      [id]
+      [id],
     );
 
     if (existing.rows.length === 0) {
-      return errorResponse(res, 404, 'User not found', null);
+      return errorResponse(res, 404, "User not found", null);
     }
 
     const { IsActive } = req.body;
 
-    if (typeof IsActive !== 'boolean') {
-      return errorResponse(
-        res,
-        400,
-        'IsActive must be true or false',
-        null
-      );
+    if (typeof IsActive !== "boolean") {
+      return errorResponse(res, 400, "IsActive must be true or false", null);
     }
 
     const updatedBy = req.user?.id || null;
@@ -667,31 +630,27 @@ const updateUserActiveOrInActiveStatus = async (req, res) => {
       RETURNING *
     `;
 
-    const result = await db.query(query, [
-      IsActive,
-      updatedBy,
-      id
-    ]);
+    const result = await db.query(query, [IsActive, updatedBy, id]);
 
     return successResponse(
       res,
       200,
-      `User ${IsActive ? 'activated' : 'deactivated'} successfully`,
-      result.rows[0]
+      `User ${IsActive ? "activated" : "deactivated"} successfully`,
+      result.rows[0],
     );
-
   } catch (error) {
-    return handleDbError(
-      res,
-      error,
-      'Failed to update user status'
-    );
+    return handleDbError(res, error, "Failed to update user status");
   }
 };
 
-const resetPassword = async (req,res) =>{
-  
-}
+const resetPassword = async (req, res) => {};
 
-
-module.exports = { updateUserActiveOrInActiveStatus,loginController,changeMyPassword,getAllEmployees, getAllEmployeesPaginated,getCountOfEmployees, resetPassword };
+module.exports = {
+  updateUserActiveOrInActiveStatus,
+  loginController,
+  changeMyPassword,
+  getAllEmployees,
+  getAllEmployeesPaginated,
+  getCountOfEmployees,
+  resetPassword,
+};
