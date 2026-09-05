@@ -44,8 +44,10 @@ const punchTypeRoutes = require("./routes/punchTypeRoutes");
 const companyRoutes = require('./routes/CompanyRoutes');
 const leaveTypeRoutes = require('./routes/leaveTypeRoutes');
 const leaveStatusRoutes = require("./routes/LeaveStatusRoutes");
+const leaveProcessRoutes = require("./routes/leaveProcessRoutes");
 // const adminRoutes = require("./routes/admin.routes");
 require("./cron/attendance.cron");
+require("./cron/leaveQuota.cron");
 // require("dotenv").config();
 const path = require("path");
 
@@ -140,6 +142,7 @@ app.use('/api/degrees', degreeRoutes);
 app.use('/api/bank-account-types', bankAccountTypeRoutes);
 app.use('/api/leave-types', leaveTypeRoutes);
 app.use("/api/leave-status",leaveStatusRoutes);
+app.use("/api/leave", leaveProcessRoutes);
 // Leaves
 
 app.use("/api/leaves/types", leavesRoutes);
@@ -155,6 +158,7 @@ app.use('/api', companyRoutes);
 app.use("/api/cron-jobs", cronJobsRoutes);
 app.use('/api/mobile-activity-logs', mobilePunchLogRoutes);
 app.use('/api/punch-types', punchTypeRoutes);
+
 
 app.use("/api/update-schedule", cronRoutes);
 server.listen(PORT, async () => {
