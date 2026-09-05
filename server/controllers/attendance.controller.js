@@ -922,6 +922,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
         )::DATE AS attendance_date,
 
         TRIM(o.or_emp_id) AS emp_id,
+        ui.Ui_ImagePath AS profile_image,
 
         COALESCE(
           o.or_is_active,
@@ -977,6 +978,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       INNER JOIN public.personal p
         ON p.pr_id = o.pr_id
 
+        left join public.User_Image ui
+        ON  ui.pr_id = p.pr_id
       LEFT JOIN public.daily_attendance da
         ON TRIM(da.emp_id) = TRIM(o.or_emp_id)
         AND da.attendance_date = $1
@@ -1148,6 +1151,8 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
           total_hours:
             totalHours,
+            profile_image:
+            row.profile_image || "-",
         };
       });
 
