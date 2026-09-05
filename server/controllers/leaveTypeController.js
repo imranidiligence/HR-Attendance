@@ -181,19 +181,12 @@ const getLeaveTypeById = async (req, res) => {
     }
 
     const query = `
-      SELECT
-        lt.*,
-        cp.pr_first_name AS created_by_name,
-        up.pr_first_name AS updated_by_name
-      FROM public.leave_types lt
-      LEFT JOIN public.personal cp
-        ON cp.pr_id = lt.lt_created_by
-      LEFT JOIN public.personal up
-        ON up.pr_id = lt.lt_updated_by
-      WHERE lt.lt_leave_type_id = $1
+      SELECT *
+      FROM public.leave_types
+      WHERE lt_leave_type_id = $1
     `;
 
-    const result = await db.query(query, [id]);
+    const result = await db.query(query, [Number(id)]);
 
     if (result.rows.length === 0) {
       return errorResponse(
@@ -219,7 +212,6 @@ const getLeaveTypeById = async (req, res) => {
     );
   }
 };
-
 
 
 const getAllLeaveTypes = async (req, res) => {
