@@ -1,4 +1,7 @@
 const { db } = require("../db/connectDB");
+require("dotenv").config();
+const { getDeviceAttendance } = require("../services/zk.service");
+const sendEmail = require("../utils/mailer");
 const { successResponse, errorResponse, paginatedResponse, handleDbError } = require("../utils/response");
 const { getPaginationParams } = require("../utils/pagination");
 
@@ -601,17 +604,28 @@ exports.applyLeave = async (req, res) => {
         }
 
         const result = await withTransaction(async (client) => {
-
             const employee = await getEmployee(
                 client,
                 prId
             );
 
-            const reportingResult = await client.query(
+            const employeeResult = await client.query(
                 `
                 SELECT
-                    o.or_reporting_to_id
+                    o.or_id,
+                    o.pr_id,
+                    o.or_emp_id,
+                    o.or_organization_name,
+                    o.or_official_email,
+                    o.or_reporting_to_id,
+                    o.or_department_id,
+                    o.or_designation_id,
+                    p.pr_first_name,
+                    p.pr_last_name,
+                    p.pr_email
                 FROM public.organizations o
+                LEFT JOIN public.personal p
+                    ON p.pr_id = o.pr_id
                 WHERE o.pr_id = $1
                   AND o.or_is_active = TRUE
                 LIMIT 1
@@ -619,7 +633,7 @@ exports.applyLeave = async (req, res) => {
                 [prId]
             );
 
-            if (reportingResult.rows.length === 0) {
+            if (employeeResult.rows.length === 0) {
                 const error = new Error(
                     "Employee organization information not found."
                 );
@@ -628,8 +642,11 @@ exports.applyLeave = async (req, res) => {
                 throw error;
             }
 
+            const employeeDetails =
+                employeeResult.rows[0];
+
             const reportingTo =
-                reportingResult.rows[0].or_reporting_to_id;
+                employeeDetails.or_reporting_to_id;
 
             if (!reportingTo) {
                 const error = new Error(
@@ -639,6 +656,64 @@ exports.applyLeave = async (req, res) => {
                 error.statusCode = 400;
                 throw error;
             }
+
+            const managerResult = await client.query(
+                `
+                SELECT
+                    o.or_id,
+                    o.pr_id,
+                    o.or_emp_id,
+                    o.or_organization_name,
+                    o.or_official_email,
+                    p.pr_first_name,
+                    p.pr_last_name,
+                    p.pr_email
+                FROM public.organizations o
+                LEFT JOIN public.personal p
+                    ON p.pr_id = o.pr_id
+                WHERE o.pr_id = $1
+                  AND o.or_is_active = TRUE
+                LIMIT 1
+                `,
+                [reportingTo]
+            );
+
+            if (managerResult.rows.length === 0) {
+                const error = new Error(
+                    "Reporting manager details not found."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const manager =
+                managerResult.rows[0];
+
+            if (!manager.or_official_email) {
+                const error = new Error(
+                    "Reporting manager email is not configured."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const employeeName = [
+                employeeDetails.pr_first_name,
+                employeeDetails.pr_last_name
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+
+            const managerName = [
+                manager.pr_first_name,
+                manager.pr_last_name
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
 
             const leaveType =
                 await getApplicableLeaveType(
@@ -720,27 +795,22 @@ exports.applyLeave = async (req, res) => {
                     `
                     SELECT
                         lq_id,
-
                         COALESCE(
                             lq_allocated_days,
                             0
                         ) AS lq_allocated_days,
-
                         COALESCE(
                             lq_carry_forward_days,
                             0
                         ) AS lq_carry_forward_days,
-
                         COALESCE(
                             lq_used_days,
                             0
                         ) AS lq_used_days,
-
                         COALESCE(
                             lq_pending_days,
                             0
                         ) AS lq_pending_days,
-
                         (
                             COALESCE(lq_allocated_days, 0)
                             +
@@ -772,12 +842,16 @@ exports.applyLeave = async (req, res) => {
                 throw error;
             }
 
-            const quota = quotaResult.rows[0];
+            const quota =
+                quotaResult.rows[0];
 
             const availableDays =
                 Number(quota.available_days) || 0;
 
-            if (isPaid && availableDays < totalDays) {
+            if (
+                isPaid &&
+                availableDays < totalDays
+            ) {
                 const error = new Error(
                     `Insufficient leave balance. Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
                 );
@@ -855,26 +929,163 @@ exports.applyLeave = async (req, res) => {
 
             return {
                 request: insertResult.rows[0],
+
+                employee: {
+                    pr_id:
+                        employeeDetails.or_pr_id,
+
+                    emp_id:
+                        employeeDetails.or_emp_id,
+
+                    name:
+                        employeeName ||
+                        employeeDetails.or_emp_id ||
+                        "Employee",
+
+                    email:
+                        employeeDetails.or_official_email ||
+                        employeeDetails.pr_email ||
+                        null
+                },
+
+                reporting_manager: {
+                    pr_id:
+                        manager.or_pr_id,
+
+                    emp_id:
+                        manager.or_emp_id,
+
+                    name:
+                        managerName ||
+                        manager.or_emp_id ||
+                        "Manager",
+
+                    email:
+                        manager.or_official_email ||
+                        manager.pr_email ||
+                        null
+                },
+
                 employee_type_id:
                     employee.employee_type_id,
+
                 reporting_to:
                     reportingTo,
+
                 leave_type:
                     leaveType,
+
                 total_days:
                     totalDays,
+
                 is_paid:
                     isPaid,
+
                 available_before:
                     isPaid
                         ? availableDays
                         : null,
+
                 available_after:
                     isPaid
                         ? availableDays - totalDays
                         : null
             };
         });
+
+        try {
+            const request =
+                result.request;
+
+            const employee =
+                result.employee;
+
+            const manager =
+                result.reporting_manager;
+
+            if (!manager.email) {
+                throw new Error(
+                    "Reporting manager email is not configured."
+                );
+            }
+
+            await sendEmail(
+                manager.email,
+                `Leave Request - ${employee.emp_id || employee.pr_id}`,
+                "leave_request",
+                {
+                    manager_name:
+                        manager.name || "Manager",
+
+                    manager_id:
+                        manager.emp_id || manager.pr_id,
+
+                    employee_name:
+                        employee.name || "Employee",
+
+                    employee_id:
+                        employee.emp_id || employee.pr_id,
+
+                    employee_email:
+                        employee.email || "-",
+
+                    leave_request_id:
+                        request.lr_leave_request_id,
+
+                    leave_type:
+                        result.leave_type.lt_leave_type_name,
+
+                    leave_type_code:
+                        result.leave_type.lt_leave_type_code || "-",
+
+                    from_date:
+                        request.lr_from_date,
+
+                    to_date:
+                        request.lr_to_date,
+
+                    total_days:
+                        result.total_days,
+
+                    reason:
+                        request.lr_reason ||
+                        "No reason provided",
+
+                    status:
+                        "Pending",
+
+                    applied_at: (() => {
+    const date = new Date(request.lr_applied_at);
+
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    const amPm = hours >= 12 ? "PM" : "AM";
+
+    hours = hours % 12;
+    hours = hours || 12;
+
+    hours = String(hours).padStart(2, "0");
+
+    return `${day}-${month}-${year} ${hours}:${minutes} ${amPm}`;
+})()
+                }
+            );
+
+            console.log(
+                `[LEAVE EMAIL SENT] Request=${request.lr_leave_request_id} To=${manager.email}`
+            );
+
+        } catch (emailError) {
+            console.error(
+                `[LEAVE EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+                emailError
+            );
+        }
 
         return successResponse(
             res,
@@ -884,7 +1095,6 @@ exports.applyLeave = async (req, res) => {
         );
 
     } catch (error) {
-
         return handleDbError(
             res,
             error
@@ -951,66 +1161,392 @@ exports.cancelLeave = async (req, res) => {
         const prId = getLoggedInPrId(req);
         const requestId = Number(req.params.id);
         const reason = req.body?.reason || null;
+
         if (!Number.isInteger(requestId) || requestId <= 0) {
-            return errorResponse(res, "Valid leave request ID is required.", 400);
-        }
-        const result = await withTransaction(async (client) => {
-            const cancelledStatusId = await getLeaveStatusId(client, "Cancelled");
-            const requestResult = await client.query(
-                `SELECT lr.*, ls.ls_leave_status_name FROM public.leave_requests lr INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id WHERE lr.lr_leave_request_id = $1 AND lr.lr_pr_id = $2 FOR UPDATE`,
-                [requestId, prId]
+            return errorResponse(
+                res,
+                "Valid leave request ID is required.",
+                400
             );
+        }
+
+        const result = await withTransaction(async (client) => {
+            const cancelledStatusId =
+                await getLeaveStatusId(client, "Cancelled");
+
+            const requestResult = await client.query(
+                `
+                SELECT
+                    lr.*,
+                    ls.ls_leave_status_name,
+
+                    o.or_id,
+                    o.pr_id,
+                    o.or_emp_id AS employee_emp_id,
+                    o.or_official_email AS employee_official_email,
+                    o.or_organization_email AS employee_organization_email,
+
+                    p.pr_email AS employee_personal_email,
+                    p.pr_first_name AS employee_first_name,
+                    p.pr_last_name AS employee_last_name,
+
+                    lt.lt_leave_type_name,
+                    lt.lt_leave_type_code
+
+                FROM public.leave_requests lr
+
+                INNER JOIN public.leave_status ls
+                    ON ls.ls_leave_status_id = lr.lr_status_id
+
+                INNER JOIN public.organizations o
+                    ON o.pr_id = lr.lr_pr_id
+
+                LEFT JOIN public.personal p
+                    ON p.pr_id = lr.lr_pr_id
+
+                INNER JOIN public.leave_types lt
+                    ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
+                WHERE lr.lr_leave_request_id = $1
+                  AND lr.lr_pr_id = $2
+
+                FOR UPDATE OF lr
+                `,
+                [
+                    requestId,
+                    prId
+                ]
+            );
+
             if (requestResult.rows.length === 0) {
-                const error = new Error("Leave request not found.");
+                const error = new Error(
+                    "Leave request not found."
+                );
+
                 error.statusCode = 404;
                 throw error;
             }
+
             const leaveRequest = requestResult.rows[0];
-            const currentStatus = leaveRequest.ls_leave_status_name.toLowerCase();
-            if (currentStatus !== "pending" && currentStatus !== "approved") {
-                const error = new Error(`Leave cannot be cancelled because current status is ${leaveRequest.ls_leave_status_name}.`);
+
+            const currentStatus = String(
+                leaveRequest.ls_leave_status_name || ""
+            ).toLowerCase();
+
+            if (
+                currentStatus !== "pending" &&
+                currentStatus !== "approved"
+            ) {
+                const error = new Error(
+                    `Leave cannot be cancelled because current status is ${leaveRequest.ls_leave_status_name}.`
+                );
+
                 error.statusCode = 400;
                 throw error;
             }
-            const today = new Date().toISOString().slice(0, 10);
-            if (leaveRequest.lr_from_date <= today) {
-                const error = new Error("Leave cannot be cancelled on or after the leave start date.");
+
+            const today = new Date()
+                .toISOString()
+                .slice(0, 10);
+
+            const fromDate = String(
+                leaveRequest.lr_from_date
+            ).slice(0, 10);
+
+            if (fromDate <= today) {
+                const error = new Error(
+                    "Leave cannot be cancelled on or after the leave start date."
+                );
+
                 error.statusCode = 400;
                 throw error;
             }
+
             const quotaResult = await client.query(
-                `SELECT * FROM public.leave_quota WHERE lq_pr_id = $1 AND lq_leave_type_id = $2 AND lq_leave_year = EXTRACT(YEAR FROM $3::date) FOR UPDATE`,
-                [prId, leaveRequest.lr_leave_type_id, leaveRequest.lr_from_date]
+                `
+                SELECT
+                    *
+                FROM public.leave_quota
+                WHERE lq_pr_id = $1
+                  AND lq_leave_type_id = $2
+                  AND lq_leave_year = EXTRACT(
+                      YEAR FROM $3::date
+                  )
+                FOR UPDATE
+                `,
+                [
+                    prId,
+                    leaveRequest.lr_leave_type_id,
+                    leaveRequest.lr_from_date
+                ]
             );
+
             if (quotaResult.rows.length === 0) {
-                const error = new Error("Leave quota not found.");
+                const error = new Error(
+                    "Leave quota not found."
+                );
+
                 error.statusCode = 400;
                 throw error;
             }
+
             const quota = quotaResult.rows[0];
-            if (currentStatus === "pending") {
-                await client.query(
-                    `UPDATE public.leave_quota SET lq_pending_days = GREATEST(lq_pending_days - $1, 0), lq_updated_at = CURRENT_TIMESTAMP, lq_updated_by = $2 WHERE lq_id = $3`,
-                    [leaveRequest.lr_total_days, prId, quota.lq_id]
-                );
-            }
-            if (currentStatus === "approved") {
-                await client.query(
-                    `UPDATE public.leave_quota SET lq_used_days = GREATEST(lq_used_days - $1, 0), lq_updated_at = CURRENT_TIMESTAMP, lq_updated_by = $2 WHERE lq_id = $3`,
-                    [leaveRequest.lr_total_days, prId, quota.lq_id]
-                );
-            }
-            const updateResult = await client.query(
-                `UPDATE public.leave_requests SET lr_status_id = $1, lr_cancelled_at = CURRENT_TIMESTAMP, lr_cancellation_reason = $2, lr_updated_at = CURRENT_TIMESTAMP, lr_updated_by = $3 WHERE lr_leave_request_id = $4 RETURNING *`,
-                [cancelledStatusId, reason, prId, requestId]
+
+            const requestedDays = Number(
+                leaveRequest.lr_total_days || 0
             );
-            return updateResult.rows[0];
+
+            const pendingBefore = Number(
+                quota.lq_pending_days || 0
+            );
+
+            const usedBefore = Number(
+                quota.lq_used_days || 0
+            );
+
+            let pendingAfter = pendingBefore;
+            let usedAfter = usedBefore;
+
+            if (currentStatus === "pending") {
+                pendingAfter = Math.max(
+                    pendingBefore - requestedDays,
+                    0
+                );
+
+                await client.query(
+                    `
+                    UPDATE public.leave_quota
+                    SET
+                        lq_pending_days = $1,
+                        lq_updated_at = CURRENT_TIMESTAMP,
+                        lq_updated_by = $2
+                    WHERE lq_id = $3
+                    `,
+                    [
+                        pendingAfter,
+                        prId,
+                        quota.lq_id
+                    ]
+                );
+            }
+
+            if (currentStatus === "approved") {
+                usedAfter = Math.max(
+                    usedBefore - requestedDays,
+                    0
+                );
+
+                await client.query(
+                    `
+                    UPDATE public.leave_quota
+                    SET
+                        lq_used_days = $1,
+                        lq_updated_at = CURRENT_TIMESTAMP,
+                        lq_updated_by = $2
+                    WHERE lq_id = $3
+                    `,
+                    [
+                        usedAfter,
+                        prId,
+                        quota.lq_id
+                    ]
+                );
+            }
+
+            const updateResult = await client.query(
+                `
+                UPDATE public.leave_requests
+                SET
+                    lr_status_id = $1,
+                    lr_cancelled_at = CURRENT_TIMESTAMP,
+                    lr_cancellation_reason = $2,
+                    lr_updated_at = CURRENT_TIMESTAMP,
+                    lr_updated_by = $3
+                WHERE lr_leave_request_id = $4
+                RETURNING *
+                `,
+                [
+                    cancelledStatusId,
+                    reason,
+                    prId,
+                    requestId
+                ]
+            );
+
+            const employeeName = [
+                leaveRequest.employee_first_name,
+                leaveRequest.employee_last_name
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+
+            return {
+                request: updateResult.rows[0],
+
+                employee: {
+                    name:
+                        employeeName ||
+                        leaveRequest.employee_emp_id ||
+                        "Employee",
+
+                    emp_id:
+                        leaveRequest.employee_emp_id,
+
+                    email:
+                        leaveRequest.employee_personal_email ||
+                        leaveRequest.employee_official_email ||
+                        leaveRequest.employee_organization_email ||
+                        null
+                },
+
+                leave_type: {
+                    name:
+                        leaveRequest.lt_leave_type_name,
+
+                    code:
+                        leaveRequest.lt_leave_type_code
+                },
+
+                original_status:
+                    leaveRequest.ls_leave_status_name,
+
+                quota: {
+                    pending_days_before:
+                        pendingBefore,
+
+                    pending_days_after:
+                        pendingAfter,
+
+                    used_days_before:
+                        usedBefore,
+
+                    used_days_after:
+                        usedAfter,
+
+                    released_days:
+                        requestedDays
+                }
+            };
         });
-        return successResponse(res, 200, result, "Leave cancelled successfully.");
+
+        try {
+            if (result.employee.email) {
+                const request = result.request;
+
+                const formatDateTime = (value) => {
+                    if (!value) {
+                        return "-";
+                    }
+
+                    const date = new Date(value);
+
+                    const day = String(
+                        date.getDate()
+                    ).padStart(2, "0");
+
+                    const month = String(
+                        date.getMonth() + 1
+                    ).padStart(2, "0");
+
+                    const year =
+                        date.getFullYear();
+
+                    const hours = String(
+                        date.getHours()
+                    ).padStart(2, "0");
+
+                    const minutes = String(
+                        date.getMinutes()
+                    ).padStart(2, "0");
+
+                    return `${day}-${month}-${year}:${hours}:${minutes}`;
+                };
+
+                await sendEmail(
+                    result.employee.email,
+                    `Leave Request Cancelled - ${request.lr_leave_request_id}`,
+                    "leave_cancelled",
+                    {
+                        employee_name:
+                            result.employee.name,
+
+                        employee_id:
+                            result.employee.emp_id,
+
+                        leave_request_id:
+                            request.lr_leave_request_id,
+
+                        leave_type:
+                            result.leave_type.name,
+
+                        leave_type_code:
+                            result.leave_type.code || "-",
+
+                        from_date:
+                            request.lr_from_date,
+
+                        to_date:
+                            request.lr_to_date,
+
+                        total_days:
+                            request.lr_total_days,
+
+                        original_status:
+                            result.original_status,
+
+                        reason:
+                            request.lr_reason ||
+                            "No reason provided",
+
+                        cancellation_reason:
+                            request.lr_cancellation_reason ||
+                            "No cancellation reason provided",
+
+                        status:
+                            "Cancelled",
+
+                        applied_at:
+                            formatDateTime(
+                                request.lr_applied_at
+                            ),
+
+                        cancelled_at:
+                            formatDateTime(
+                                request.lr_cancelled_at
+                            ),
+
+                        pending_days:
+                            result.quota.pending_days_after,
+
+                        used_days:
+                            result.quota.used_days_after
+                    }
+                );
+
+                console.log(
+                    `[LEAVE CANCELLATION EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.employee.email}`
+                );
+            }
+        } catch (emailError) {
+            console.error(
+                `[LEAVE CANCELLATION EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+                emailError
+            );
+        }
+
+        return successResponse(
+            res,
+            200,
+            result,
+            "Leave cancelled successfully."
+        );
+
     } catch (error) {
         return handleDbError(res, error);
     }
 };
+
 
 exports.getPendingApprovals = async (req, res) => {
     try {
@@ -1033,245 +1569,748 @@ exports.getPendingApprovals = async (req, res) => {
 };
 
 exports.approveLeave = async (req, res) => {
-    try {
-        const approverPrId = getLoggedInPrId(req);
-        const requestId = Number(req.params.id);
-        const remark = req.body?.remark || null;
-        if (!Number.isInteger(requestId) || requestId <= 0) {
-            return errorResponse(res, "Valid leave request ID is required.", 400);
-        }
-        const result = await withTransaction(async (client) => {
-            const approvedStatusId = await getLeaveStatusId(client, "Approved");
-            const requestResult = await client.query(
-                `SELECT lr.*, ls.ls_leave_status_name, employee.or_id AS employee_or_id, employee.pr_id AS employee_pr_id, employee.or_reporting_to_id, manager.pr_id AS manager_pr_id FROM public.leave_requests lr INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id INNER JOIN public.organizations employee ON employee.pr_id = lr.lr_pr_id INNER JOIN public.organizations manager ON manager.or_id = employee.or_reporting_to_id WHERE lr.lr_leave_request_id = $1 FOR UPDATE OF lr`,
-                [requestId]
-            );
-            if (requestResult.rows.length === 0) {
-                const error = new Error("Leave request not found.");
-                error.statusCode = 404;
-                throw error;
-            }
-            const leaveRequest = requestResult.rows[0];
-            if (Number(leaveRequest.manager_pr_id) !== Number(approverPrId)) {
-                const error = new Error("You are not authorized to approve this leave request.");
-                error.statusCode = 403;
-                throw error;
-            }
-            const currentStatus = String(leaveRequest.ls_leave_status_name || "").toLowerCase();
-            if (currentStatus !== "pending") {
-                const error = new Error(`Leave cannot be approved because current status is ${leaveRequest.ls_leave_status_name}.`);
-                error.statusCode = 400;
-                throw error;
-            }
-            const quotaResult = await client.query(
-                `SELECT * FROM public.leave_quota WHERE lq_pr_id = $1 AND lq_leave_type_id = $2 AND lq_leave_year = EXTRACT(YEAR FROM $3::date) FOR UPDATE`,
-                [leaveRequest.lr_pr_id, leaveRequest.lr_leave_type_id, leaveRequest.lr_from_date]
-            );
-            if (quotaResult.rows.length === 0) {
-                const error = new Error("Leave quota not found.");
-                error.statusCode = 400;
-                throw error;
-            }
-            const quota = quotaResult.rows[0];
-            const pendingDays = Number(quota.lq_pending_days || 0);
-            const requestedDays = Number(leaveRequest.lr_total_days || 0);
-            if (pendingDays < requestedDays) {
-                const error = new Error("Invalid quota state. Pending leave balance is insufficient.");
-                error.statusCode = 409;
-                throw error;
-            }
-            await client.query(
-                `UPDATE public.leave_quota SET lq_pending_days = lq_pending_days - $1, lq_used_days = lq_used_days + $1, lq_updated_at = CURRENT_TIMESTAMP, lq_updated_by = $2 WHERE lq_id = $3`,
-                [requestedDays, approverPrId, quota.lq_id]
-            );
-            const updateResult = await client.query(
-                `UPDATE public.leave_requests SET lr_status_id = $1, lr_approver_by = $2, lr_approver_at = CURRENT_TIMESTAMP, lr_approver_remark = $3, lr_ismailfromapprover = FALSE, lr_updated_at = CURRENT_TIMESTAMP, lr_updated_by = $2 WHERE lr_leave_request_id = $4 RETURNING *`,
-                [approvedStatusId, approverPrId, remark, requestId]
-            );
-            return { request: updateResult.rows[0], quota: { lq_id: quota.lq_id, pending_days_before: pendingDays, pending_days_after: pendingDays - requestedDays, used_days_before: Number(quota.lq_used_days || 0), used_days_after: Number(quota.lq_used_days || 0) + requestedDays } };
-        });
-        return successResponse(res, 200, result, "Leave approved successfully.");
-    } catch (error) {
-        return handleDbError(res, error);
+try {
+const approverPrId = getLoggedInPrId(req);
+const requestId = Number(req.params.id);
+const remark = req.body?.remark || null;
+
+
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+        return errorResponse(
+            res,
+            "Valid leave request ID is required.",
+            400
+        );
     }
+
+    if (!approverPrId) {
+        return errorResponse(
+            res,
+            "Unable to identify logged-in approver.",
+            401
+        );
+    }
+
+    const result = await withTransaction(async (client) => {
+        const approvedStatusId =
+            await getLeaveStatusId(client, "Approved");
+
+        const requestResult = await client.query(
+            `
+            SELECT
+                lr.*,
+                ls.ls_leave_status_name,
+
+                employee.or_id AS employee_or_id,
+                employee.pr_id AS employee_pr_id,
+                employee.or_emp_id AS employee_emp_id,
+                employee.or_official_email AS employee_official_email,
+                employee.or_organization_name AS employee_organization_name,
+                employee.or_reporting_to_id,
+
+                employee_personal.pr_first_name AS employee_first_name,
+                employee_personal.pr_last_name AS employee_last_name,
+                employee_personal.pr_email AS employee_personal_email,
+
+                manager.pr_id AS manager_pr_id,
+                manager.or_emp_id AS manager_emp_id,
+                manager.or_official_email AS manager_official_email,
+
+                lt.lt_leave_type_name,
+                lt.lt_leave_type_code
+
+            FROM public.leave_requests lr
+
+            INNER JOIN public.leave_status ls
+                ON ls.ls_leave_status_id = lr.lr_status_id
+
+            INNER JOIN public.organizations employee
+                ON employee.pr_id = lr.lr_pr_id
+
+            INNER JOIN public.personal employee_personal
+                ON employee_personal.pr_id = employee.pr_id
+
+            INNER JOIN public.organizations manager
+                ON manager.or_id = employee.or_reporting_to_id
+
+            INNER JOIN public.leave_types lt
+                ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
+            WHERE lr.lr_leave_request_id = $1
+
+            FOR UPDATE OF lr
+            `,
+            [requestId]
+        );
+
+        if (requestResult.rows.length === 0) {
+            const error = new Error(
+                "Leave request not found."
+            );
+
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const leaveRequest = requestResult.rows[0];
+
+        if (
+            Number(leaveRequest.manager_pr_id) !==
+            Number(approverPrId)
+        ) {
+            const error = new Error(
+                "You are not authorized to approve this leave request."
+            );
+
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const currentStatus =
+            String(
+                leaveRequest.ls_leave_status_name || ""
+            ).toLowerCase();
+
+        if (currentStatus !== "pending") {
+            const error = new Error(
+                `Leave cannot be approved because current status is ${leaveRequest.ls_leave_status_name}.`
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const quotaResult = await client.query(
+            `
+            SELECT *
+            FROM public.leave_quota
+            WHERE lq_pr_id = $1
+              AND lq_leave_type_id = $2
+              AND lq_leave_year =
+                  EXTRACT(YEAR FROM $3::date)
+            FOR UPDATE
+            `,
+            [
+                leaveRequest.lr_pr_id,
+                leaveRequest.lr_leave_type_id,
+                leaveRequest.lr_from_date
+            ]
+        );
+
+        if (quotaResult.rows.length === 0) {
+            const error = new Error(
+                "Leave quota not found."
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const quota = quotaResult.rows[0];
+
+        const pendingDays =
+            Number(quota.lq_pending_days || 0);
+
+        const requestedDays =
+            Number(leaveRequest.lr_total_days || 0);
+
+        if (requestedDays <= 0) {
+            const error = new Error(
+                "Invalid leave request days."
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (pendingDays < requestedDays) {
+            const error = new Error(
+                "Invalid quota state. Pending leave balance is insufficient."
+            );
+
+            error.statusCode = 409;
+            throw error;
+        }
+
+        const usedDaysBefore =
+            Number(quota.lq_used_days || 0);
+
+        const pendingDaysAfter =
+            pendingDays - requestedDays;
+
+        const usedDaysAfter =
+            usedDaysBefore + requestedDays;
+
+        await client.query(
+            `
+            UPDATE public.leave_quota
+            SET
+                lq_pending_days = $1,
+                lq_used_days = $2,
+                lq_updated_at = CURRENT_TIMESTAMP,
+                lq_updated_by = $3
+            WHERE lq_id = $4
+            `,
+            [
+                pendingDaysAfter,
+                usedDaysAfter,
+                approverPrId,
+                quota.lq_id
+            ]
+        );
+
+        const updateResult = await client.query(
+            `
+            UPDATE public.leave_requests
+            SET
+                lr_status_id = $1,
+                lr_approver_by = $2,
+                lr_approver_at = CURRENT_TIMESTAMP,
+                lr_approver_remark = $3,
+                lr_ismailfromapprover = FALSE,
+                lr_updated_at = CURRENT_TIMESTAMP,
+                lr_updated_by = $2
+            WHERE lr_leave_request_id = $4
+            RETURNING *
+            `,
+            [
+                approvedStatusId,
+                approverPrId,
+                remark,
+                requestId
+            ]
+        );
+
+        const employeeName = [
+            leaveRequest.employee_first_name,
+            leaveRequest.employee_last_name
+        ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        const employeeEmail =
+            leaveRequest.employee_personal_email ||
+            leaveRequest.employee_official_email ||
+            null;
+
+        return {
+            request: updateResult.rows[0],
+
+            employee: {
+                pr_id: leaveRequest.employee_pr_id,
+                emp_id: leaveRequest.employee_emp_id,
+                name:
+                    employeeName ||
+                    leaveRequest.employee_emp_id ||
+                    "Employee",
+                email: employeeEmail
+            },
+
+            manager: {
+                pr_id: leaveRequest.manager_pr_id,
+                emp_id: leaveRequest.manager_emp_id,
+                email: leaveRequest.manager_official_email
+            },
+
+            leave_type: {
+                name: leaveRequest.lt_leave_type_name,
+                code: leaveRequest.lt_leave_type_code
+            },
+
+            quota: {
+                lq_id: quota.lq_id,
+                pending_days_before: pendingDays,
+                pending_days_after: pendingDaysAfter,
+                used_days_before: usedDaysBefore,
+                used_days_after: usedDaysAfter
+            }
+        };
+    });
+
+    try {
+        if (result.employee.email) {
+            const request = result.request;
+
+            const formattedAppliedAt =
+                request.lr_applied_at
+                    ? new Date(
+                        request.lr_applied_at
+                    ).toLocaleString("en-GB", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false
+                    })
+                        .replace(",", ":")
+                        .replace(" ", "")
+                        .replace(
+                            /^(\d{2})\/(\d{2})\/(\d{4}):/,
+                            "$2-$1-$3:"
+                        )
+                    : "-";
+
+            const formattedApprovedAt =
+                request.lr_approver_at
+                    ? new Date(
+                        request.lr_approver_at
+                    ).toLocaleString("en-GB", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false
+                    })
+                        .replace(",", ":")
+                        .replace(" ", "")
+                        .replace(
+                            /^(\d{2})\/(\d{2})\/(\d{4}):/,
+                            "$2-$1-$3:"
+                        )
+                    : "-";
+
+            await sendEmail(
+                result.employee.email,
+                `Leave Request Approved - ${request.lr_leave_request_id}`,
+                "leave_approved",
+                {
+                    employee_name:
+                        result.employee.name,
+
+                    employee_id:
+                        result.employee.emp_id,
+
+                    leave_request_id:
+                        request.lr_leave_request_id,
+
+                    leave_type:
+                        result.leave_type.name,
+
+                    leave_type_code:
+                        result.leave_type.code || "-",
+
+                    from_date:
+                        request.lr_from_date,
+
+                    to_date:
+                        request.lr_to_date,
+
+                    total_days:
+                        request.lr_total_days,
+
+                    reason:
+                        request.lr_reason ||
+                        "No reason provided",
+
+                    status:
+                        "Approved",
+
+                    applied_at:
+                        formattedAppliedAt,
+
+                    approved_at:
+                        formattedApprovedAt,
+
+                    approver_remark:
+                        result.request.lr_approver_remark ||
+                        "No remark provided",
+
+                    used_days:
+                        result.quota.used_days_after,
+
+                    pending_days:
+                        result.quota.pending_days_after
+                }
+            );
+
+            await db.query(
+                `
+                UPDATE public.leave_requests
+                SET
+                    lr_ismailfromapprover = TRUE,
+                    lr_updated_at = CURRENT_TIMESTAMP,
+                    lr_updated_by = $1
+                WHERE lr_leave_request_id = $2
+                `,
+                [
+                    approverPrId,
+                    request.lr_leave_request_id
+                ]
+            );
+
+            console.log(
+                `[LEAVE APPROVAL EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.employee.email}`
+            );
+        }
+    } catch (emailError) {
+        console.error(
+            `[LEAVE APPROVAL EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+            emailError
+        );
+    }
+
+    return successResponse(
+        res,
+        200,
+        result,
+        "Leave approved successfully."
+    );
+
+} catch (error) {
+    return handleDbError(res, error);
+}
 };
 
 
+
 exports.editLeave = async (req, res) => {
-    try {
-        const prId = getLoggedInPrId(req);
-        const requestId = Number(req.params.id);
+try {
+const prId = getLoggedInPrId(req);
+const requestId = Number(req.params.id);
 
-        const {
-            leave_type_id,
-            from_date,
-            to_date,
-            reason
-        } = req.body;
 
-        if (!Number.isInteger(requestId) || requestId <= 0) {
-            return errorResponse(res, "Valid leave request ID is required.", 400);
-        }
+    const {
+        leave_type_id,
+        from_date,
+        to_date,
+        reason
+    } = req.body;
 
-        if (!leave_type_id) {
-            return errorResponse(res, "Leave type is required.", 400);
-        }
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+        return errorResponse(
+            res,
+            "Valid leave request ID is required.",
+            400
+        );
+    }
 
-        if (!isValidDate(from_date) || !isValidDate(to_date)) {
-            return errorResponse(
-                res,
-                "Valid from_date and to_date are required in YYYY-MM-DD format.",
-                400
+    if (!leave_type_id) {
+        return errorResponse(
+            res,
+            "Leave type is required.",
+            400
+        );
+    }
+
+    if (!isValidDate(from_date) || !isValidDate(to_date)) {
+        return errorResponse(
+            res,
+            "Valid from_date and to_date are required in YYYY-MM-DD format.",
+            400
+        );
+    }
+
+    if (from_date > to_date) {
+        return errorResponse(
+            res,
+            "From date cannot be greater than to date.",
+            400
+        );
+    }
+
+    const requestedDays = calculateTotalDays(
+        from_date,
+        to_date
+    );
+
+    if (!requestedDays || requestedDays <= 0) {
+        return errorResponse(
+            res,
+            "Invalid leave duration.",
+            400
+        );
+    }
+
+    const fromYear = Number(
+        from_date.substring(0, 4)
+    );
+
+    const toYear = Number(
+        to_date.substring(0, 4)
+    );
+
+    if (fromYear !== toYear) {
+        return errorResponse(
+            res,
+            "Leave dates must belong to the same year.",
+            400
+        );
+    }
+
+    const result = await withTransaction(async (client) => {
+        const pendingStatusId =
+            await getLeaveStatusId(
+                client,
+                "Pending"
             );
-        }
 
-        if (from_date > to_date) {
-            return errorResponse(
-                res,
-                "From date cannot be greater than to date.",
-                400
+        const requestResult = await client.query(
+            `
+            SELECT
+                lr.*,
+
+                ls.ls_leave_status_name,
+
+                lt.lt_leave_type_name,
+                lt.lt_leave_type_code,
+                lt.lt_is_paid,
+                lt.lt_emptype,
+
+                employee.pr_id AS employee_pr_id,
+                employee.or_emp_id AS employee_emp_id,
+                employee.or_official_email AS employee_official_email,
+                employee.or_reporting_to_id,
+
+                employee_personal.pr_first_name AS employee_first_name,
+                employee_personal.pr_last_name AS employee_last_name,
+                employee_personal.pr_email AS employee_personal_email,
+
+                manager.pr_id AS manager_pr_id,
+                manager.or_emp_id AS manager_emp_id,
+                manager.or_official_email AS manager_official_email,
+
+                manager_personal.pr_first_name AS manager_first_name,
+                manager_personal.pr_last_name AS manager_last_name,
+                manager_personal.pr_email AS manager_personal_email
+
+            FROM public.leave_requests lr
+
+            INNER JOIN public.leave_status ls
+                ON ls.ls_leave_status_id =
+                   lr.lr_status_id
+
+            INNER JOIN public.leave_types lt
+                ON lt.lt_leave_type_id =
+                   lr.lr_leave_type_id
+
+            INNER JOIN public.organizations employee
+                ON employee.pr_id =
+                   lr.lr_pr_id
+
+            INNER JOIN public.personal employee_personal
+                ON employee_personal.pr_id =
+                   employee.pr_id
+
+            LEFT JOIN public.organizations manager
+                ON manager.or_id =
+                   employee.or_reporting_to_id
+                AND manager.or_is_active = TRUE
+
+            LEFT JOIN public.personal manager_personal
+                ON manager_personal.pr_id =
+                   manager.pr_id
+
+            WHERE lr.lr_leave_request_id = $1
+
+            FOR UPDATE OF lr
+            `,
+            [requestId]
+        );
+
+        if (requestResult.rows.length === 0) {
+            const error = new Error(
+                "Leave request not found."
             );
+
+            error.statusCode = 404;
+            throw error;
         }
 
-        const requestedDays = calculateTotalDays(from_date, to_date);
+        const oldRequest =
+            requestResult.rows[0];
 
-        const result = await withTransaction(async (client) => {
+        if (
+            Number(oldRequest.lr_pr_id) !==
+            Number(prId)
+        ) {
+            const error = new Error(
+                "You are not authorized to edit this leave request."
+            );
 
- 
-            const pendingStatusId =
-                await getLeaveStatusId(client, "Pending");
+            error.statusCode = 403;
+            throw error;
+        }
 
-            const approvedStatusId =
-                await getLeaveStatusId(client, "Approved");
+        const currentStatus =
+            String(
+                oldRequest.ls_leave_status_name || ""
+            ).toLowerCase();
 
-            const rejectedStatusId =
-                await getLeaveStatusId(client, "Rejected");
+        const editableStatuses = [
+            "pending",
+            "approved",
+            "rejected",
+            "cancelled"
+        ];
 
-            const cancelledStatusId =
-                await getLeaveStatusId(client, "Cancelled");
+        if (
+            !editableStatuses.includes(
+                currentStatus
+            )
+        ) {
+            const error = new Error(
+                `Leave cannot be edited because current status is ${oldRequest.ls_leave_status_name}.`
+            );
 
+            error.statusCode = 400;
+            throw error;
+        }
 
-         
-            const requestResult = await client.query(
+        const employeeResult =
+            await client.query(
                 `
                 SELECT
-                    lr.*,
-                    ls.ls_leave_status_name,
-                    lt.lt_leave_type_name,
-                    lt.lt_is_paid,
-                    lt.lt_emptype
-                FROM public.leave_requests lr
+                    o.pr_id,
+                    o.or_emp_id,
+                    o.or_official_email,
+                    o.or_reporting_to_id,
 
-                INNER JOIN public.leave_status ls
-                    ON ls.ls_leave_status_id = lr.lr_status_id
+                    CONCAT_WS(
+                        ' ',
+                        p.pr_first_name,
+                        p.pr_last_name
+                    ) AS employee_name,
 
-                INNER JOIN public.leave_types lt
-                    ON lt.lt_leave_type_id = lr.lr_leave_type_id
+                    p.pr_email AS employee_email
 
-                WHERE lr.lr_leave_request_id = $1
+                FROM public.organizations o
 
-                FOR UPDATE
+                INNER JOIN public.personal p
+                    ON p.pr_id = o.pr_id
+
+                WHERE o.pr_id = $1
+                  AND o.or_is_active = TRUE
+
+                LIMIT 1
                 `,
-                [requestId]
+                [prId]
             );
 
-            if (requestResult.rows.length === 0) {
-                const error = new Error(
-                    "Leave request not found."
-                );
+        if (
+            employeeResult.rows.length === 0
+        ) {
+            const error = new Error(
+                "Employee organization information not found."
+            );
 
-                error.statusCode = 404;
-                throw error;
-            }
+            error.statusCode = 400;
+            throw error;
+        }
 
-            const oldRequest = requestResult.rows[0];
+        const employee =
+            employeeResult.rows[0];
 
+        if (!employee.or_reporting_to_id) {
+            const error = new Error(
+                "Reporting manager is not assigned to this employee."
+            );
 
+            error.statusCode = 400;
+            throw error;
+        }
 
-            if (Number(oldRequest.lr_pr_id) !== Number(prId)) {
-                const error = new Error(
-                    "You are not authorized to edit this leave request."
-                );
+        const managerResult =
+            await client.query(
+                `
+                SELECT
+                    o.pr_id,
+                    o.or_emp_id,
+                    o.or_official_email,
 
-                error.statusCode = 403;
-                throw error;
-            }
+                    CONCAT_WS(
+                        ' ',
+                        p.pr_first_name,
+                        p.pr_last_name
+                    ) AS manager_name,
 
+                    p.pr_email AS manager_email
 
-        
+                FROM public.organizations o
 
-            const currentStatus =
-                String(
-                    oldRequest.ls_leave_status_name || ""
-                ).toLowerCase();
+                INNER JOIN public.personal p
+                    ON p.pr_id = o.pr_id
 
+                WHERE o.or_id = $1
+                  AND o.or_is_active = TRUE
 
-            const editableStatuses = [
-                "pending",
-                "approved",
-                "rejected",
-                "cancelled"
-            ];
+                LIMIT 1
+                `,
+                [
+                    employee.or_reporting_to_id
+                ]
+            );
 
-            if (!editableStatuses.includes(currentStatus)) {
-                const error = new Error(
-                    `Leave cannot be edited because current status is ${oldRequest.ls_leave_status_name}.`
-                );
+        if (
+            managerResult.rows.length === 0
+        ) {
+            const error = new Error(
+                "Reporting manager information not found."
+            );
 
-                error.statusCode = 400;
-                throw error;
-            }
+            error.statusCode = 400;
+            throw error;
+        }
 
+        const manager =
+            managerResult.rows[0];
 
-   
+        const managerEmail =
+            manager.manager_email ||
+            manager.or_official_email ||
+            null;
 
-            const employee = await getEmployee(
+        if (!managerEmail) {
+            const error = new Error(
+                "Reporting manager email is not configured."
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const newLeaveType =
+            await getApplicableLeaveType(
                 client,
-                prId
+                prId,
+                Number(leave_type_id),
+                from_date,
+                to_date
             );
 
+        if (!newLeaveType) {
+            const error = new Error(
+                "Invalid or inactive leave type."
+            );
 
-      
+            error.statusCode = 400;
+            throw error;
+        }
 
-            const newLeaveType =
-                await getApplicableLeaveType(
-                    client,
-                    prId,
-                    Number(leave_type_id),
-                    from_date,
-                    to_date
-                );
+        const oldLeaveTypeId =
+            Number(
+                oldRequest.lr_leave_type_id
+            );
 
+        const newLeaveTypeId =
+            Number(leave_type_id);
 
-            const oldLeaveTypeId =
-                Number(oldRequest.lr_leave_type_id);
+        const oldDays =
+            Number(
+                oldRequest.lr_total_days || 0
+            );
 
-            const newLeaveTypeId =
-                Number(leave_type_id);
+        const oldYear =
+            Number(
+                String(
+                    oldRequest.lr_from_date
+                ).substring(0, 4)
+            );
 
-            const oldDays =
-                Number(oldRequest.lr_total_days || 0);
-
-
-            const fromYear =
-                Number(from_date.substring(0, 4));
-
-            const toYear =
-                Number(to_date.substring(0, 4));
-
-            if (fromYear !== toYear) {
-                return (() => {
-                    const error = new Error(
-                        "Leave dates must belong to the same year."
-                    );
-
-                    error.statusCode = 400;
-                    throw error;
-                })();
-            }
-
-
-            const overlapResult = await client.query(
+        const overlapResult =
+            await client.query(
                 `
                 SELECT
                     lr.lr_leave_request_id,
@@ -1279,10 +2318,12 @@ exports.editLeave = async (req, res) => {
                     lr.lr_to_date,
                     lr.lr_total_days,
                     ls.ls_leave_status_name
+
                 FROM public.leave_requests lr
 
                 INNER JOIN public.leave_status ls
-                    ON ls.ls_leave_status_id = lr.lr_status_id
+                    ON ls.ls_leave_status_id =
+                       lr.lr_status_id
 
                 WHERE lr.lr_pr_id = $1
 
@@ -1290,8 +2331,12 @@ exports.editLeave = async (req, res) => {
 
                   AND lr.lr_leave_type_id = $3
 
-                  AND LOWER(ls.ls_leave_status_name)
-                      IN ('pending', 'approved')
+                  AND LOWER(
+                      ls.ls_leave_status_name
+                  ) IN (
+                      'pending',
+                      'approved'
+                  )
 
                   AND lr.lr_from_date <= $4::date
                   AND lr.lr_to_date >= $5::date
@@ -1307,46 +2352,51 @@ exports.editLeave = async (req, res) => {
                 ]
             );
 
-            if (overlapResult.rows.length > 0) {
-                const error = new Error(
-                    `Leave dates overlap with another ${newLeaveType.lt_leave_type_name} request.`
-                );
+        if (
+            overlapResult.rows.length > 0
+        ) {
+            const error = new Error(
+                `Leave dates overlap with another ${newLeaveType.lt_leave_type_name} request.`
+            );
 
-                error.statusCode = 409;
-                throw error;
-            }
+            error.statusCode = 409;
+            throw error;
+        }
 
-            const oldQuotaResult = await client.query(
+        const oldQuotaResult =
+            await client.query(
                 `
                 SELECT *
                 FROM public.leave_quota
-
                 WHERE lq_pr_id = $1
                   AND lq_leave_type_id = $2
                   AND lq_leave_year = $3
-
                 FOR UPDATE
                 `,
                 [
                     prId,
                     oldLeaveTypeId,
-                    Number(
-                        String(oldRequest.lr_from_date)
-                            .substring(0, 4)
-                    )
+                    oldYear
                 ]
             );
 
+        let oldQuota = null;
 
-            const newQuotaResult = await client.query(
+        if (
+            oldQuotaResult.rows.length > 0
+        ) {
+            oldQuota =
+                oldQuotaResult.rows[0];
+        }
+
+        const newQuotaResult =
+            await client.query(
                 `
                 SELECT *
                 FROM public.leave_quota
-
                 WHERE lq_pr_id = $1
                   AND lq_leave_type_id = $2
                   AND lq_leave_year = $3
-
                 FOR UPDATE
                 `,
                 [
@@ -1356,205 +2406,173 @@ exports.editLeave = async (req, res) => {
                 ]
             );
 
+        let newQuota = null;
 
+        if (
+            newQuotaResult.rows.length > 0
+        ) {
+            newQuota =
+                newQuotaResult.rows[0];
+        }
 
-            let oldQuota = null;
-            let newQuota = null;
+        const oldConsumesQuota =
+            currentStatus === "pending" ||
+            currentStatus === "approved";
 
-            if (oldQuotaResult.rows.length > 0) {
-                oldQuota = oldQuotaResult.rows[0];
-            }
-
-            if (newQuotaResult.rows.length > 0) {
-                newQuota = newQuotaResult.rows[0];
-            }
-
-
-
-            const oldConsumesQuota =
-                currentStatus === "pending" ||
-                currentStatus === "approved";
-
-
-            if (newLeaveType.lt_is_paid === true) {
-
-                if (!newQuota) {
-                    const error = new Error(
-                        "Leave quota not found for the selected leave type."
-                    );
-
-                    error.statusCode = 400;
-                    throw error;
-                }
-
-
-                let availableDays =
-                    Number(newQuota.lq_allocated_days || 0)
-                    +
-                    Number(newQuota.lq_carry_forward_days || 0)
-                    -
-                    Number(newQuota.lq_used_days || 0)
-                    -
-                    Number(newQuota.lq_pending_days || 0);
-
-
-
-                if (
-                    oldConsumesQuota &&
-                    oldLeaveTypeId === newLeaveTypeId
-                ) {
-                    if (currentStatus === "pending") {
-                        availableDays += oldDays;
-                    }
-
-                    if (currentStatus === "approved") {
-                        availableDays += oldDays;
-                    }
-                }
-
-
-                if (availableDays < requestedDays) {
-                    const error = new Error(
-                        `Insufficient leave balance. Available: ${availableDays}, Requested: ${requestedDays}.Use Unpaid Quota.`
-                    );
-
-                    error.statusCode = 400;
-                    throw error;
-                }
-            }
-
-
-
-            if (oldConsumesQuota && oldQuota) {
-
-                if (currentStatus === "pending") {
-
-                    await client.query(
-                        `
-                        UPDATE public.leave_quota
-
-                        SET
-                            lq_pending_days =
-                                GREATEST(
-                                    lq_pending_days - $1,
-                                    0
-                                ),
-
-                            lq_updated_at =
-                                CURRENT_TIMESTAMP,
-
-                            lq_updated_by = $2
-
-                        WHERE lq_id = $3
-                        `,
-                        [
-                            oldDays,
-                            prId,
-                            oldQuota.lq_id
-                        ]
-                    );
-                }
-
-
-                if (currentStatus === "approved") {
-
-                    await client.query(
-                        `
-                        UPDATE public.leave_quota
-
-                        SET
-                            lq_used_days =
-                                GREATEST(
-                                    lq_used_days - $1,
-                                    0
-                                ),
-
-                            lq_updated_at =
-                                CURRENT_TIMESTAMP,
-
-                            lq_updated_by = $2
-
-                        WHERE lq_id = $3
-                        `,
-                        [
-                            oldDays,
-                            prId,
-                            oldQuota.lq_id
-                        ]
-                    );
-                }
-            }
-
-
+        if (
+            newLeaveType.lt_is_paid === true
+        ) {
             if (!newQuota) {
+                const error = new Error(
+                    "Leave quota not found for the selected leave type."
+                );
 
-                if (newLeaveType.lt_is_paid === true) {
-                    const error = new Error(
-                        "Leave quota not found for the selected leave type."
-                    );
+                error.statusCode = 400;
+                throw error;
+            }
 
-                    error.statusCode = 400;
-                    throw error;
-                }
+            let availableDays =
+                Number(
+                    newQuota.lq_allocated_days || 0
+                ) +
+                Number(
+                    newQuota.lq_carry_forward_days || 0
+                ) -
+                Number(
+                    newQuota.lq_used_days || 0
+                ) -
+                Number(
+                    newQuota.lq_pending_days || 0
+                );
 
-            } else {
+            if (
+                oldConsumesQuota &&
+                oldLeaveTypeId === newLeaveTypeId &&
+                oldYear === fromYear
+            ) {
+                availableDays += oldDays;
+            }
 
+            if (
+                availableDays <
+                requestedDays
+            ) {
+                const error = new Error(
+                    `Insufficient leave balance. Available: ${availableDays}, Requested: ${requestedDays}. Use Unpaid Quota.`
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+        }
+
+        if (
+            oldConsumesQuota &&
+            oldQuota
+        ) {
+            if (
+                currentStatus === "pending"
+            ) {
                 await client.query(
                     `
                     UPDATE public.leave_quota
-
                     SET
                         lq_pending_days =
-                            lq_pending_days + $1,
-
+                            GREATEST(
+                                lq_pending_days - $1,
+                                0
+                            ),
                         lq_updated_at =
                             CURRENT_TIMESTAMP,
-
                         lq_updated_by = $2
-
                     WHERE lq_id = $3
                     `,
                     [
-                        requestedDays,
+                        oldDays,
                         prId,
-                        newQuota.lq_id
+                        oldQuota.lq_id
                     ]
                 );
             }
 
+            if (
+                currentStatus === "approved"
+            ) {
+                await client.query(
+                    `
+                    UPDATE public.leave_quota
+                    SET
+                        lq_used_days =
+                            GREATEST(
+                                lq_used_days - $1,
+                                0
+                            ),
+                        lq_updated_at =
+                            CURRENT_TIMESTAMP,
+                        lq_updated_by = $2
+                    WHERE lq_id = $3
+                    `,
+                    [
+                        oldDays,
+                        prId,
+                        oldQuota.lq_id
+                    ]
+                );
+            }
+        }
 
-            const updateResult = await client.query(
+        if (
+            newLeaveType.lt_is_paid === true
+        ) {
+            if (!newQuota) {
+                const error = new Error(
+                    "Leave quota not found for the selected leave type."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
+            await client.query(
+                `
+                UPDATE public.leave_quota
+                SET
+                    lq_pending_days =
+                        COALESCE(
+                            lq_pending_days,
+                            0
+                        ) + $1,
+                    lq_updated_at =
+                        CURRENT_TIMESTAMP,
+                    lq_updated_by = $2
+                WHERE lq_id = $3
+                `,
+                [
+                    requestedDays,
+                    prId,
+                    newQuota.lq_id
+                ]
+            );
+        }
+
+        const updateResult =
+            await client.query(
                 `
                 UPDATE public.leave_requests
-
                 SET
                     lr_leave_type_id = $1,
                     lr_from_date = $2,
                     lr_to_date = $3,
                     lr_total_days = $4,
                     lr_reason = $5,
-
-                    /*
-                     * Every edit requires manager approval again.
-                     */
                     lr_status_id = $6,
-
-                    /*
-                     * Clear old approval information.
-                     */
                     lr_approver_by = NULL,
                     lr_approver_at = NULL,
                     lr_approver_remark = NULL,
-
                     lr_ismailfromapprover = FALSE,
-
-                    lr_updated_at =
-                        CURRENT_TIMESTAMP,
-
+                    lr_updated_at = CURRENT_TIMESTAMP,
                     lr_updated_by = $7
-
                 WHERE lr_leave_request_id = $8
-
                 RETURNING *
                 `,
                 [
@@ -1569,44 +2587,217 @@ exports.editLeave = async (req, res) => {
                 ]
             );
 
+        return {
+            request:
+                updateResult.rows[0],
 
-            return {
-                request: updateResult.rows[0],
+            employee: {
+                pr_id:
+                    employee.pr_id,
 
-                previous_status:
-                    oldRequest.ls_leave_status_name,
+                name:
+                    employee.employee_name ||
+                    employee.or_emp_id ||
+                    "Employee",
 
-                new_status: "Pending",
+                emp_id:
+                    employee.or_emp_id,
 
-                previous_leave_type_id:
-                    oldLeaveTypeId,
+                email:
+                    employee.employee_email ||
+                    employee.or_official_email ||
+                    null
+            },
 
-                new_leave_type_id:
-                    newLeaveTypeId,
+            manager: {
+                pr_id:
+                    manager.pr_id,
 
-                previous_days:
-                    oldDays,
+                emp_id:
+                    manager.or_emp_id,
 
-                new_days:
-                    requestedDays,
+                name:
+                    manager.manager_name ||
+                    manager.or_emp_id ||
+                    "Manager",
 
-                quota_status:
-                    "Pending days updated successfully"
-            };
-        });
+                email:
+                    managerEmail
+            },
 
+            leave_type: {
+                name:
+                    newLeaveType.lt_leave_type_name,
 
-        return successResponse(
-            res,
-            200,
-            result,
-            "Leave request edited successfully and sent for approval again."
+                code:
+                    newLeaveType.lt_leave_type_code ||
+                    "-"
+            },
+
+            previous_status:
+                oldRequest.ls_leave_status_name,
+
+            new_status:
+                "Pending",
+
+            previous_leave_type_id:
+                oldLeaveTypeId,
+
+            new_leave_type_id:
+                newLeaveTypeId,
+
+            previous_days:
+                oldDays,
+
+            new_days:
+                requestedDays,
+
+            quota_status:
+                "Pending days updated successfully"
+        };
+    });
+
+    try {
+        const request =
+            result.request;
+
+        const formatDateTime = (value) => {
+            if (!value) {
+                return "-";
+            }
+
+            const date =
+                new Date(value);
+
+            const day =
+                String(
+                    date.getDate()
+                ).padStart(2, "0");
+
+            const month =
+                String(
+                    date.getMonth() + 1
+                ).padStart(2, "0");
+
+            const year =
+                date.getFullYear();
+
+            const hours =
+                String(
+                    date.getHours()
+                ).padStart(2, "0");
+
+            const minutes =
+                String(
+                    date.getMinutes()
+                ).padStart(2, "0");
+
+            return `${day}-${month}-${year}:${hours}:${minutes}`;
+        };
+
+        if (
+            result.manager &&
+            result.manager.email
+        ) {
+            await sendEmail(
+                result.manager.email,
+                `Leave Request Updated - ${request.lr_leave_request_id}`,
+                "leave_request_edit",
+                {
+                    manager_name:
+                        result.manager.name,
+
+                    employee_name:
+                        result.employee.name,
+
+                    employee_id:
+                        result.employee.emp_id,
+
+                    employee_email:
+                        result.employee.email ||
+                        "-",
+
+                    leave_request_id:
+                        request.lr_leave_request_id,
+
+                    leave_type:
+                        result.leave_type.name,
+
+                    leave_type_code:
+                        result.leave_type.code,
+
+                    from_date:
+                        request.lr_from_date,
+
+                    to_date:
+                        request.lr_to_date,
+
+                    total_days:
+                        request.lr_total_days,
+
+                    reason:
+                        request.lr_reason ||
+                        "No reason provided",
+
+                    previous_status:
+                        result.previous_status,
+
+                    status:
+                        "Pending",
+
+                    applied_at:
+                        formatDateTime(
+                            request.lr_applied_at
+                        ),
+
+                    updated_at:
+                        formatDateTime(
+                            request.lr_updated_at
+                        )
+                }
+            );
+
+            await db.query(
+                `
+                UPDATE public.leave_requests
+                SET
+                    lr_ismailfromrequester = TRUE,
+                    lr_updated_at = CURRENT_TIMESTAMP,
+                    lr_updated_by = $1
+                WHERE lr_leave_request_id = $2
+                `,
+                [
+                    prId,
+                    request.lr_leave_request_id
+                ]
+            );
+
+            console.log(
+                `[LEAVE EDIT EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.manager.email}`
+            );
+        }
+    } catch (emailError) {
+        console.error(
+            `[LEAVE EDIT EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+            emailError
         );
-
-    } catch (error) {
-        return handleDbError(res, error);
     }
+
+    return successResponse(
+        res,
+        200,
+        result,
+        "Leave request edited successfully and sent for approval again."
+    );
+
+} catch (error) {
+    return handleDbError(
+        res,
+        error
+    );
+}
 };
+
 
 exports.getMyLeaveRequests = async (req, res) => {
     try {
@@ -1674,68 +2865,399 @@ exports.getMyLeaveRequests = async (req, res) => {
 };
 
 exports.rejectLeave = async (req, res) => {
-    try {
-        const approverPrId = getLoggedInPrId(req);
-        const requestId = Number(req.params.id);
-        const remark = req.body?.remark || null;
-        if (!Number.isInteger(requestId) || requestId <= 0) {
-            return errorResponse(res, "Valid leave request ID is required.", 400);
-        }
-        const result = await withTransaction(async (client) => {
-            const rejectedStatusId = await getLeaveStatusId(client, "Rejected");
-            const requestResult = await client.query(
-                `SELECT lr.*, ls.ls_leave_status_name, employee.or_id AS employee_or_id, employee.pr_id AS employee_pr_id, employee.or_reporting_to_id, manager.pr_id AS manager_pr_id FROM public.leave_requests lr INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id INNER JOIN public.organizations employee ON employee.pr_id = lr.lr_pr_id INNER JOIN public.organizations manager ON manager.or_id = employee.or_reporting_to_id WHERE lr.lr_leave_request_id = $1 FOR UPDATE OF lr`,
-                [requestId]
-            );
-            if (requestResult.rows.length === 0) {
-                const error = new Error("Leave request not found.");
-                error.statusCode = 404;
-                throw error;
-            }
-            const leaveRequest = requestResult.rows[0];
-            if (Number(leaveRequest.manager_pr_id) !== Number(approverPrId)) {
-                const error = new Error("You are not authorized to reject this leave request.");
-                error.statusCode = 403;
-                throw error;
-            }
-            const currentStatus = String(leaveRequest.ls_leave_status_name || "").toLowerCase();
-            if (currentStatus !== "pending") {
-                const error = new Error(`Leave cannot be rejected because current status is ${leaveRequest.ls_leave_status_name}.`);
-                error.statusCode = 400;
-                throw error;
-            }
-            const quotaResult = await client.query(
-                `SELECT lq_id, lq_pr_id, lq_leave_type_id, lq_leave_year, lq_allocated_days, lq_carry_forward_days, lq_used_days, lq_pending_days FROM public.leave_quota WHERE lq_pr_id = $1 AND lq_leave_type_id = $2 AND lq_leave_year = EXTRACT(YEAR FROM $3::date) FOR UPDATE`,
-                [leaveRequest.lr_pr_id, leaveRequest.lr_leave_type_id, leaveRequest.lr_from_date]
-            );
-            if (quotaResult.rows.length === 0) {
-                const error = new Error("Leave quota not found.");
-                error.statusCode = 400;
-                throw error;
-            }
-            const quota = quotaResult.rows[0];
-            const pendingDays = Number(quota.lq_pending_days || 0);
-            const requestedDays = Number(leaveRequest.lr_total_days || 0);
-            if (pendingDays < requestedDays) {
-                const error = new Error("Invalid quota state. Pending leave balance is insufficient.");
-                error.statusCode = 409;
-                throw error;
-            }
-            await client.query(
-                `UPDATE public.leave_quota SET lq_pending_days = GREATEST(lq_pending_days - $1, 0), lq_updated_at = CURRENT_TIMESTAMP, lq_updated_by = $2 WHERE lq_id = $3`,
-                [requestedDays, approverPrId, quota.lq_id]
-            );
-            const updateResult = await client.query(
-                `UPDATE public.leave_requests SET lr_status_id = $1, lr_approver_by = $2, lr_approver_at = CURRENT_TIMESTAMP, lr_approver_remark = $3, lr_ismailfromapprover = FALSE, lr_updated_at = CURRENT_TIMESTAMP, lr_updated_by = $2 WHERE lr_leave_request_id = $4 RETURNING *`,
-                [rejectedStatusId, approverPrId, remark, requestId]
-            );
-            return { request: updateResult.rows[0], quota: { lq_id: quota.lq_id, pending_days_before: pendingDays, pending_days_after: pendingDays - requestedDays, used_days: Number(quota.lq_used_days || 0), released_days: requestedDays } };
-        });
-        return successResponse(res, 200, result, "Leave rejected successfully.");
-    } catch (error) {
-        return handleDbError(res, error);
+try {
+const approverPrId = getLoggedInPrId(req);
+const requestId = Number(req.params.id);
+const remark = req.body?.remark || null;
+
+
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+        return errorResponse(
+            res,
+            "Valid leave request ID is required.",
+            400
+        );
     }
+
+    if (!approverPrId) {
+        return errorResponse(
+            res,
+            "Unable to identify logged-in approver.",
+            401
+        );
+    }
+
+    const result = await withTransaction(async (client) => {
+        const rejectedStatusId =
+            await getLeaveStatusId(client, "Rejected");
+
+        const requestResult = await client.query(
+            `
+            SELECT
+                lr.*,
+                ls.ls_leave_status_name,
+
+                employee.or_id AS employee_or_id,
+                employee.pr_id AS employee_pr_id,
+                employee.or_emp_id AS employee_emp_id,
+                employee.or_official_email AS employee_official_email,
+                employee.or_organization_name AS employee_organization_name,
+                employee.or_reporting_to_id,
+
+                employee_personal.pr_first_name AS employee_first_name,
+                employee_personal.pr_last_name AS employee_last_name,
+                employee_personal.pr_email AS employee_personal_email,
+
+                manager.pr_id AS manager_pr_id,
+                manager.or_emp_id AS manager_emp_id,
+                manager.or_official_email AS manager_official_email,
+
+                lt.lt_leave_type_name,
+                lt.lt_leave_type_code
+
+            FROM public.leave_requests lr
+
+            INNER JOIN public.leave_status ls
+                ON ls.ls_leave_status_id = lr.lr_status_id
+
+            INNER JOIN public.organizations employee
+                ON employee.pr_id = lr.lr_pr_id
+
+            INNER JOIN public.personal employee_personal
+                ON employee_personal.pr_id = employee.pr_id
+
+            INNER JOIN public.organizations manager
+                ON manager.or_id = employee.or_reporting_to_id
+
+            INNER JOIN public.leave_types lt
+                ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
+            WHERE lr.lr_leave_request_id = $1
+
+            FOR UPDATE OF lr
+            `,
+            [requestId]
+        );
+
+        if (requestResult.rows.length === 0) {
+            const error = new Error(
+                "Leave request not found."
+            );
+
+            error.statusCode = 404;
+            throw error;
+        }
+
+        const leaveRequest = requestResult.rows[0];
+
+        if (
+            Number(leaveRequest.manager_pr_id) !==
+            Number(approverPrId)
+        ) {
+            const error = new Error(
+                "You are not authorized to reject this leave request."
+            );
+
+            error.statusCode = 403;
+            throw error;
+        }
+
+        const currentStatus =
+            String(
+                leaveRequest.ls_leave_status_name || ""
+            ).toLowerCase();
+
+        if (currentStatus !== "pending") {
+            const error = new Error(
+                `Leave cannot be rejected because current status is ${leaveRequest.ls_leave_status_name}.`
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const quotaResult = await client.query(
+            `
+            SELECT
+                lq_id,
+                lq_pr_id,
+                lq_leave_type_id,
+                lq_leave_year,
+                lq_allocated_days,
+                lq_carry_forward_days,
+                lq_used_days,
+                lq_pending_days
+            FROM public.leave_quota
+            WHERE lq_pr_id = $1
+              AND lq_leave_type_id = $2
+              AND lq_leave_year =
+                  EXTRACT(YEAR FROM $3::date)
+            FOR UPDATE
+            `,
+            [
+                leaveRequest.lr_pr_id,
+                leaveRequest.lr_leave_type_id,
+                leaveRequest.lr_from_date
+            ]
+        );
+
+        if (quotaResult.rows.length === 0) {
+            const error = new Error(
+                "Leave quota not found."
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const quota = quotaResult.rows[0];
+
+        const pendingDays =
+            Number(quota.lq_pending_days || 0);
+
+        const requestedDays =
+            Number(leaveRequest.lr_total_days || 0);
+
+        if (requestedDays <= 0) {
+            const error = new Error(
+                "Invalid leave request days."
+            );
+
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (pendingDays < requestedDays) {
+            const error = new Error(
+                "Invalid quota state. Pending leave balance is insufficient."
+            );
+
+            error.statusCode = 409;
+            throw error;
+        }
+
+        const pendingDaysAfter =
+            pendingDays - requestedDays;
+
+        const usedDays =
+            Number(quota.lq_used_days || 0);
+
+        await client.query(
+            `
+            UPDATE public.leave_quota
+            SET
+                lq_pending_days = $1,
+                lq_updated_at = CURRENT_TIMESTAMP,
+                lq_updated_by = $2
+            WHERE lq_id = $3
+            `,
+            [
+                pendingDaysAfter,
+                approverPrId,
+                quota.lq_id
+            ]
+        );
+
+        const updateResult = await client.query(
+            `
+            UPDATE public.leave_requests
+            SET
+                lr_status_id = $1,
+                lr_approver_by = $2,
+                lr_approver_at = CURRENT_TIMESTAMP,
+                lr_approver_remark = $3,
+                lr_ismailfromapprover = FALSE,
+                lr_updated_at = CURRENT_TIMESTAMP,
+                lr_updated_by = $2
+            WHERE lr_leave_request_id = $4
+            RETURNING *
+            `,
+            [
+                rejectedStatusId,
+                approverPrId,
+                remark,
+                requestId
+            ]
+        );
+
+        const employeeName = [
+            leaveRequest.employee_first_name,
+            leaveRequest.employee_last_name
+        ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        const employeeEmail =
+            leaveRequest.employee_personal_email ||
+            leaveRequest.employee_official_email ||
+            null;
+
+        return {
+            request: updateResult.rows[0],
+
+            employee: {
+                pr_id: leaveRequest.employee_pr_id,
+                emp_id: leaveRequest.employee_emp_id,
+                name:
+                    employeeName ||
+                    leaveRequest.employee_emp_id ||
+                    "Employee",
+                email: employeeEmail
+            },
+
+            manager: {
+                pr_id: leaveRequest.manager_pr_id,
+                emp_id: leaveRequest.manager_emp_id,
+                email: leaveRequest.manager_official_email
+            },
+
+            leave_type: {
+                name: leaveRequest.lt_leave_type_name,
+                code: leaveRequest.lt_leave_type_code
+            },
+
+            quota: {
+                lq_id: quota.lq_id,
+                pending_days_before: pendingDays,
+                pending_days_after: pendingDaysAfter,
+                used_days: usedDays,
+                released_days: requestedDays
+            }
+        };
+    });
+
+    try {
+        if (result.employee.email) {
+            const request = result.request;
+
+            const formatDateTime = (value) => {
+                if (!value) {
+                    return "-";
+                }
+
+                const date = new Date(value);
+
+                const day = String(
+                    date.getDate()
+                ).padStart(2, "0");
+
+                const month = String(
+                    date.getMonth() + 1
+                ).padStart(2, "0");
+
+                const year =
+                    date.getFullYear();
+
+                const hours = String(
+                    date.getHours()
+                ).padStart(2, "0");
+
+                const minutes = String(
+                    date.getMinutes()
+                ).padStart(2, "0");
+
+                return `${day}-${month}-${year}:${hours}:${minutes}`;
+            };
+
+            await sendEmail(
+                result.employee.email,
+                `Leave Request Rejected - ${request.lr_leave_request_id}`,
+                "leave_rejected",
+                {
+                    employee_name:
+                        result.employee.name,
+
+                    employee_id:
+                        result.employee.emp_id,
+
+                    leave_request_id:
+                        request.lr_leave_request_id,
+
+                    leave_type:
+                        result.leave_type.name,
+
+                    leave_type_code:
+                        result.leave_type.code || "-",
+
+                    from_date:
+                        request.lr_from_date,
+
+                    to_date:
+                        request.lr_to_date,
+
+                    total_days:
+                        request.lr_total_days,
+
+                    reason:
+                        request.lr_reason ||
+                        "No reason provided",
+
+                    status:
+                        "Rejected",
+
+                    applied_at:
+                        formatDateTime(
+                            request.lr_applied_at
+                        ),
+
+                    rejected_at:
+                        formatDateTime(
+                            request.lr_approver_at
+                        ),
+
+                    approver_remark:
+                        request.lr_approver_remark ||
+                        "No remark provided",
+
+                    pending_days:
+                        result.quota.pending_days_after,
+
+                    used_days:
+                        result.quota.used_days
+                }
+            );
+
+            await db.query(
+                `
+                UPDATE public.leave_requests
+                SET
+                    lr_ismailfromapprover = TRUE,
+                    lr_updated_at = CURRENT_TIMESTAMP,
+                    lr_updated_by = $1
+                WHERE lr_leave_request_id = $2
+                `,
+                [
+                    approverPrId,
+                    request.lr_leave_request_id
+                ]
+            );
+
+            console.log(
+                `[LEAVE REJECTION EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.employee.email}`
+            );
+        }
+    } catch (emailError) {
+        console.error(
+            `[LEAVE REJECTION EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+            emailError
+        );
+    }
+
+    return successResponse(
+        res,
+        200,
+        result,
+        "Leave rejected successfully."
+    );
+
+} catch (error) {
+    return handleDbError(res, error);
+}
+
+
 };
+
 
 exports.getAllLeaveRequests = async (req, res) => {
     try {
