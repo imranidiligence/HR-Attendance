@@ -107,6 +107,7 @@ async function syncEmployeeLeaveQuota() {
                 FROM public.leave_types lt
                 WHERE lt.lt_emptype = $1
                   AND lt.lt_is_active = TRUE
+                  AND lt.lt_leave_type_code = 'PL' Or lt.lt_leave_type_code = 'LWP'
                   AND (
                         lt.lt_from_date IS NULL
                         OR lt.lt_from_date <= make_date($2, 12, 31)
