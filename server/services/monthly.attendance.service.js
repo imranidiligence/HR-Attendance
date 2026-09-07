@@ -57,17 +57,6 @@ async function generateMonthlyAttendance(client) {
         )
     ),
 
-    /* =====================================================
-       BACKFILL: every (active employee, date) pair across
-       full history — including dates with ZERO punches.
-
-       This is what makes a delete-and-rerun produce complete
-       data instead of only punch-driven dates. Holidays and
-       weekly-offs with no punches will now correctly get a
-       row (classified by day_rule/holiday_info below) instead
-       of being skipped entirely.
-    ===================================================== */
-
     backfill_pairs AS
     (
       SELECT
@@ -98,12 +87,6 @@ async function generateMonthlyAttendance(client) {
           OR o.or_leaving_date >= d.attendance_date
         )
 
-        /*
-          Only include dates NOT already correctly recorded —
-          keeps this cheap on repeat runs once history is
-          backfilled once, instead of recomputing everything
-          every single run forever.
-        */
         AND NOT EXISTS
         (
           SELECT 1
@@ -128,50 +111,49 @@ async function generateMonthlyAttendance(client) {
       FROM target_pairs
     ),
 
-   active_setting AS
-(
-  SELECT
-    s.id,
-    s.office_start_time,
-    s.office_end_time,
-    s.grace_period_minutes,
-    s.half_day_after_minutes
-  FROM public.attendance_settings s
-  WHERE s.is_active = TRUE
-  ORDER BY s.id DESC
-  LIMIT 1
-),
+    active_setting AS
+    (
+      SELECT
+        s.id,
+        s.office_start_time,
+        s.office_end_time,
+        s.grace_period_minutes,
+        s.half_day_after_minutes
+      FROM public.attendance_settings s
+      WHERE s.is_active = TRUE
+      ORDER BY s.id DESC
+      LIMIT 1
+    ),
+
     day_rule AS
-(
-  SELECT
+    (
+      SELECT
+        d.attendance_date,
 
-    d.attendance_date,
+        s.id AS setting_id,
+        s.grace_period_minutes,
+        s.half_day_after_minutes,
 
-    s.id AS setting_id,
-    s.grace_period_minutes,
-    s.half_day_after_minutes,
+        r.full_day_hours,
+        r.half_day_hours,
 
-    r.full_day_hours,
-    r.half_day_hours,
+        COALESCE(r.is_working_day, TRUE) AS is_working_day,
+        COALESCE(r.start_time, s.office_start_time) AS start_time,
+        COALESCE(r.end_time, s.office_end_time) AS end_time
 
-    COALESCE(r.is_working_day, TRUE) AS is_working_day,
-    COALESCE(r.start_time, s.office_start_time) AS start_time,
-    COALESCE(r.end_time, s.office_end_time) AS end_time
+      FROM distinct_target_dates d
 
-  FROM distinct_target_dates d
+      CROSS JOIN active_setting s
 
-  CROSS JOIN active_setting s
-
-  LEFT JOIN public.attendance_weekly_rules r
-    ON r.attendance_setting_id = s.id
-   AND r.day_of_week =
-       EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
-),
+      LEFT JOIN public.attendance_weekly_rules r
+        ON r.attendance_setting_id = s.id
+       AND r.day_of_week =
+           EXTRACT(ISODOW FROM d.attendance_date)::INTEGER
+    ),
 
     holiday_info AS
     (
       SELECT
-
         d.attendance_date,
 
         h.holiday_id,
@@ -197,19 +179,39 @@ async function generateMonthlyAttendance(client) {
     ),
 
     statuses AS
-(
-  SELECT
+    (
+      SELECT
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'present'
+        ) AS present_id,
 
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'present')    AS present_id,
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'working')    AS working_id,
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'half day')   AS half_day_id,
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'holiday')    AS holiday_id,
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'weekly off') AS weekly_off_id,
-    MAX(id) FILTER (WHERE LOWER(TRIM(status_name)) = 'absent')     AS absent_id
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'working'
+        ) AS working_id,
 
-  FROM public.attendence_status
-  WHERE is_active = TRUE
-),
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'half day'
+        ) AS half_day_id,
+
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'holiday'
+        ) AS holiday_id,
+
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'weekly off'
+        ) AS weekly_off_id,
+
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'absent'
+        ) AS absent_id,
+
+        MAX(id) FILTER (
+          WHERE LOWER(TRIM(status_name)) = 'leave'
+        ) AS leave_id
+
+      FROM public.attendence_status
+      WHERE is_active = TRUE
+    ),
 
     employees AS
     (
@@ -238,7 +240,6 @@ async function generateMonthlyAttendance(client) {
     punch_data AS
     (
       SELECT
-
         TRIM(al.emp_id) AS emp_id,
 
         (al.punch_time AT TIME ZONE 'Asia/Kolkata')::DATE
@@ -266,7 +267,6 @@ async function generateMonthlyAttendance(client) {
     punches AS
     (
       SELECT
-
         e.emp_id,
         e.attendance_date,
 
@@ -284,13 +284,37 @@ async function generateMonthlyAttendance(client) {
         ON p.emp_id = e.emp_id
        AND p.attendance_date = e.attendance_date
 
-      GROUP BY e.emp_id, e.attendance_date
+      GROUP BY
+        e.emp_id,
+        e.attendance_date
+    ),
+
+    leave_info AS
+    (
+      SELECT
+        e.emp_id,
+        e.attendance_date,
+        MAX(lr.lr_leave_request_id) AS leave_request_id
+
+      FROM employees e
+
+      JOIN public.organizations o
+        ON TRIM(o.or_emp_id) = e.emp_id
+
+      JOIN public.leave_requests lr
+        ON lr.lr_pr_id = o.pr_id
+       AND e.attendance_date BETWEEN
+           lr.lr_from_date AND lr.lr_to_date
+       AND lr.lr_status_id = 2
+
+      GROUP BY
+        e.emp_id,
+        e.attendance_date
     ),
 
     calculated AS
     (
       SELECT
-
         p.emp_id,
         p.attendance_date,
 
@@ -314,8 +338,14 @@ async function generateMonthlyAttendance(client) {
           WHEN h.holiday_id IS NOT NULL THEN 0
           WHEN dr.is_working_day = FALSE THEN 0
           WHEN p.punch_in::TIME <= dr.start_time THEN 0
-          ELSE GREATEST(0,
-            FLOOR(EXTRACT(EPOCH FROM (p.punch_in::TIME - dr.start_time)) / 60)::INTEGER
+          ELSE GREATEST(
+            0,
+            FLOOR(
+              EXTRACT(
+                EPOCH FROM
+                (p.punch_in::TIME - dr.start_time)
+              ) / 60
+            )::INTEGER
           )
         END AS late_arrival,
 
@@ -324,7 +354,12 @@ async function generateMonthlyAttendance(client) {
           WHEN h.holiday_id IS NOT NULL THEN FALSE
           WHEN dr.is_working_day = FALSE THEN FALSE
           WHEN p.punch_in::TIME >
-               (dr.start_time + MAKE_INTERVAL(mins => dr.grace_period_minutes))
+               (
+                 dr.start_time +
+                 MAKE_INTERVAL(
+                   mins => dr.grace_period_minutes
+                 )
+               )
             THEN TRUE
           ELSE FALSE
         END AS is_late_arrived,
@@ -334,8 +369,14 @@ async function generateMonthlyAttendance(client) {
           WHEN h.holiday_id IS NOT NULL THEN 0
           WHEN dr.is_working_day = FALSE THEN 0
           WHEN p.punch_out::TIME >= dr.end_time THEN 0
-          ELSE GREATEST(0,
-            FLOOR(EXTRACT(EPOCH FROM (dr.end_time - p.punch_out::TIME)) / 60)::INTEGER
+          ELSE GREATEST(
+            0,
+            FLOOR(
+              EXTRACT(
+                EPOCH FROM
+                (dr.end_time - p.punch_out::TIME)
+              ) / 60
+            )::INTEGER
           )
         END AS early_go,
 
@@ -348,17 +389,39 @@ async function generateMonthlyAttendance(client) {
         END AS is_early_gone,
 
         CASE
-        WHEN h.holiday_id IS NOT NULL THEN sid.holiday_id
-        WHEN dr.is_working_day = FALSE THEN sid.weekly_off_id
-        WHEN p.punch_in IS NULL THEN sid.absent_id
-        WHEN p.punch_in::TIME >=
-            (dr.start_time + MAKE_INTERVAL(mins => dr.half_day_after_minutes))
-          THEN sid.half_day_id
-        WHEN p.punch_out IS NULL THEN sid.working_id
-        WHEN (p.punch_out - p.punch_in) < (dr.half_day_hours * INTERVAL '1 hour')
-          THEN sid.half_day_id
-        ELSE sid.present_id
-      END AS status_id
+          WHEN h.holiday_id IS NOT NULL
+            THEN sid.holiday_id
+
+          WHEN dr.is_working_day = FALSE
+            THEN sid.weekly_off_id
+
+          WHEN li.leave_request_id IS NOT NULL
+            THEN sid.leave_id
+
+          WHEN p.punch_in IS NULL
+            THEN sid.absent_id
+
+          WHEN p.punch_in::TIME >=
+               (
+                 dr.start_time +
+                 MAKE_INTERVAL(
+                   mins => dr.half_day_after_minutes
+                 )
+               )
+            THEN sid.half_day_id
+
+          WHEN p.punch_out IS NULL
+            THEN sid.working_id
+
+          WHEN (p.punch_out - p.punch_in) <
+               (
+                 dr.half_day_hours *
+                 INTERVAL '1 hour'
+               )
+            THEN sid.half_day_id
+
+          ELSE sid.present_id
+        END AS status_id
 
       FROM punches p
 
@@ -369,25 +432,43 @@ async function generateMonthlyAttendance(client) {
 
       LEFT JOIN holiday_info h
         ON h.attendance_date = p.attendance_date
+
+      LEFT JOIN leave_info li
+        ON li.emp_id = p.emp_id
+       AND li.attendance_date = p.attendance_date
     )
 
     INSERT INTO public.monthly_attendance
     (
-      attendance_date, punch_in, punch_out,
-      total_hours, expected_hours,
-      created_at, updated_at, emp_id,
-      late_arrival, is_late_arrived,
-      early_go, is_early_gone, status_id
+      attendance_date,
+      punch_in,
+      punch_out,
+      total_hours,
+      expected_hours,
+      created_at,
+      updated_at,
+      emp_id,
+      late_arrival,
+      is_late_arrived,
+      early_go,
+      is_early_gone,
+      status_id
     )
 
     SELECT
-      attendance_date, punch_in, punch_out,
-      total_hours, expected_hours,
+      attendance_date,
+      punch_in,
+      punch_out,
+      total_hours,
+      expected_hours,
       CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
       CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Kolkata',
       emp_id,
-      late_arrival, is_late_arrived,
-      early_go, is_early_gone, status_id
+      late_arrival,
+      is_late_arrived,
+      early_go,
+      is_early_gone,
+      status_id
 
     FROM calculated
 
@@ -407,6 +488,7 @@ async function generateMonthlyAttendance(client) {
   `;
 
   const result = await client.query(query);
+
   return { touched: result.rowCount };
 }
 
