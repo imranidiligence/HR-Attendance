@@ -1039,7 +1039,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
         TRIM(o.or_emp_id) AS emp_id,
 
-        ui."Ui_ImagePath" AS profile_image,
+        ui.Ui_ImagePath AS profile_image,
 
         COALESCE(
           o.or_is_active,
