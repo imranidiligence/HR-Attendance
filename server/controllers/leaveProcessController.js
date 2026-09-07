@@ -1076,6 +1076,18 @@ exports.applyLeave = async (req, res) => {
                 }
             );
 
+            await db.query(
+        `
+        UPDATE public.leave_requests
+        SET
+            lr_ismailfromrequester = TRUE
+        WHERE lr_leave_request_id = $1
+        `,
+        [
+            request.lr_leave_request_id
+        ]
+    );
+
             console.log(
                 `[LEAVE EMAIL SENT] Request=${request.lr_leave_request_id} To=${manager.email}`
             );
@@ -1605,7 +1617,7 @@ const remark = req.body?.remark || null;
                 employee.pr_id AS employee_pr_id,
                 employee.or_emp_id AS employee_emp_id,
                 employee.or_official_email AS employee_official_email,
-                employee.or_organization_name AS employee_organization_name,
+                cm.cpt_name AS employee_organization_name,
                 employee.or_reporting_to_id,
 
                 employee_personal.pr_first_name AS employee_first_name,
@@ -1635,6 +1647,9 @@ const remark = req.body?.remark || null;
 
             INNER JOIN public.leave_types lt
                 ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
+            Left join companies_master cm
+            ON cm.cpt_id = employee.or_company_id
 
             WHERE lr.lr_leave_request_id = $1
 
@@ -1963,8 +1978,6 @@ const remark = req.body?.remark || null;
     return handleDbError(res, error);
 }
 };
-
-
 
 exports.editLeave = async (req, res) => {
 try {
@@ -2622,7 +2635,7 @@ const requestId = Number(req.params.id);
                     "Manager",
 
                 email:
-                    managerEmail
+                    manager.or_official_email
             },
 
             leave_type: {
@@ -2695,87 +2708,87 @@ const requestId = Number(req.params.id);
             return `${day}-${month}-${year}:${hours}:${minutes}`;
         };
 
-        if (
-            result.manager &&
-            result.manager.email
-        ) {
-            await sendEmail(
-                result.manager.email,
-                `Leave Request Updated - ${request.lr_leave_request_id}`,
-                "leave_request_edit",
-                {
-                    manager_name:
-                        result.manager.name,
+       if (
+    result.manager &&
+    result.manager.email
+) {
+    await sendEmail(
+        result.manager.email,
+        `Leave Request Updated - ${request.lr_leave_request_id}`,
+        "leave_request_edit",
+        {
+            manager_name:
+                result.manager.name,
 
-                    employee_name:
-                        result.employee.name,
+            employee_name:
+                result.employee.name,
 
-                    employee_id:
-                        result.employee.emp_id,
+            employee_id:
+                result.employee.emp_id,
 
-                    employee_email:
-                        result.employee.email ||
-                        "-",
+            employee_email:
+                result.employee.email || "-",
 
-                    leave_request_id:
-                        request.lr_leave_request_id,
+            leave_request_id:
+                request.lr_leave_request_id,
 
-                    leave_type:
-                        result.leave_type.name,
+            leave_type:
+                result.leave_type.name,
 
-                    leave_type_code:
-                        result.leave_type.code,
+            leave_type_code:
+                result.leave_type.code,
 
-                    from_date:
-                        request.lr_from_date,
+            from_date:
+                request.lr_from_date,
 
-                    to_date:
-                        request.lr_to_date,
+            to_date:
+                request.lr_to_date,
 
-                    total_days:
-                        request.lr_total_days,
+            total_days:
+                request.lr_total_days,
 
-                    reason:
-                        request.lr_reason ||
-                        "No reason provided",
+            reason:
+                request.lr_reason ||
+                "No reason provided",
 
-                    previous_status:
-                        result.previous_status,
+            previous_status:
+                result.previous_status,
 
-                    status:
-                        "Pending",
+            status:
+                "Pending",
 
-                    applied_at:
-                        formatDateTime(
-                            request.lr_applied_at
-                        ),
+            applied_at:
+                formatDateTime(
+                    request.lr_applied_at
+                ),
 
-                    updated_at:
-                        formatDateTime(
-                            request.lr_updated_at
-                        )
-                }
-            );
-
-            await db.query(
-                `
-                UPDATE public.leave_requests
-                SET
-                    lr_ismailfromrequester = TRUE,
-                    lr_updated_at = CURRENT_TIMESTAMP,
-                    lr_updated_by = $1
-                WHERE lr_leave_request_id = $2
-                `,
-                [
-                    prId,
-                    request.lr_leave_request_id
-                ]
-            );
-
-            console.log(
-                `[LEAVE EDIT EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.manager.email}`
-            );
+            updated_at:
+                formatDateTime(
+                    request.lr_updated_at
+                )
         }
+    );
+
+    await db.query(
+        `
+        UPDATE public.leave_requests
+        SET
+            lr_ismailfromrequester = TRUE,
+            lr_updated_at = CURRENT_TIMESTAMP,
+            lr_updated_by = $1
+        WHERE lr_leave_request_id = $2
+        `,
+        [
+            prId,
+            request.lr_leave_request_id
+        ]
+    );
+
+    console.log(
+        `[LEAVE EDIT EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.manager.email}`
+    );
+}
+
     } catch (emailError) {
         console.error(
             `[LEAVE EDIT EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
@@ -2901,7 +2914,7 @@ const remark = req.body?.remark || null;
                 employee.pr_id AS employee_pr_id,
                 employee.or_emp_id AS employee_emp_id,
                 employee.or_official_email AS employee_official_email,
-                employee.or_organization_name AS employee_organization_name,
+                cm.cpt_name AS employee_organization_name,
                 employee.or_reporting_to_id,
 
                 employee_personal.pr_first_name AS employee_first_name,
@@ -2931,6 +2944,9 @@ const remark = req.body?.remark || null;
 
             INNER JOIN public.leave_types lt
                 ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
+                 Left join companies_master cm
+            ON cm.cpt_id = employee.or_company_id
 
             WHERE lr.lr_leave_request_id = $1
 
