@@ -6,6 +6,7 @@ const auth = require("../middlewares/authMiddleware");
 const { db } = require("../db/connectDB");
 const sendEmail = require("../utils/mailer");
 const sendNotification = require("../services/notification.services");
+const {syncEmployeeLeaveQuota} = require("../services/LeaveQuotaService");
 // Organization
 
 exports.addOrganizationInfo = async (req, res) => {
@@ -52,7 +53,7 @@ exports.addOrganizationInfo = async (req, res) => {
         `SELECT cpt_id FROM companies_master WHERE cpt_id = $1`,
         [or_company_id]
       );
-      
+
       if (companyCheck.rows.length === 0) {
         return res.status(404).json({
           success: false,
@@ -97,7 +98,7 @@ exports.addOrganizationInfo = async (req, res) => {
       });
     }
 
-if (or_vendor_id) {
+    if (or_vendor_id) {
       const vendorCheck = await db.query(
         `
         SELECT id, vendor_code, vendor_name
@@ -203,9 +204,26 @@ if (or_vendor_id) {
         leaving_date || null,
         createdBy,
         or_company_id || null,
-          or_vendor_id || null
+        or_vendor_id || null
       ]
     );
+
+    syncEmployeeLeaveQuota()
+      .then((result) => {
+        console.log(
+          `[LEAVE QUOTA ASYNC SYNC] Employee organization created for PR=${employee_id}`
+        );
+
+        console.log(
+          `[LEAVE QUOTA ASYNC SYNC] Created=${result.quotasCreated}, Skipped=${result.quotasSkipped}`
+        );
+      })
+      .catch((error) => {
+        console.error(
+          `[LEAVE QUOTA ASYNC SYNC ERROR] PR=${employee_id}`,
+          error
+        );
+      });
 
     return res.status(201).json({
       success: true,

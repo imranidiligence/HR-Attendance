@@ -1,6 +1,7 @@
 const { db } = require("../db/connectDB");
 
 const CARRY_FORWARD_PERCENTAGE = 0.50;
+const JOINING_DATE_CUTOFF = 15;
 
 function calculateAllocatedDays(
     annualQuota,
@@ -30,6 +31,7 @@ function calculateAllocatedDays(
 
     const joiningYear = joining.getFullYear();
     const joiningMonth = joining.getMonth() + 1;
+    const joiningDay = joining.getDate();
 
     if (joiningYear < currentYear) {
         return annualQuota;
@@ -39,7 +41,19 @@ function calculateAllocatedDays(
         return 0;
     }
 
-    const remainingMonths = 12 - joiningMonth + 1;
+    let startMonth;
+
+    if (joiningDay <= JOINING_DATE_CUTOFF) {
+        startMonth = joiningMonth;
+    } else {
+        startMonth = joiningMonth + 1;
+    }
+
+    if (startMonth > 12) {
+        return 0;
+    }
+
+    const remainingMonths = 12 - startMonth + 1;
 
     return Math.floor(
         (annualQuota / 12) * remainingMonths
@@ -334,6 +348,5 @@ async function syncEmployeeLeaveQuota() {
     }
 }
 
-module.exports = {
-    syncEmployeeLeaveQuota
-};
+module.exports = {syncEmployeeLeaveQuota};
+
