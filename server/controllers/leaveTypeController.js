@@ -224,21 +224,61 @@ const getLeaveTypeById = async (req, res) => {
 
 const getAllLeaveTypes = async (req, res) => {
   try {
-    const { is_active } = req.query;
+    const { pr_id, is_active } = req.query;
+
+    if (!pr_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Pr_Id is required"
+      });
+    }
+
+    const employeeResult = await db.query(
+      `
+      SELECT
+        or_employee_type_id
+      FROM public.organizations
+      WHERE pr_id = $1
+        AND COALESCE(or_is_active, TRUE) = TRUE
+      LIMIT 1
+      `,
+      [pr_id]
+    );
+
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Active organization information not found for Pr_Id ${pr_id}`
+      });
+    }
+
+    const employeeTypeId =
+      employeeResult.rows[0].or_employee_type_id;
+
+    if (!employeeTypeId) {
+      return res.status(404).json({
+        success: false,
+        message: `Employee type not found for Pr_Id ${pr_id}`
+      });
+    }
 
     const whereClause = buildIsActiveClause(
-      is_active,
+      is_active !== undefined ? is_active : "true",
       "lt_is_active"
     );
 
     const query = `
       SELECT *
       FROM public.leave_types
-      ${whereClause}
+      WHERE lt_emptype = $1
+        AND ${whereClause.replace(/^WHERE\s+/i, "")}
       ORDER BY lt_leave_type_id ASC
     `;
 
-    const result = await db.query(query);
+    const result = await db.query(
+      query,
+      [employeeTypeId]
+    );
 
     return successResponse(
       res,
