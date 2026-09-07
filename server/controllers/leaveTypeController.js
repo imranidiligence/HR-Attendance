@@ -240,6 +240,8 @@ const getAllLeaveTypes = async (req, res) => {
       FROM public.organizations
       WHERE pr_id = $1
         AND COALESCE(or_is_active, TRUE) = TRUE
+        AND or_employee_type_id IS NOT NULL
+      ORDER BY or_id DESC
       LIMIT 1
       `,
       [pr_id]
@@ -255,28 +257,44 @@ const getAllLeaveTypes = async (req, res) => {
     const employeeTypeId =
       employeeResult.rows[0].or_employee_type_id;
 
-    if (!employeeTypeId) {
-      return res.status(404).json({
-        success: false,
-        message: `Employee type not found for Pr_Id ${pr_id}`
-      });
+    let activeCondition = "lt_is_active = TRUE";
+
+    if (is_active !== undefined) {
+      const activeValue = String(is_active).toLowerCase();
+
+      if (activeValue === "true") {
+        activeCondition = "lt_is_active = TRUE";
+      } else if (activeValue === "false") {
+        activeCondition = "lt_is_active = FALSE";
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "is_active must be true or false"
+        });
+      }
     }
 
-    const whereClause = buildIsActiveClause(
-      is_active !== undefined ? is_active : "true",
-      "lt_is_active"
-    );
-
-    const query = `
-      SELECT *
+    const result = await db.query(
+      `
+      SELECT
+        lt_leave_type_id,
+        lt_leave_type_code,
+        lt_leave_type_name,
+        lt_total_days_per_year,
+        lt_is_paid,
+        lt_from_date,
+        lt_to_date,
+        lt_emptype,
+        lt_is_active,
+        lt_created_at,
+        lt_updated_at,
+        lt_created_by,
+        lt_updated_by
       FROM public.leave_types
       WHERE lt_emptype = $1
-        AND ${whereClause.replace(/^WHERE\s+/i, "")}
+        AND ${activeCondition}
       ORDER BY lt_leave_type_id ASC
-    `;
-
-    const result = await db.query(
-      query,
+      `,
       [employeeTypeId]
     );
 
@@ -295,6 +313,8 @@ const getAllLeaveTypes = async (req, res) => {
     );
   }
 };
+
+
 
 
 
