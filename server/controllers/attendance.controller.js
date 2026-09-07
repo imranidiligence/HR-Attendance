@@ -166,13 +166,7 @@ exports.addEmployController = async (req, res) => {
   console.log("addEmp", req.body);
 
   try {
-    const {
-      name,
-      email,
-      password,
-      is_active,
-      roles,
-    } = req.body;
+    const { name, email, password, is_active, roles } = req.body;
 
     console.log(name, email, password, is_active, roles);
     console.log("Roles:", roles);
@@ -197,9 +191,7 @@ exports.addEmployController = async (req, res) => {
     // 3. Hash Password
     const hashedPassword = await bcrypt.hash(String(password), 10);
 
-    const profile_image = req.file
-      ? `/uploads/${req.file.filename}`
-      : null;
+    const profile_image = req.file ? `/uploads/${req.file.filename}` : null;
 
     // 4. Insert into users table
     const userResult = await client.query(
@@ -215,7 +207,7 @@ exports.addEmployController = async (req, res) => {
         hashedPassword,
         is_active === undefined ? true : is_active,
         profile_image,
-      ]
+      ],
     );
 
     const newUserId = userResult.rows[0].id;
@@ -228,7 +220,7 @@ exports.addEmployController = async (req, res) => {
           INSERT INTO user_role (user_id, role_id)
           VALUES ($1, $2)
           `,
-          [newUserId, roleId]
+          [newUserId, roleId],
         );
       }
     }
@@ -245,7 +237,6 @@ exports.addEmployController = async (req, res) => {
         roles: roles || [],
       },
     });
-
   } catch (error) {
     // Rollback transaction
     await client.query("ROLLBACK");
@@ -261,7 +252,6 @@ exports.addEmployController = async (req, res) => {
     res.status(500).json({
       message: "Internal Server Error",
     });
-
   } finally {
     client.release();
   }
@@ -273,14 +263,7 @@ exports.updateEmployController = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const {
-      name,
-      email,
-      password,
-      is_active,
-      emp_id,
-      roles,
-    } = req.body;
+    const { name, email, password, is_active, emp_id, roles } = req.body;
 
     console.log("Update Employee:", id, req.body);
 
@@ -308,7 +291,7 @@ exports.updateEmployController = async (req, res) => {
       `SELECT id, name, email, emp_id, is_active
        FROM users
        WHERE id = $1`,
-      [id]
+      [id],
     );
 
     if (userResult.rows.length === 0) {
@@ -355,10 +338,7 @@ exports.updateEmployController = async (req, res) => {
     // ------------------------------------------------
 
     if (password !== undefined) {
-      const hashedPassword = await bcrypt.hash(
-        String(password),
-        10
-      );
+      const hashedPassword = await bcrypt.hash(String(password), 10);
 
       updateFields.push(`password = $${parameterIndex}`);
       updateValues.push(hashedPassword);
@@ -381,10 +361,7 @@ exports.updateEmployController = async (req, res) => {
         RETURNING id, name, email, is_active
       `;
 
-      const result = await client.query(
-        updateQuery,
-        updateValues
-      );
+      const result = await client.query(updateQuery, updateValues);
 
       updatedUser = result.rows[0];
     } else {
@@ -396,14 +373,13 @@ exports.updateEmployController = async (req, res) => {
     // ------------------------------------------------
 
     if (roles !== undefined) {
-
       // Delete existing roles
       await client.query(
         `
         DELETE FROM user_role
         WHERE user_id = $1
         `,
-        [id]
+        [id],
       );
 
       // Insert new roles
@@ -413,7 +389,7 @@ exports.updateEmployController = async (req, res) => {
           INSERT INTO user_role (user_id, role_id)
           VALUES ($1, $2)
           `,
-          [id, roleId]
+          [id, roleId],
         );
       }
     }
@@ -431,7 +407,7 @@ exports.updateEmployController = async (req, res) => {
       WHERE ur.user_id = $1
       ORDER BY r.role_id
       `,
-      [id]
+      [id],
     );
 
     // ------------------------------------------------
@@ -453,9 +429,7 @@ exports.updateEmployController = async (req, res) => {
         roles: roleResult.rows,
       },
     });
-
   } catch (error) {
-
     await client.query("ROLLBACK");
 
     console.error("Update Employee Error:", error);
@@ -469,7 +443,6 @@ exports.updateEmployController = async (req, res) => {
     return res.status(500).json({
       message: "Internal Server Error",
     });
-
   } finally {
     client.release();
   }
@@ -863,20 +836,13 @@ exports.processAndSendAttendanceReport = async (
 // In attendance.controller.js - Updated getTodayOrganizationAttendance
 exports.getTodayOrganizationAttendance = async (req, res) => {
   try {
-    const page = Math.max(
-      parseInt(req.query.page) || 1,
-      1
-    );
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
 
-    const limit = Math.max(
-      parseInt(req.query.limit) || 15,
-      1
-    );
+    const limit = Math.max(parseInt(req.query.limit) || 15, 1);
 
     const offset = (page - 1) * limit;
 
-    const showInactive =
-      req.query.showInactive === "true";
+    const showInactive = req.query.showInactive === "true";
 
     // =========================================================
     // TODAY IN IST
@@ -887,8 +853,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       )::DATE AS today
     `;
 
-    const { rows: todayRows } =
-      await db.query(todayQuery);
+    const { rows: todayRows } = await db.query(todayQuery);
 
     const today = todayRows[0].today;
 
@@ -918,13 +883,9 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       `;
     }
 
-    const countResult =
-      await db.query(countQuery);
+    const countResult = await db.query(countQuery);
 
-    const totalItems = parseInt(
-      countResult.rows[0].total,
-      10
-    );
+    const totalItems = parseInt(countResult.rows[0].total, 10);
 
     // =========================================================
     // TODAY ATTENDANCE SUMMARY
@@ -992,39 +953,18 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
       `;
     }
 
-    const summaryResult =
-      await db.query(
-        summaryQuery,
-        summaryParams
-      );
+    const summaryResult = await db.query(summaryQuery, summaryParams);
 
-    const summaryRow =
-      summaryResult.rows[0];
+    const summaryRow = summaryResult.rows[0];
 
     const attendanceSummary = {
-      total_employees:
-        parseInt(
-          summaryRow.total_employees,
-          10
-        ) || 0,
+      total_employees: parseInt(summaryRow.total_employees, 10) || 0,
 
-      punch_in:
-        parseInt(
-          summaryRow.punch_in,
-          10
-        ) || 0,
+      punch_in: parseInt(summaryRow.punch_in, 10) || 0,
 
-      punch_out:
-        parseInt(
-          summaryRow.punch_out,
-          10
-        ) || 0,
+      punch_out: parseInt(summaryRow.punch_out, 10) || 0,
 
-      absent:
-        parseInt(
-          summaryRow.absent,
-          10
-        ) || 0,
+      absent: parseInt(summaryRow.absent, 10) || 0,
     };
 
     // =========================================================
@@ -1039,7 +979,7 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
 
         TRIM(o.or_emp_id) AS emp_id,
 
-        ui."Ui_ImagePath" AS profile_image,
+        ui.Ui_ImagePath AS profile_image,
 
         COALESCE(
           o.or_is_active,
@@ -1135,226 +1075,138 @@ exports.getTodayOrganizationAttendance = async (req, res) => {
     // ORDER + PAGINATION
     // =========================================================
     query += `
-      ORDER BY
+  ORDER BY
+    TRIM(o.or_emp_id) ASC
 
-        COALESCE(
-          o.or_is_active,
-          FALSE
-        ) DESC,
+  LIMIT $2
+  OFFSET $3
+`;
 
-        TRIM(
-          COALESCE(
-            NULLIF(
-              p.pr_first_name,
-              ''
-            ),
-            CONCAT_WS(
-              ' ',
-              p.pr_first_name,
-              p.pr_last_name
-            )
-          )
-        ) ASC
+    queryParams.push(limit, offset);
 
-      LIMIT $2
-      OFFSET $3
-    `;
+    const { rows } = await db.query(query, queryParams);
 
-    queryParams.push(
-      limit,
-      offset
-    );
-
-    const { rows } =
-      await db.query(
-        query,
-        queryParams
-      );
-
-    console.log(
-      "Attendance Rows Fetched: organization",
-      rows
-    );
+    console.log("Attendance Rows Fetched: organization", rows);
 
     // =========================================================
     // FORMAT DATA
     // =========================================================
-    const formattedRows =
-      rows.map((row) => {
+    const formattedRows = rows.map((row) => {
+      // =====================================================
+      // TOTAL HOURS
+      // =====================================================
+      const totalSeconds = Number(row.total_seconds) || 0;
 
-        // =====================================================
-        // TOTAL HOURS
-        // =====================================================
-        const totalSeconds =
-          Number(row.total_seconds) || 0;
+      let totalHours = "00:00";
 
-        let totalHours = "00:00";
+      if (totalSeconds > 0) {
+        const hours = Math.floor(totalSeconds / 3600);
 
-        if (totalSeconds > 0) {
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
 
-          const hours =
-            Math.floor(
-              totalSeconds / 3600
-            );
+        totalHours = `${String(hours).padStart(2, "0")}:${String(
+          minutes,
+        ).padStart(2, "0")}`;
+      }
 
-          const minutes =
-            Math.floor(
-              (totalSeconds % 3600) / 60
-            );
+      // =====================================================
+      // PUNCH IN
+      // =====================================================
+      const punchIn = row.punch_in
+        ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Kolkata",
+          })
+        : "--";
 
-          totalHours =
-            `${String(hours).padStart(2, "0")}:${String(
-              minutes
-            ).padStart(2, "0")}`;
-        }
+      // =====================================================
+      // PUNCH OUT
+      // =====================================================
+      const punchOut = row.punch_out
+        ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "Asia/Kolkata",
+          })
+        : "--";
 
-        // =====================================================
-        // PUNCH IN
-        // =====================================================
-        const punchIn =
-          row.punch_in
-            ? new Date(
-                row.punch_in
-              ).toLocaleTimeString(
-                "en-IN",
-                {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: true,
-                  timeZone:
-                    "Asia/Kolkata",
-                }
-              )
-            : "--";
+      // =====================================================
+      // RESPONSE ROW
+      // =====================================================
+      return {
+        attendance_date: `${row.attendance_date}T18:30:00.000Z`,
 
-        // =====================================================
-        // PUNCH OUT
-        // =====================================================
-        const punchOut =
-          row.punch_out
-            ? new Date(
-                row.punch_out
-              ).toLocaleTimeString(
-                "en-IN",
-                {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  hour12: true,
-                  timeZone:
-                    "Asia/Kolkata",
-                }
-              )
-            : "--";
+        emp_id: row.emp_id,
 
-        // =====================================================
-        // RESPONSE ROW
-        // =====================================================
-        return {
+        is_active: row.is_active,
 
-          attendance_date:
-            `${row.attendance_date}T18:30:00.000Z`,
+        name: row.name,
 
-          emp_id:
-            row.emp_id,
+        email: row.email || "-",
 
-          is_active:
-            row.is_active,
+        punch_in: punchIn,
 
-          name:
-            row.name,
+        punch_out: punchOut,
 
-          email:
-            row.email || "-",
+        role: row.role,
 
-          punch_in:
-            punchIn,
+        status_id: row.status_id,
 
-          punch_out:
-            punchOut,
+        status: row.status,
 
-          role:
-            row.role,
+        total_hours: totalHours,
 
-          status_id:
-            row.status_id,
-
-          status:
-            row.status,
-
-          total_hours:
-            totalHours,
-
-          profile_image:
-            row.profile_image || "-",
-        };
-      });
+        profile_image: row.profile_image || "-",
+      };
+    });
 
     // =========================================================
     // FINAL RESPONSE
     // =========================================================
     return res.status(200).json({
-
       success: true,
 
       // =======================================================
       // TODAY ATTENDANCE SUMMARY
       // =======================================================
       summary: {
+        total_employees: attendanceSummary.total_employees,
 
-        total_employees:
-          attendanceSummary.total_employees,
+        punch_in: attendanceSummary.punch_in,
 
-        punch_in:
-          attendanceSummary.punch_in,
+        punch_out: attendanceSummary.punch_out,
 
-        punch_out:
-          attendanceSummary.punch_out,
-
-        absent:
-          attendanceSummary.absent,
+        absent: attendanceSummary.absent,
       },
 
       // =======================================================
       // EMPLOYEE DATA
       // =======================================================
-      employees:
-        formattedRows,
+      employees: formattedRows,
 
       // =======================================================
       // PAGINATION
       // =======================================================
       pagination: {
+        currentPage: page,
 
-        currentPage:
-          page,
+        totalItems: totalItems,
 
-        totalItems:
-          totalItems,
+        totalPages: Math.ceil(totalItems / limit),
 
-        totalPages:
-          Math.ceil(
-            totalItems / limit
-          ),
-
-        limit:
-          limit,
+        limit: limit,
       },
     });
-
   } catch (error) {
-
-    console.error(
-      "Organization attendance error:",
-      error
-    );
+    console.error("Organization attendance error:", error);
 
     return res.status(500).json({
-
       success: false,
 
-      message:
-        "Failed to process attendance",
-
+      message: "Failed to process attendance",
     });
   }
 };
@@ -1443,10 +1295,7 @@ exports.getMyTodayAttendance = async (req, res) => {
       const hrs = Math.floor(total / 3600);
       const mins = Math.floor((total % 3600) / 60);
 
-      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(
-        2,
-        "0"
-      )}`;
+      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
     };
 
     // =========================
@@ -1478,7 +1327,7 @@ exports.getMyTodayAttendance = async (req, res) => {
         AND attendance_date = CURRENT_DATE
       LIMIT 1;
       `,
-      [empId]
+      [empId],
     );
 
     let today;
@@ -1506,7 +1355,7 @@ exports.getMyTodayAttendance = async (req, res) => {
         WHERE emp_id = $1
           AND punch_time::date = CURRENT_DATE
         `,
-        [empId]
+        [empId],
       );
 
       const row = liveResult.rows[0];
@@ -1528,9 +1377,7 @@ exports.getMyTodayAttendance = async (req, res) => {
           punch_in: formatTime(row.punch_in),
 
           punch_out:
-            row.punch_out !== row.punch_in
-              ? formatTime(row.punch_out)
-              : null,
+            row.punch_out !== row.punch_in ? formatTime(row.punch_out) : null,
 
           total_hours: secondsToHHMM(totalSeconds),
 
@@ -1556,12 +1403,10 @@ exports.getMyTodayAttendance = async (req, res) => {
         AND attendance_date <= CURRENT_DATE
         AND punch_in IS NOT NULL;
       `,
-      [empId]
+      [empId],
     );
 
-    const weeklyDays = Number(
-      weeklyResult.rows[0]?.total_days || 0
-    );
+    const weeklyDays = Number(weeklyResult.rows[0]?.total_days || 0);
 
     // =========================
     // RESPONSE
@@ -1631,7 +1476,7 @@ exports.getMyAttendance = async (req, res) => {
           ${defaultToDate}
         );
       `,
-      [empId, fromDate, toDate]
+      [empId, fromDate, toDate],
     );
 
     const totalItems = countResult.rows[0].total;
@@ -1682,44 +1527,26 @@ exports.getMyAttendance = async (req, res) => {
       LIMIT $4
       OFFSET $5;
       `,
-      [
-        empId,
-        fromDate,
-        toDate,
-        limit,
-        offset,
-      ]
+      [empId, fromDate, toDate, limit, offset],
     );
 
-    console.log(
-      "Attendance Rows Fetched getMyAttendance:",
-      rows
-    );
+    console.log("Attendance Rows Fetched getMyAttendance:", rows);
 
     const attendance = rows.map((row) => {
       let total_hours = null;
 
-      if (
-        row.total_hours !== null &&
-        row.total_hours !== undefined
-      ) {
+      if (row.total_hours !== null && row.total_hours !== undefined) {
         total_hours = row.total_hours;
-      } else if (
-        row.punch_in &&
-        row.punch_out
-      ) {
+      } else if (row.punch_in && row.punch_out) {
         const punchIn = new Date(row.punch_in);
         const punchOut = new Date(row.punch_out);
 
-        const seconds =
-          (punchOut.getTime() - punchIn.getTime()) / 1000;
+        const seconds = (punchOut.getTime() - punchIn.getTime()) / 1000;
 
         if (seconds > 0) {
           total_hours = {
             hours: Math.floor(seconds / 3600),
-            minutes: Math.floor(
-              (seconds % 3600) / 60
-            ),
+            minutes: Math.floor((seconds % 3600) / 60),
           };
         }
       }
@@ -1738,17 +1565,12 @@ exports.getMyAttendance = async (req, res) => {
         totalPages: Math.ceil(totalItems / limit),
         totalItems,
         limit,
-        hasNext:
-          page < Math.ceil(totalItems / limit),
+        hasNext: page < Math.ceil(totalItems / limit),
         hasPrevious: page > 1,
       },
     });
-
   } catch (err) {
-    console.error(
-      "getMyAttendance error:",
-      err
-    );
+    console.error("getMyAttendance error:", err);
 
     return res.status(500).json({
       success: false,
@@ -2081,15 +1903,9 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
       OFFSET $2
     `;
 
-    const { rows } = await db.query(
-      query,
-      [limit, offset]
-    );
+    const { rows } = await db.query(query, [limit, offset]);
 
-    console.log(
-      "Attendance Rows Fetched: organization (all users)",
-      rows
-    );
+    console.log("Attendance Rows Fetched: organization (all users)", rows);
 
     const formattedRows = rows.map((row) => {
       let totalHours = "00:00";
@@ -2098,7 +1914,7 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         const interval = String(row.total_hours);
 
         const match = interval.match(
-          /(?:(\d+)\s+days?\s+)?(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/ 
+          /(?:(\d+)\s+days?\s+)?(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)/,
         );
 
         if (match) {
@@ -2106,20 +1922,13 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
           const hours = parseInt(match[2] || 0, 10);
           const minutes = parseInt(match[3] || 0, 10);
 
-          const totalMinutes =
-            days * 24 * 60 +
-            hours * 60 +
-            minutes;
+          const totalMinutes = days * 24 * 60 + hours * 60 + minutes;
 
-          const finalHours = Math.floor(
-            totalMinutes / 60
-          );
+          const finalHours = Math.floor(totalMinutes / 60);
 
-          const finalMinutes =
-            totalMinutes % 60;
+          const finalMinutes = totalMinutes % 60;
 
-          totalHours =
-            `${String(finalHours).padStart(2, "0")}:${String(finalMinutes).padStart(2, "0")}`;
+          totalHours = `${String(finalHours).padStart(2, "0")}:${String(finalMinutes).padStart(2, "0")}`;
         }
       }
 
@@ -2129,27 +1938,21 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
         total_hours: totalHours,
 
         punch_in: row.punch_in
-          ? new Date(row.punch_in).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-                timeZone: "Asia/Kolkata",
-              }
-            )
+          ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
           : "--",
 
         punch_out: row.punch_out
-          ? new Date(row.punch_out).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-                timeZone: "Asia/Kolkata",
-              }
-            )
+          ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+              timeZone: "Asia/Kolkata",
+            })
           : "--",
       };
     });
@@ -2162,18 +1965,12 @@ exports.getTodayOrganizationAttendanceAll = async (req, res) => {
       pagination: {
         currentPage: page,
         totalItems: totalItems,
-        totalPages: Math.ceil(
-          totalItems / limit
-        ),
+        totalPages: Math.ceil(totalItems / limit),
         limit: limit,
       },
     });
-
   } catch (error) {
-    console.error(
-      "Manual report error:",
-      error
-    );
+    console.error("Manual report error:", error);
 
     return res.status(500).json({
       success: false,

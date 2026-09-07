@@ -6,37 +6,48 @@ const { addEmployController } = require("../controllers/attendance.controller");
 const { isAdmin } = require("../middlewares/roleMiddleware");
 const { db } = require("../db/connectDB");
 const uploadProfileImage = require("../middlewares/uploadProfileImage");
-const { updateEmployController } = require("../controllers/attendance.controller");
+const {
+  updateEmployController,
+} = require("../controllers/attendance.controller");
 
 // Admin
 
 router.get("/sync", controller.syncAttendance);
 
-
 // Today All Employ Attendance
 router.get("/today", auth, isAdmin, controller.getTodayOrganizationAttendance);
 
-
-
 // Add Employ by Admin
 
-router.post("/add-employee", uploadProfileImage.single("profile"), addEmployController)
+router.post(
+  "/add-employee",
+  uploadProfileImage.single("profile"),
+  addEmployController,
+);
 router.put("/employee/:id", updateEmployController);
 
-// Admin Attendance 
-router.get("/history", auth, isAdmin, controller.getAdminMyAttendance)
-
+// Admin Attendance
+router.get("/history", auth, isAdmin, controller.getAdminMyAttendance);
 
 // Admin Activity logs
 router.get("/activity-log", auth, isAdmin, controller.getActivityLog);
 
-router.get("/activity-log/exports", auth, isAdmin, controller.exportActivityLog);
+router.get(
+  "/activity-log/exports",
+  auth,
+  isAdmin,
+  controller.exportActivityLog,
+);
 // New API for all employees
-router.get("/today/all", auth, isAdmin, controller.getTodayOrganizationAttendanceAll);
-
+router.get(
+  "/today/all",
+  auth,
+  isAdmin,
+  controller.getTodayOrganizationAttendanceAll,
+);
 
 // Express route example
-router.patch('/:emp_id/status', auth, isAdmin, async (req, res) => {
+router.patch("/:emp_id/status", auth, isAdmin, async (req, res) => {
   const { emp_id } = req.params;
   const { is_active } = req.body;
 
@@ -44,16 +55,15 @@ router.patch('/:emp_id/status', auth, isAdmin, async (req, res) => {
   // console.log("emp_id", emp_id);
 
   try {
-    await db.query(
-      'UPDATE users SET is_active = $1 WHERE emp_id = $2',
-      [is_active, emp_id]
-    );
+    await db.query("UPDATE users SET is_active = $1 WHERE emp_id = $2", [
+      is_active,
+      emp_id,
+    ]);
     res.status(200).send({ message: "Status updated successfully" });
   } catch (error) {
     res.status(500).send({ error: "Failed to update status" });
   }
 });
-
 
 router.get("/all-attendance", auth, async (req, res) => {
   try {
@@ -66,11 +76,9 @@ router.get("/all-attendance", auth, async (req, res) => {
      */
     const today = new Date();
 
-    const filterMonth =
-      parseInt(month, 10) || today.getMonth() + 1;
+    const filterMonth = parseInt(month, 10) || today.getMonth() + 1;
 
-    const filterYear =
-      parseInt(year, 10) || today.getFullYear();
+    const filterYear = parseInt(year, 10) || today.getFullYear();
 
     /*
      * =========================================================
@@ -90,26 +98,15 @@ router.get("/all-attendance", auth, async (req, res) => {
      * =========================================================
      */
 
-    const fromDate =
-      `${filterYear}-${String(filterMonth).padStart(2, "0")}-01`;
+    const fromDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-01`;
 
-    const nextMonth =
-      filterMonth === 12
-        ? 1
-        : filterMonth + 1;
+    const nextMonth = filterMonth === 12 ? 1 : filterMonth + 1;
 
-    const nextMonthYear =
-      filterMonth === 12
-        ? filterYear + 1
-        : filterYear;
+    const nextMonthYear = filterMonth === 12 ? filterYear + 1 : filterYear;
 
-    const toDate =
-      `${nextMonthYear}-${String(nextMonth).padStart(2, "0")}-01`;
+    const toDate = `${nextMonthYear}-${String(nextMonth).padStart(2, "0")}-01`;
 
-    const values = [
-      fromDate,
-      toDate,
-    ];
+    const values = [fromDate, toDate];
 
     console.log("Attendance Date Range:", {
       fromDate,
@@ -276,10 +273,7 @@ router.get("/all-attendance", auth, async (req, res) => {
      * EXECUTE QUERY
      * =========================================================
      */
-    const { rows } = await db.query(
-      query,
-      values
-    );
+    const { rows } = await db.query(query, values);
 
     /*
      * =========================================================
@@ -289,54 +283,38 @@ router.get("/all-attendance", auth, async (req, res) => {
     const employeeMap = {};
 
     rows.forEach((row) => {
-
       if (!employeeMap[row.emp_id]) {
-
         employeeMap[row.emp_id] = {
-          emp_id:
-            row.emp_id,
+          emp_id: row.emp_id,
 
-          name:
-            row.name,
+          name: row.name,
 
-          department:
-            row.department,
+          department: row.department,
 
-          is_active:
-            row.is_active,
+          is_active: row.is_active,
 
           attendance: [],
         };
       }
 
       employeeMap[row.emp_id].attendance.push({
+        date: row.date,
 
-        date:
-          row.date,
+        day_of_week: row.day_of_week,
 
-        day_of_week:
-          row.day_of_week,
+        is_future: row.is_future === true,
 
-        is_future:
-          row.is_future === true,
+        first_in: row.first_in,
 
-        first_in:
-          row.first_in,
+        last_out: row.last_out,
 
-        last_out:
-          row.last_out,
+        hours_worked: row.hours_worked,
 
-        hours_worked:
-          row.hours_worked,
+        status_id: row.status_id,
 
-        status_id:
-          row.status_id,
+        status: row.status,
 
-        status:
-          row.status,
-
-        is_late_arrived:
-          row.is_late_arrived === true,
+        is_late_arrived: row.is_late_arrived === true,
       });
     });
 
@@ -373,75 +351,74 @@ router.get("/all-attendance", auth, async (req, res) => {
      * present day.
      * =========================================================
      */
-function summarizeAttendance(attendanceList) {
-  let presentDays = 0;
-  let absentDays = 0;
-  let leaveDays = 0;
-  let holidayDays = 0;
-  let weeklyOffDays = 0;   // ← new
-  let lateMarkDays = 0;
-  let halfDayCount = 0;
-  let saturdayHalfDayCount = 0;
+    function summarizeAttendance(attendanceList) {
+      let presentDays = 0;
+      let absentDays = 0;
+      let leaveDays = 0;
+      let holidayDays = 0;
+      let weeklyOffDays = 0; // ← new
+      let lateMarkDays = 0;
+      let halfDayCount = 0;
+      let saturdayHalfDayCount = 0;
 
-  for (const day of attendanceList) {
-    if (day.is_future) {
-      continue;
-    }
+      for (const day of attendanceList) {
+        if (day.is_future) {
+          continue;
+        }
 
-    const statusLower = (day.status || "").toLowerCase().trim();
+        const statusLower = (day.status || "").toLowerCase().trim();
 
-    if (day.is_late_arrived) {
-      lateMarkDays += 1;
-    }
+        if (day.is_late_arrived) {
+          lateMarkDays += 1;
+        }
 
-    if (statusLower === "present" || statusLower === "working") {
-      presentDays += 1;
-    } else if (statusLower === "absent") {
-      absentDays += 1;
-    } else if (statusLower === "leave") {
-      leaveDays += 1;
-    } else if (statusLower === "holiday") {
-      holidayDays += 1;
-    } else if (statusLower === "weekly off") {   // ← new
-      weeklyOffDays += 1;
-    } else if (statusLower === "half day") {
-      halfDayCount += 1;
+        if (statusLower === "present" || statusLower === "working") {
+          presentDays += 1;
+        } else if (statusLower === "absent") {
+          absentDays += 1;
+        } else if (statusLower === "leave") {
+          leaveDays += 1;
+        } else if (statusLower === "holiday") {
+          holidayDays += 1;
+        } else if (statusLower === "weekly off") {
+          // ← new
+          weeklyOffDays += 1;
+        } else if (statusLower === "half day") {
+          halfDayCount += 1;
 
-      if (day.day_of_week === 6) {
-        saturdayHalfDayCount += 1;
+          if (day.day_of_week === 6) {
+            saturdayHalfDayCount += 1;
+          }
+        }
       }
+
+      const saturdayPairedDays = Math.floor(saturdayHalfDayCount / 2);
+      const saturdayLeftover = saturdayHalfDayCount % 2;
+
+      presentDays += saturdayPairedDays;
+
+      const nonSaturdayHalfDays = halfDayCount - saturdayHalfDayCount;
+      const fractionalHalfDays = nonSaturdayHalfDays + saturdayLeftover;
+
+      const presentDaysTotal = presentDays + fractionalHalfDays * 0.5;
+
+      return {
+        present_days: Number(presentDaysTotal.toFixed(2)),
+        absent_days: absentDays,
+        leave_days: leaveDays,
+        holiday_days: holidayDays,
+        weekly_off_days: weeklyOffDays, // ← new
+        late_mark_days: lateMarkDays,
+        half_day_count: halfDayCount,
+        saturday_half_day_pairs_applied: saturdayPairedDays,
+      };
     }
-  }
-
-  const saturdayPairedDays = Math.floor(saturdayHalfDayCount / 2);
-  const saturdayLeftover = saturdayHalfDayCount % 2;
-
-  presentDays += saturdayPairedDays;
-
-  const nonSaturdayHalfDays = halfDayCount - saturdayHalfDayCount;
-  const fractionalHalfDays = nonSaturdayHalfDays + saturdayLeftover;
-
-  const presentDaysTotal =
-    presentDays + fractionalHalfDays * 0.5;
-
-  return {
-    present_days: Number(presentDaysTotal.toFixed(2)),
-    absent_days: absentDays,
-    leave_days: leaveDays,
-    holiday_days: holidayDays,
-    weekly_off_days: weeklyOffDays,   // ← new
-    late_mark_days: lateMarkDays,
-    half_day_count: halfDayCount,
-    saturday_half_day_pairs_applied: saturdayPairedDays,
-  };
-}
 
     Object.values(employeeMap).forEach((employee) => {
       employee.summary = summarizeAttendance(employee.attendance);
     });
 
-    const attendance =
-      Object.values(employeeMap);
+    const attendance = Object.values(employeeMap);
 
     /*
      * =========================================================
@@ -449,38 +426,26 @@ function summarizeAttendance(attendanceList) {
      * =========================================================
      */
     return res.status(200).json({
-
       success: true,
 
-      month:
-        filterMonth,
+      month: filterMonth,
 
-      year:
-        filterYear,
+      year: filterYear,
 
-      total_records:
-        attendance.length,
+      total_records: attendance.length,
 
       attendance,
     });
-
   } catch (error) {
-
-    console.error(
-      "All Attendance Report Error:",
-      error
-    );
+    console.error("All Attendance Report Error:", error);
 
     return res.status(500).json({
-
       success: false,
 
-      message:
-        "Internal Server Error",
+      message: "Internal Server Error",
     });
   }
 });
-
 
 // router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 //   try {
@@ -518,7 +483,7 @@ function summarizeAttendance(attendanceList) {
 // ),
 
 // attendance AS (
-//   SELECT 
+//   SELECT
 //     al.emp_id,
 //     al.punch_time::date AS date_only,
 //     MIN(al.punch_time) AS first_in,
@@ -546,7 +511,7 @@ function summarizeAttendance(attendanceList) {
 //   GROUP BY al.emp_id, date_only
 // )
 
-// SELECT 
+// SELECT
 //   e.emp_id,
 //   e.name,
 //   e.role,
@@ -680,17 +645,17 @@ function summarizeAttendance(attendanceList) {
 //     SELECT generate_series($1::date, $2::date, '1 day')::date AS date_only
 // ),
 // daily AS (
-//     SELECT 
+//     SELECT
 //         u.emp_id,
 //         u.name,
-//         u.is_active,  
+//         u.is_active,
 //         p.department,
 //         cal.date_only,
 
 //     MIN(al.punch_time) AS first_in,
 
-//     CASE 
-//         WHEN COUNT(al.punch_time) > 1 
+//     CASE
+//         WHEN COUNT(al.punch_time) > 1
 //         THEN MAX(al.punch_time)
 //         ELSE NULL
 //     END AS last_out,
@@ -704,11 +669,11 @@ function summarizeAttendance(attendanceList) {
 //         COALESCE(
 //           ROUND(
 //             EXTRACT(
-//               EPOCH FROM 
+//               EPOCH FROM
 //               MAX(al.punch_time) - MIN(al.punch_time)
-//             ) / 3600.0, 
+//             ) / 3600.0,
 //             2
-//           ), 
+//           ),
 //           0.00
 //         ) AS hours_worked
 
@@ -723,19 +688,19 @@ function summarizeAttendance(attendanceList) {
 //         ON p.emp_id = u.emp_id
 //     LEFT JOIN holidays hd
 //         ON hd.holiday_date = cal.date_only
-//     GROUP BY 
-//         u.emp_id, 
-//         u.name, 
-//         u.is_active,   
-//         p.department, 
-//         cal.date_only, 
+//     GROUP BY
+//         u.emp_id,
+//         u.name,
+//         u.is_active,
+//         p.department,
+//         cal.date_only,
 //         hd.holiday_date
 // )
-// SELECT 
+// SELECT
 //     emp_id,
 //     name,
 //     department,
-//     is_active,   
+//     is_active,
 //     JSON_AGG(
 //         JSON_BUILD_OBJECT(
 //             'date', date_only,
@@ -747,7 +712,7 @@ function summarizeAttendance(attendanceList) {
 //         ORDER BY date_only
 //     ) AS attendance
 // FROM daily
-// GROUP BY emp_id, name, department, is_active   
+// GROUP BY emp_id, name, department, is_active
 // ORDER BY emp_id;
 // `;
 
@@ -756,26 +721,26 @@ function summarizeAttendance(attendanceList) {
 // //     SELECT generate_series($1::date, $2::date, '1 day')::date AS date_only
 // // ),
 // // daily AS (
-// //     SELECT 
+// //     SELECT
 // //         u.emp_id,
 // //         u.name,
-// //         u.is_active,  
+// //         u.is_active,
 // //         p.department,
 // //         cal.date_only,
 
 // //         MIN(al.punch_time) AS first_in,
 
-// //         CASE 
-// //             WHEN COUNT(al.punch_time) > 1 
+// //         CASE
+// //             WHEN COUNT(al.punch_time) > 1
 // //             THEN MAX(al.punch_time)
 // //             ELSE NULL
 // //         END AS last_out,
 
 // //         COALESCE(
 // //           ROUND(
-// //             EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600.0, 
+// //             EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600.0,
 // //             2
-// //           ), 
+// //           ),
 // //           0.00
 // //         ) AS hours_worked,
 
@@ -820,19 +785,19 @@ function summarizeAttendance(attendanceList) {
 // //     LEFT JOIN holidays hd
 // //         ON hd.holiday_date = cal.date_only
 
-// //     GROUP BY 
-// //         u.emp_id, 
-// //         u.name, 
-// //         u.is_active,   
-// //         p.department, 
-// //         cal.date_only, 
+// //     GROUP BY
+// //         u.emp_id,
+// //         u.name,
+// //         u.is_active,
+// //         p.department,
+// //         cal.date_only,
 // //         hd.holiday_date
 // // )
-// // SELECT 
+// // SELECT
 // //     emp_id,
 // //     name,
 // //     department,
-// //     is_active,   
+// //     is_active,
 // //     JSON_AGG(
 // //         JSON_BUILD_OBJECT(
 // //             'date', date_only,
@@ -844,7 +809,7 @@ function summarizeAttendance(attendanceList) {
 // //         ORDER BY date_only
 // //     ) AS attendance
 // // FROM daily
-// // GROUP BY emp_id, name, department, is_active   
+// // GROUP BY emp_id, name, department, is_active
 // // ORDER BY emp_id;
 // //     `
 //     const { rows } = await db.query(query, values);
@@ -865,7 +830,6 @@ function summarizeAttendance(attendanceList) {
 //     });
 //   }
 // });
-
 
 // router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 //   try {
@@ -905,7 +869,7 @@ function summarizeAttendance(attendanceList) {
 //     // ),
 
 //     // attendance AS (
-//     //   SELECT 
+//     //   SELECT
 //     //     al.emp_id,
 //     //     al.punch_time::date AS date_only,
 //     //     MIN(al.punch_time) AS first_in,
@@ -919,7 +883,7 @@ function summarizeAttendance(attendanceList) {
 //     //   GROUP BY al.emp_id, date_only
 //     // )
 
-//     // SELECT 
+//     // SELECT
 //     //   e.emp_id,
 //     //   e.name,
 //     //   e.role,
@@ -959,15 +923,15 @@ function summarizeAttendance(attendanceList) {
 //   OFFSET $5 LIMIT $6
 // ),
 // attendance_summary AS (
-//   SELECT 
+//   SELECT
 //     al.emp_id,
 //     al.punch_time::date AS date_only,
 //     MIN(al.punch_time) AS first_in,
-//     CASE 
+//     CASE
 //       WHEN COUNT(*) > 1 THEN MAX(al.punch_time)
 //       ELSE NULL
 //     END AS last_out,
-//     CASE 
+//     CASE
 //       WHEN COUNT(*) > 1 THEN ROUND(
 //         EXTRACT(EPOCH FROM (MAX(al.punch_time) - MIN(al.punch_time))) / 3600, 2
 //       )
@@ -978,7 +942,7 @@ function summarizeAttendance(attendanceList) {
 //   GROUP BY al.emp_id, al.punch_time::date
 // )
 
-// SELECT 
+// SELECT
 //   c.date_only,  -- keep raw date for proper ordering
 //   e.emp_id,
 //   e.name,
@@ -991,26 +955,26 @@ function summarizeAttendance(attendanceList) {
 //   CASE
 //     WHEN a.first_in IS NULL THEN 'Absent'
 
-//     WHEN a.first_in IS NOT NULL 
-//          AND a.last_out IS NULL 
+//     WHEN a.first_in IS NOT NULL
+//          AND a.last_out IS NULL
 //          AND a.first_in::time < time '10:00:00' THEN 'Working'
 
 //     WHEN a.first_in > (c.date_only + time '09:30:00' + interval '30 minutes') THEN 'Late Come'
 
 //     WHEN a.last_out IS NOT NULL AND a.last_out < (
-//         a.first_in + 
+//         a.first_in +
 //         INTERVAL '7:30 hours' * (CASE WHEN EXTRACT(DOW FROM c.date_only) = 6 THEN 5.0/8 ELSE 1 END)
 //     ) THEN 'Early Go'
 
 //     WHEN a.total_hours >= (
-//       CASE 
+//       CASE
 //           WHEN EXTRACT(DOW FROM c.date_only) = 6 THEN 5 - (10.0/60)
 //           ELSE 8 - (10.0/60)
 //       END
 //     ) THEN 'Present'
 
 //     ELSE 'Absent'
-//   END AS status 
+//   END AS status
 
 // FROM employees e
 // CROSS JOIN calendar c
@@ -1043,7 +1007,7 @@ function summarizeAttendance(attendanceList) {
 
 // /*
 
-// // SELECT 
+// // SELECT
 // //   e.emp_id,
 // //   e.name,
 // //   e.role,
@@ -1057,8 +1021,8 @@ function summarizeAttendance(attendanceList) {
 // //     WHEN a.first_in IS NULL THEN 'Absent'
 
 // //     -- Working: punched in but not punched out, and first_in before 10:00
-// //     WHEN a.first_in IS NOT NULL 
-// //          AND a.last_out IS NULL 
+// //     WHEN a.first_in IS NOT NULL
+// //          AND a.last_out IS NULL
 // //          AND a.first_in::time < time '10:00:00' THEN 'Working'
 
 // //     -- Late Coming: punch-in after 9:30 + 30 min buffer
@@ -1066,20 +1030,20 @@ function summarizeAttendance(attendanceList) {
 
 // //     -- Early Go: left before minimum expected hours
 // //     WHEN a.last_out IS NOT NULL AND a.last_out < (
-// //         a.first_in + 
+// //         a.first_in +
 // //         INTERVAL '7:30 hours' * (CASE WHEN EXTRACT(DOW FROM c.date_only) = 6 THEN 5.0/8 ELSE 1 END)
 // //     ) THEN 'Early Go'
 
 // //     -- Present: total_hours >= expected threshold
 // //   WHEN a.total_hours >= (
-// //     CASE 
+// //     CASE
 // //         WHEN EXTRACT(DOW FROM c.date_only) = 6 THEN 5 - (10.0/60)
 // //         ELSE 8 - (10.0/60)
 // //     END
 // // ) THEN 'Present'
 
 // //     ELSE 'Absent'
-// // END AS status 
+// // END AS status
 // // FROM employees e
 // // CROSS JOIN calendar c
 // // LEFT JOIN attendance_summary a
@@ -1142,7 +1106,7 @@ function summarizeAttendance(attendanceList) {
 //           name: row.name,
 //           role: row.role,
 //           attendance: [],
-          
+
 //         };
 //       }
 
@@ -1174,25 +1138,15 @@ function summarizeAttendance(attendanceList) {
 // });
 router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
   try {
-    const {
-      search,
-      page = 1,
-      limit = 10,
-      weekStart,
-      weekEnd,
-    } = req.query;
+    const { search, page = 1, limit = 10, weekStart, weekEnd } = req.query;
 
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const limitInt = Math.max(parseInt(limit) || 10, 1);
     const offset = (pageInt - 1) * limitInt;
 
-    const searchTerm =
-      search && search.trim()
-        ? search.trim()
-        : null;
+    const searchTerm = search && search.trim() ? search.trim() : null;
 
-    const isTimeSearch =
-      !!searchTerm && searchTerm.includes(":");
+    const isTimeSearch = !!searchTerm && searchTerm.includes(":");
 
     /*
      * =========================================================
@@ -1293,17 +1247,14 @@ router.get("/weekly-attendance", auth, isAdmin, async (req, res) => {
 
     const countResult = await db.query(countQuery);
 
-    const totalItems = parseInt(
-      countResult.rows[0].total,
-      10
-    );
+    const totalItems = parseInt(countResult.rows[0].total, 10);
     /*
- * =========================================================
- * TODAY ATTENDANCE SUMMARY
- * =========================================================
- */
+     * =========================================================
+     * TODAY ATTENDANCE SUMMARY
+     * =========================================================
+     */
 
-const todayAttendanceQuery = `
+    const todayAttendanceQuery = `
   WITH active_employees AS (
     SELECT DISTINCT
       TRIM(o.or_emp_id) AS emp_id
@@ -1357,29 +1308,20 @@ const todayAttendanceQuery = `
     ON ta.emp_id = a.emp_id;
 `;
 
-const todayAttendanceResult = await db.query(todayAttendanceQuery);
+    const todayAttendanceResult = await db.query(todayAttendanceQuery);
 
-const todaySummary = {
-  totalEmployees: parseInt(
-    todayAttendanceResult.rows[0].total_employees,
-    10
-  ),
+    const todaySummary = {
+      totalEmployees: parseInt(
+        todayAttendanceResult.rows[0].total_employees,
+        10,
+      ),
 
-  present: parseInt(
-    todayAttendanceResult.rows[0].present,
-    10
-  ),
+      present: parseInt(todayAttendanceResult.rows[0].present, 10),
 
-  working: parseInt(
-    todayAttendanceResult.rows[0].working,
-    10
-  ),
+      working: parseInt(todayAttendanceResult.rows[0].working, 10),
 
-  absent: parseInt(
-    todayAttendanceResult.rows[0].absent,
-    10
-  ),
-};
+      absent: parseInt(todayAttendanceResult.rows[0].absent, 10),
+    };
 
     /*
      * =========================================================
@@ -1397,43 +1339,48 @@ const todaySummary = {
           )::DATE AS date_only
       ),
 
-      employees AS
-      (
-        SELECT DISTINCT
+employees AS
+(
+  SELECT DISTINCT
 
-          TRIM(o.or_emp_id) AS emp_id,
+    TRIM(o.or_emp_id) AS emp_id,
 
-          COALESCE(
-            NULLIF(
-              TRIM(p.pr_first_name),
-              ''
-            ),
+    COALESCE(
+      NULLIF(
+        TRIM(p.pr_first_name),
+        ''
+      ),
 
-            NULLIF(
-              TRIM(
-                CONCAT_WS(
-                  ' ',
-                  p.pr_first_name,
-                  p.pr_last_name
-                )
-              ),
-              ''
-            ),
+      NULLIF(
+        TRIM(
+          CONCAT_WS(
+            ' ',
+            p.pr_first_name,
+            p.pr_last_name
+          )
+        ),
+        ''
+      ),
 
-            '-'
-          ) AS name,
+      '-'
+    ) AS name,
 
-          'employee' AS role,
+    'employee' AS role,
 
-          COALESCE(
-            o.or_is_active,
-            FALSE
-          ) AS is_active
+    COALESCE(
+      o.or_is_active,
+      FALSE
+    ) AS is_active,
+
+    ui.Ui_ImagePath AS profile_image 
 
         FROM public.organizations o
 
-        INNER JOIN public.personal p
-          ON p.pr_id = o.pr_id
+INNER JOIN public.personal p
+  ON p.pr_id = o.pr_id
+
+LEFT JOIN public.User_Image ui
+  ON ui.pr_id = p.pr_id
 
         WHERE o.or_emp_id IS NOT NULL
           AND TRIM(o.or_emp_id) <> ''
@@ -1463,6 +1410,7 @@ const todaySummary = {
         e.name,
         e.role,
         e.is_active,
+        e.profile_image,
 
         wa.id AS attendance_id,
         wa.attendance_date,
@@ -1606,34 +1554,22 @@ const todaySummary = {
         e.emp_id;
     `;
 
-    const searchLike =
-      searchTerm
-        ? `%${searchTerm}%`
-        : null;
+    const searchLike = searchTerm ? `%${searchTerm}%` : null;
 
-    const timeSearch =
-      isTimeSearch
-        ? `%${searchTerm}%`
-        : "%";
+    const timeSearch = isTimeSearch ? `%${searchTerm}%` : "%";
 
-    const { rows } = await db.query(
-      query,
-      [
-        fromDate,      // $1
-        today,         // $2
-        offset,        // $3
-        limitInt,      // $4
-        searchTerm,    // $5
-        isTimeSearch,  // $6
-        searchLike,    // $7
-        timeSearch     // $8
-      ]
-    );
+    const { rows } = await db.query(query, [
+      fromDate, // $1
+      today, // $2
+      offset, // $3
+      limitInt, // $4
+      searchTerm, // $5
+      isTimeSearch, // $6
+      searchLike, // $7
+      timeSearch, // $8
+    ]);
 
-    console.log(
-      "Weekly attendance rows fetched:",
-      rows.length
-    );
+    console.log("Weekly attendance rows fetched:", rows.length);
 
     /*
      * =========================================================
@@ -1651,30 +1587,21 @@ const todaySummary = {
     }
 
     const formattedRows = rows.map((row) => {
+      const punchIn = row.punch_in
+        ? new Date(row.punch_in).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : "-";
 
-      const punchIn =
-        row.punch_in
-          ? new Date(row.punch_in).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              }
-            )
-          : "-";
-
-      const punchOut =
-        row.punch_out
-          ? new Date(row.punch_out).toLocaleTimeString(
-              "en-IN",
-              {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              }
-            )
-          : "-";
+      const punchOut = row.punch_out
+        ? new Date(row.punch_out).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })
+        : "-";
 
       return {
         date: row.date,
@@ -1692,6 +1619,7 @@ const todaySummary = {
         is_early_gone: row.is_early_gone,
         status_id: row.status_id,
         status: row.status,
+        profile_image: row.profile_image || "-",
       };
     });
 
@@ -1724,13 +1652,12 @@ const todaySummary = {
         is_early_gone: row.is_early_gone,
         status_id: row.status_id,
         status: row.status,
+        profile_image: row.profile_image || "-",
       });
     });
 
     const result = Object.values(grouped).sort(
-      (a, b) =>
-        new Date(b.date) -
-        new Date(a.date)
+      (a, b) => new Date(b.date) - new Date(a.date),
     );
 
     /*
@@ -1765,35 +1692,31 @@ const todaySummary = {
 
     const grandTotalSeconds = formattedRows.reduce(
       (sum, row) => sum + row.total_seconds,
-      0
+      0,
     );
 
     res.status(200).json({
-  success: true,
-  message: "Weekly attendance fetched successfully",
+      success: true,
+      message: "Weekly attendance fetched successfully",
 
-  data: result,
+      data: result,
 
-  // Pagination
-  totalItems,
-  page: pageInt,
-  limit: limitInt,
-  weekStart: fromDate,
-  weekEnd: today,
+      // Pagination
+      totalItems,
+      page: pageInt,
+      limit: limitInt,
+      weekStart: fromDate,
+      weekEnd: today,
 
-  // Existing totals
-  employeeTotals,
-  grandTotalHours: formatSecondsToHHMM(grandTotalSeconds),
+      // Existing totals
+      employeeTotals,
+      grandTotalHours: formatSecondsToHHMM(grandTotalSeconds),
 
-  // Today's attendance summary
-  todaySummary,
-});
-
+      // Today's attendance summary
+      todaySummary,
+    });
   } catch (error) {
-    console.error(
-      "Weekly Attendance API Error:",
-      error
-    );
+    console.error("Weekly Attendance API Error:", error);
 
     res.status(500).json({
       success: false,
@@ -1801,6 +1724,5 @@ const todaySummary = {
     });
   }
 });
-
 
 module.exports = router;
