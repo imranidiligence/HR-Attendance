@@ -1282,8 +1282,8 @@ exports.applyLeave = async (req, res) => {
 
             const maxReIdResult = await client.query(
     `
-    SELECT COALESCE(MAX(lr_leave_request_id), 0) + 1 AS next_request_id
-    FROM public.leave_requests
+    SELECT COALESCE(COUNT(*), 0) + 1 AS next_request_id
+    FROM public.leave_requests where lr_created_at::date = CURRENT_DATE;
     `
 );
 
