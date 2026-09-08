@@ -1456,7 +1456,7 @@ const requestId =
 
             await sendEmail(
                 manager.email,
-                `Leave Request - ${employee.emp_id || employee.pr_id}`,
+                `Leave Request - ${request.request_id || employee.emp_id}`,
                 "leave_request",
                 {
                     manager_name:
@@ -3394,6 +3394,9 @@ exports.editLeave = async (req, res) => {
                 leave_request_id:
                     requestNumber,
 
+                request_id:
+                    request.request_id,
+
                 leave_type:
                     result.leave_type.name,
 
@@ -3436,7 +3439,7 @@ exports.editLeave = async (req, res) => {
                 emailPromises.push(
                     sendEmail(
                         managerEmail,
-                        `Leave Request Updated - ${requestNumber}`,
+                        `Leave Request Updated - ${request.request_id}`,
                         "leave_request_edit",
                         emailData
                     ).then(() => ({
@@ -3451,7 +3454,7 @@ exports.editLeave = async (req, res) => {
                 emailPromises.push(
                     sendEmail(
                         employeeEmail,
-                        `Leave Request Updated - ${requestNumber}`,
+                        `Leave Request Updated - ${request.request_id}`,
                         "leave_request_edit",
                         emailData
                     ).then(() => ({
