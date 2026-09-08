@@ -292,6 +292,7 @@ const getAllLeaveTypes = async (req, res) => {
         lt_updated_by
       FROM public.leave_types
       WHERE lt_emptype = $1
+      AND lt_leave_type_code = 'PL' Or lt_leave_type_code = 'LWP'
         AND ${activeCondition}
       ORDER BY lt_leave_type_id ASC
       `,
