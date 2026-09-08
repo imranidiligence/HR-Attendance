@@ -317,7 +317,19 @@ async function ensureEmployeeQuota(client, prId, year, createdBy) {
 
 exports.getMyLeaveSummary = async (req, res) => {
     try {
-        const prId = getLoggedInPrId(req);
+        const loggedInPrId = getLoggedInPrId(req);
+
+        const prId = req.query.pr_id
+            ? Number(req.query.pr_id)
+            : loggedInPrId;
+
+        if (!Number.isInteger(prId) || prId <= 0) {
+            return errorResponse(
+                res,
+                "Valid pr_id is required.",
+                400
+            );
+        }
 
         const year =
             validateYear(req.query.year) ||
