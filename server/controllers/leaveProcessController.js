@@ -1626,7 +1626,23 @@ exports.getLeaveRequestById = async (req, res) => {
             return errorResponse(res, "Valid leave request ID is required.", 400);
         }
         const result = await db.query(
-            `SELECT lr.lr_leave_request_id,lr.request_id,pr_emp.pr_first_name,or_emp.or_official_email as emp_email,or_reporting.or_official_email as reportingemail,pr_reporting.pr_first_name as reportingname, lr.lr_pr_id, lr.lr_leave_type_id, lr.lr_from_date, lr.lr_to_date, lr.lr_total_days, lr.lr_reason, lr.lr_status_id, ls.ls_leave_status_name, lr.lr_ismailfromrequester, lr.lr_ismailfromapprover, lr.lr_applied_at, lr.lr_approver_by, lr.lr_approver_at, lr.lr_approver_remark, lr.lr_cancelled_at, lr.lr_cancellation_reason, lr.lr_created_at, lr.lr_updated_at, lt.lt_leave_type_code, lt.lt_leave_type_name, lt.lt_is_paid FROM public.leave_requests lr INNER JOIN public.leave_types lt ON lt.lt_leave_type_id = lr.lr_leave_type_id INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id left join personal pr_emp on pr_emp.pr_id = lr.lr_pr_id left join personal pr_reporting on pr_reporting.pr_id = lr.lr_reporting_to left join organizations or_emp on  lr.lr_pr_id = or_emp.pr_id left join organizations or_reporting on  lr.lr_reporting_to = or_reporting.pr_id WHERE lr.lr_leave_request_id  = $1 LIMIT 1`,
+            `SELECT lr.lr_leave_request_id,lr.request_id,pr_emp.pr_first_name,pr_emp.pr_last_name,or_emp.or_official_email as emp_email, or_emp.or_emp_id,
+            or_reporting.or_official_email as reportingemail,pr_reporting.pr_first_name as reportingname,pr_reporting.pr_last_name as reportingLastname,
+             lr.lr_pr_id, lr.lr_leave_type_id, lr.lr_from_date, lr.lr_to_date,
+              lr.lr_total_days, lr.lr_reason, lr.lr_status_id,
+               ls.ls_leave_status_name, lr.lr_ismailfromrequester, 
+               lr.lr_ismailfromapprover, lr.lr_applied_at, lr.lr_approver_by, lr.lr_approver_at, 
+               lr.lr_approver_remark, lr.lr_cancelled_at, lr.lr_cancellation_reason, 
+               lr.lr_created_at, lr.lr_updated_at, lt.lt_leave_type_code, lt.lt_leave_type_name,
+                lt.lt_is_paid 
+                FROM public.leave_requests lr 
+                INNER JOIN public.leave_types lt ON lt.lt_leave_type_id = lr.lr_leave_type_id 
+                INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id 
+                left join personal pr_emp on pr_emp.pr_id = lr.lr_pr_id 
+                left join personal pr_reporting on pr_reporting.pr_id = lr.lr_reporting_to 
+                left join organizations or_emp on  lr.lr_pr_id = or_emp.pr_id 
+                left join organizations or_reporting on  
+            lr.lr_reporting_to = or_reporting.pr_id WHERE lr.lr_leave_request_id  = $1 LIMIT 1`,
             [requestId]
         );
         if (result.rows.length === 0) {
@@ -4166,8 +4182,8 @@ exports.getManagerLeaveRequests = async (req, res) => {
 
         const isAdmin = roleResult.rows.length > 0;
 
-        const params = [managerPrId];
-        let paramIndex = 2;
+        const params = [];
+        let paramIndex = 1;
 
         let whereConditions = `
             employee.or_is_active = TRUE
@@ -4175,8 +4191,11 @@ exports.getManagerLeaveRequests = async (req, res) => {
 
         if (!isAdmin) {
             whereConditions += `
-                AND manager.pr_id = $1
+                AND lr.lr_reporting_to = $${paramIndex}
             `;
+
+            params.push(managerPrId);
+            paramIndex++;
         }
 
         if (employee_id) {
@@ -4244,10 +4263,10 @@ exports.getManagerLeaveRequests = async (req, res) => {
                 lr.lr_leave_request_id,
                 lr.lr_pr_id,
                 lr.request_id,
+                lr.lr_reporting_to,
 
                 employee.or_id AS employee_or_id,
                 employee.or_emp_id AS employee_id,
-                employee.or_organization_name AS employee_name,
                 employee.or_official_email,
                 employee.or_official_contact,
 
@@ -4336,6 +4355,7 @@ exports.getManagerLeaveRequests = async (req, res) => {
         return handleDbError(res, error);
     }
 };
+
 
 module.exports.getLoggedInPrId = getLoggedInPrId;
 module.exports.calculateTotalDays = calculateTotalDays;
