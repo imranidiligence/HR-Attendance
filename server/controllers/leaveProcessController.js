@@ -1273,7 +1273,7 @@ exports.applyLeave = async (req, res) => {
                 availableDays < totalDays
             ) {
                 const error = new Error(
-                    `Insufficient leave balance. Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
+                    `Insufficient leave balance.Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
                 );
 
                 error.statusCode = 400;
@@ -1626,8 +1626,8 @@ exports.getLeaveRequestById = async (req, res) => {
             return errorResponse(res, "Valid leave request ID is required.", 400);
         }
         const result = await db.query(
-            `SELECT lr.lr_leave_request_id, lr.lr_pr_id, lr.lr_leave_type_id, lr.lr_from_date, lr.lr_to_date, lr.lr_total_days, lr.lr_reason, lr.lr_status_id, ls.ls_leave_status_name, lr.lr_ismailfromrequester, lr.lr_ismailfromapprover, lr.lr_applied_at, lr.lr_approver_by, lr.lr_approver_at, lr.lr_approver_remark, lr.lr_cancelled_at, lr.lr_cancellation_reason, lr.lr_created_at, lr.lr_updated_at, lt.lt_leave_type_code, lt.lt_leave_type_name, lt.lt_is_paid FROM public.leave_requests lr INNER JOIN public.leave_types lt ON lt.lt_leave_type_id = lr.lr_leave_type_id INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id WHERE lr.lr_leave_request_id = $1 AND lr.lr_pr_id = $2 LIMIT 1`,
-            [requestId, prId]
+            `SELECT lr.lr_leave_request_id,lr.request_id,pr_emp.pr_first_name,or_emp.or_official_email as emp_email,or_reporting.or_official_email as reportingemail,pr_reporting.pr_first_name as reportingname, lr.lr_pr_id, lr.lr_leave_type_id, lr.lr_from_date, lr.lr_to_date, lr.lr_total_days, lr.lr_reason, lr.lr_status_id, ls.ls_leave_status_name, lr.lr_ismailfromrequester, lr.lr_ismailfromapprover, lr.lr_applied_at, lr.lr_approver_by, lr.lr_approver_at, lr.lr_approver_remark, lr.lr_cancelled_at, lr.lr_cancellation_reason, lr.lr_created_at, lr.lr_updated_at, lt.lt_leave_type_code, lt.lt_leave_type_name, lt.lt_is_paid FROM public.leave_requests lr INNER JOIN public.leave_types lt ON lt.lt_leave_type_id = lr.lr_leave_type_id INNER JOIN public.leave_status ls ON ls.ls_leave_status_id = lr.lr_status_id left join personal pr_emp on pr_emp.pr_id = lr.lr_pr_id left join personal pr_reporting on pr_reporting.pr_id = lr.lr_reporting_to left join organizations or_emp on  lr.lr_pr_id = or_emp.pr_id left join organizations or_reporting on  lr.lr_reporting_to = or_reporting.pr_id WHERE lr.lr_leave_request_id  = $1 LIMIT 1`,
+            [requestId]
         );
         if (result.rows.length === 0) {
             return errorResponse(res, "Leave request not found.", 404);
@@ -1988,7 +1988,7 @@ exports.cancelLeave = async (req, res) => {
                 result.employee.emp_id,
 
             leave_request_id:
-                request.lr_leave_request_id,
+                request.request_id,
 
             leave_type:
                 result.leave_type.name,
@@ -2040,7 +2040,7 @@ exports.cancelLeave = async (req, res) => {
                 result.quota.used_days_after,
 
             manager_name:
-                result.manager.name
+                result.manager.pr_first_name
         };
 
         if (result.employee.email) {
@@ -4146,6 +4146,72 @@ exports.getManagerLeaveRequests = async (req, res) => {
 
         const { page, limit, offset } = getPaginationParams(req);
 
+        const {
+            employee_id,
+            request_status,
+            leave_type_code
+        } = req.query;
+
+        const roleResult = await db.query(
+            `
+            SELECT rm.rm_role_name
+            FROM public.user_role_relation urr
+            INNER JOIN public.usr_role_master rm
+                ON rm.rm_role_id = urr.rl_role_id
+            WHERE urr.pr_id = $1
+              AND UPPER(rm.rm_role_name) IN ('SUPER-ADMIN', 'HR-ADMIN')
+            `,
+            [managerPrId]
+        );
+
+        const isAdmin = roleResult.rows.length > 0;
+
+        const params = [managerPrId];
+        let paramIndex = 2;
+
+        let whereConditions = `
+            employee.or_is_active = TRUE
+        `;
+
+        if (!isAdmin) {
+            whereConditions += `
+                AND manager.pr_id = $1
+            `;
+        }
+
+        if (employee_id) {
+            whereConditions += `
+                AND (
+                    employee.or_emp_id::TEXT ILIKE $${paramIndex}
+                    OR employee.or_organization_name ILIKE $${paramIndex}
+                    OR employee.or_official_email ILIKE $${paramIndex}
+                    OR employee.or_official_contact ILIKE $${paramIndex}
+                    OR lr.request_id::TEXT ILIKE $${paramIndex}
+                )
+            `;
+
+            params.push(`%${employee_id}%`);
+            paramIndex++;
+        }
+
+        if (request_status) {
+            whereConditions += `
+                AND LOWER(ls.ls_leave_status_name) = LOWER($${paramIndex})
+            `;
+
+            params.push(request_status);
+            paramIndex++;
+        }
+
+        if (leave_type_code) {
+            whereConditions += `
+                AND LOWER(lt.lt_leave_type_code) = LOWER($${paramIndex})
+            `;
+
+            params.push(leave_type_code);
+            paramIndex++;
+        }
+
         const countResult = await db.query(
             `
             SELECT COUNT(*) AS total
@@ -4157,30 +4223,37 @@ exports.getManagerLeaveRequests = async (req, res) => {
             INNER JOIN public.organizations manager
                 ON manager.or_id = employee.or_reporting_to_id
 
+            INNER JOIN public.leave_types lt
+                ON lt.lt_leave_type_id = lr.lr_leave_type_id
+
             INNER JOIN public.leave_status ls
                 ON ls.ls_leave_status_id = lr.lr_status_id
 
-            WHERE manager.pr_id = $1
-              AND employee.or_is_active = TRUE
+            WHERE ${whereConditions}
             `,
-            [managerPrId]
+            params
         );
 
         const total = Number(countResult.rows[0].total);
+
+        const dataParams = [...params, limit, offset];
 
         const result = await db.query(
             `
             SELECT
                 lr.lr_leave_request_id,
                 lr.lr_pr_id,
+                lr.request_id,
 
                 employee.or_id AS employee_or_id,
                 employee.or_emp_id AS employee_id,
                 employee.or_organization_name AS employee_name,
-                employee.Or_Official_Email,
-                employee.Or_Official_Contact,
-                pr.Pr_First_Name,
-                pr.Pr_Last_Name,
+                employee.or_official_email,
+                employee.or_official_contact,
+
+                pr.pr_first_name,
+                pr.pr_last_name,
+
                 lr.lr_leave_type_id,
                 lt.lt_leave_type_code,
                 lt.lt_leave_type_name,
@@ -4216,7 +4289,7 @@ exports.getManagerLeaveRequests = async (req, res) => {
             INNER JOIN public.organizations employee
                 ON employee.pr_id = lr.lr_pr_id
 
-                INNER JOIN public.Personal pr
+            INNER JOIN public.Personal pr
                 ON pr.pr_id = lr.lr_pr_id
 
             INNER JOIN public.organizations manager
@@ -4228,8 +4301,7 @@ exports.getManagerLeaveRequests = async (req, res) => {
             INNER JOIN public.leave_status ls
                 ON ls.ls_leave_status_id = lr.lr_status_id
 
-            WHERE manager.pr_id = $1
-              AND employee.or_is_active = TRUE
+            WHERE ${whereConditions}
 
             ORDER BY
                 CASE
@@ -4245,9 +4317,10 @@ exports.getManagerLeaveRequests = async (req, res) => {
                 END,
                 lr.lr_created_at DESC
 
-            LIMIT $2 OFFSET $3
+            LIMIT $${paramIndex}
+            OFFSET $${paramIndex + 1}
             `,
-            [managerPrId, limit, offset]
+            dataParams
         );
 
         return paginatedResponse(
