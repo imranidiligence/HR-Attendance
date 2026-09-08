@@ -4173,7 +4173,7 @@ exports.getManagerLeaveRequests = async (req, res) => {
             SELECT
                 lr.lr_leave_request_id,
                 lr.lr_pr_id,
-
+                lr.request_id
                 employee.or_id AS employee_or_id,
                 employee.or_emp_id AS employee_id,
                 employee.or_organization_name AS employee_name,
