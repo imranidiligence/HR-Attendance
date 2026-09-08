@@ -1273,7 +1273,7 @@ exports.applyLeave = async (req, res) => {
                 availableDays < totalDays
             ) {
                 const error = new Error(
-                    `Insufficient leave balance. Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
+                    `Insufficient leave balance.Available: ${availableDays}, Requested: ${totalDays}. Use Unpaid Quota.`
                 );
 
                 error.statusCode = 400;
