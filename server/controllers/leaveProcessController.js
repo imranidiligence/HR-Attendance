@@ -1259,7 +1259,7 @@ exports.applyLeave = async (req, res) => {
                 ) {
                     const error =
                         new Error(
-                            `PL leave limit exceeded. Currently: ${earnedPLDays} day(s), Already used: ${usedPLDays} day(s), Pending: ${pendingPLDays} day(s), Available: ${remainingEarnedPLDays} day(s), Requested: ${totalDays} day(s).`
+                            `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s), Requested: ${requestedDays} day(s).`
                         );
 
                     error.statusCode = 400;
@@ -1484,10 +1484,10 @@ const requestId =
                         result.leave_type.lt_leave_type_code || "-",
 
                     from_date:
-                        request.lr_from_date,
+                    formatDateTime(request.lr_from_date),
 
                     to_date:
-                        request.lr_to_date,
+                    formatDateTime(request.lr_to_date),
 
                     total_days:
                         result.total_days,
@@ -1997,10 +1997,14 @@ exports.cancelLeave = async (req, res) => {
                 result.leave_type.code || "-",
 
             from_date:
-                request.lr_from_date,
+            formatDateTime(
+                    request.lr_from_date
+                ),
 
             to_date:
-                request.lr_to_date,
+                formatDateTime(
+                    request.lr_to_date
+                ),
 
             total_days:
                 request.lr_total_days,
@@ -2461,10 +2465,12 @@ exports.approveLeave = async (req, res) => {
                             result.leave_type.code || "-",
 
                         from_date:
-                            request.lr_from_date,
+                        formatDateTime(
+                            request.lr_from_date),
 
                         to_date:
-                            request.lr_to_date,
+                        formatDateTime(
+                            request.lr_to_date),
 
                         total_days:
                             request.lr_total_days,
@@ -2477,10 +2483,12 @@ exports.approveLeave = async (req, res) => {
                             "Approved",
 
                         applied_at:
-                            formattedAppliedAt,
+                        formatDateTime(
+                            formattedAppliedAt),
 
                         approved_at:
-                            formattedApprovedAt,
+                        formatDateTime(
+                            formattedApprovedAt),
 
                         approver_remark:
                             result.request.lr_approver_remark ||
@@ -3059,7 +3067,7 @@ exports.editLeave = async (req, res) => {
                     remainingEarnedPLDays
                 ) {
                     const error = new Error(
-                        `PL leave limit exceeded. Currently: ${earnedPLDays} day(s), Already used: ${usedPLDays} day(s), Pending: ${pendingPLDays} day(s), Available: ${remainingEarnedPLDays} day(s), Requested: ${requestedDays} day(s).`
+                        `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s), Requested: ${requestedDays} day(s).`
                     );
 
                     error.statusCode = 400;
@@ -3404,7 +3412,7 @@ exports.editLeave = async (req, res) => {
                     requestNumber,
 
                 request_id:
-                    requestNumber,
+                    request.request_id,
 
                 leave_type:
                     result.leave_type.name,
@@ -3939,7 +3947,8 @@ const remark = req.body?.remark || null;
                         result.leave_type.code || "-",
 
                     from_date:
-                        request.lr_from_date,
+                    formatDateTime(
+                        request.lr_from_date),
 
                     to_date:
                         request.lr_to_date,
