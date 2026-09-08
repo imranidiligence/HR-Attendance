@@ -1988,7 +1988,7 @@ exports.cancelLeave = async (req, res) => {
                 result.employee.emp_id,
 
             leave_request_id:
-                request.lr_leave_request_id,
+                request.request_id,
 
             leave_type:
                 result.leave_type.name,
@@ -2040,7 +2040,7 @@ exports.cancelLeave = async (req, res) => {
                 result.quota.used_days_after,
 
             manager_name:
-                result.manager.name
+                result.manager.pr_first_name
         };
 
         if (result.employee.email) {
