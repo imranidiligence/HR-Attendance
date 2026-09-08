@@ -3592,7 +3592,7 @@ exports.editLeave = async (req, res) => {
 
 exports.getMyLeaveRequests = async (req, res) => {
     try {
-        const prId = getLoggedInPrId(req);
+        const prId = Number(req.query.pr_id);
         const { page, limit, offset } = getPaginationParams(req);
 
         const countResult = await db.query(
