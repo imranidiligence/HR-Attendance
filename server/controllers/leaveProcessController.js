@@ -1259,7 +1259,7 @@ exports.applyLeave = async (req, res) => {
                 ) {
                     const error =
                         new Error(
-                            `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s), Requested: ${requestedDays} day(s).`
+                            `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s)`
                         );
 
                     error.statusCode = 400;
@@ -3067,7 +3067,7 @@ exports.editLeave = async (req, res) => {
                     remainingEarnedPLDays
                 ) {
                     const error = new Error(
-                        `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s), Requested: ${requestedDays} day(s).`
+                        `PL leave limit exceeded. Available: ${remainingEarnedPLDays} day(s)`
                     );
 
                     error.statusCode = 400;
