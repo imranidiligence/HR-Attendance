@@ -216,21 +216,80 @@ const getLeaveTypeById = async (req, res) => {
 
 const getAllLeaveTypes = async (req, res) => {
   try {
-    const { is_active } = req.query;
+    const { pr_id, is_active } = req.query;
 
-    const whereClause = buildIsActiveClause(
-      is_active,
-      "lt_is_active"
+    if (!pr_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Pr_Id is required"
+      });
+    }
+
+    const employeeResult = await db.query(
+      `
+      SELECT
+        or_employee_type_id
+      FROM public.organizations
+      WHERE pr_id = $1
+        AND COALESCE(or_is_active, TRUE) = TRUE
+        AND or_employee_type_id IS NOT NULL
+      ORDER BY or_id DESC
+      LIMIT 1
+      `,
+      [pr_id]
     );
 
-    const query = `
-      SELECT *
-      FROM public.leave_types
-      ${whereClause}
-      ORDER BY lt_leave_type_id ASC
-    `;
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: `Active organization information not found for Pr_Id ${pr_id}`
+      });
+    }
 
-    const result = await db.query(query);
+    const employeeTypeId =
+      employeeResult.rows[0].or_employee_type_id;
+
+    let activeCondition = "lt_is_active = TRUE";
+
+    if (is_active !== undefined) {
+      const activeValue = String(is_active).toLowerCase();
+
+      if (activeValue === "true") {
+        activeCondition = "lt_is_active = TRUE";
+      } else if (activeValue === "false") {
+        activeCondition = "lt_is_active = FALSE";
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: "is_active must be true or false"
+        });
+      }
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        lt_leave_type_id,
+        lt_leave_type_code,
+        lt_leave_type_name,
+        lt_total_days_per_year,
+        lt_is_paid,
+        lt_from_date,
+        lt_to_date,
+        lt_emptype,
+        lt_is_active,
+        lt_created_at,
+        lt_updated_at,
+        lt_created_by,
+        lt_updated_by
+      FROM public.leave_types
+      WHERE lt_emptype = $1
+      AND lt_leave_type_code = 'PL' Or lt_leave_type_code = 'LWP'
+        AND ${activeCondition}
+      ORDER BY lt_leave_type_id ASC
+      `,
+      [employeeTypeId]
+    );
 
     return successResponse(
       res,
@@ -247,6 +306,8 @@ const getAllLeaveTypes = async (req, res) => {
     );
   }
 };
+
+
 
 
 

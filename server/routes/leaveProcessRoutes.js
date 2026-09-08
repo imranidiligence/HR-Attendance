@@ -11,6 +11,12 @@ const auth = require("../middlewares/authMiddleware");
 
 router.get("/my-summary", auth,leaveProcessController.getMyLeaveSummary);
 
+router.get(
+    "/all-summary",
+    auth,
+    leaveProcessController.getAllEmployeesLeaveSummary
+);
+
 // Get leave types applicable to logged-in employee
 router.get(
     "/my-leave-types",
