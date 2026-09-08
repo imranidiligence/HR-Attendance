@@ -1280,54 +1280,76 @@ exports.applyLeave = async (req, res) => {
                 throw error;
             }
 
-            const insertResult =
-                await client.query(
-                    `
-                    INSERT INTO public.leave_requests
-                    (
-                        lr_pr_id,
-                        lr_leave_type_id,
-                        lr_from_date,
-                        lr_to_date,
-                        lr_total_days,
-                        lr_reason,
-                        lr_status_id,
-                        lr_reporting_to,
-                        lr_ismailfromrequester,
-                        lr_ismailfromapprover,
-                        lr_applied_at,
-                        lr_created_at,
-                        lr_created_by
-                    )
-                    VALUES
-                    (
-                        $1,
-                        $2,
-                        $3,
-                        $4,
-                        $5,
-                        $6,
-                        $7,
-                        $8,
-                        FALSE,
-                        FALSE,
-                        CURRENT_TIMESTAMP,
-                        CURRENT_TIMESTAMP,
-                        $1
-                    )
-                    RETURNING *
-                    `,
-                    [
-                        prId,
-                        leaveTypeId,
-                        from_date,
-                        to_date,
-                        totalDays,
-                        reason || null,
-                        pendingStatusId,
-                        reportingTo
-                    ]
-                );
+            const maxReIdResult = await client.query(
+    `
+    SELECT COALESCE(MAX(lr_leave_request_id), 0) + 1 AS next_request_id
+    FROM public.leave_requests
+    `
+);
+
+const nextRequestId =
+    Number(maxReIdResult.rows[0].next_request_id);
+
+const currentDate = new Date();
+
+const day = String(currentDate.getDate()).padStart(2, "0");
+const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+const currentYear = currentDate.getFullYear();
+
+const requestId =
+    `${day}${month}${currentYear}${String(nextRequestId).padStart(3, "0")}`;
+
+           const insertResult =
+    await client.query(
+        `
+        INSERT INTO public.leave_requests
+        (
+            lr_pr_id,
+            lr_leave_type_id,
+            lr_from_date,
+            lr_to_date,
+            lr_total_days,
+            lr_reason,
+            lr_status_id,
+            lr_reporting_to,
+            lr_ismailfromrequester,
+            lr_ismailfromapprover,
+            lr_applied_at,
+            lr_created_at,
+            lr_created_by,
+            request_id
+        )
+        VALUES
+        (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            FALSE,
+            FALSE,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP,
+            $1,
+            $9
+        )
+        RETURNING *
+        `,
+        [
+            prId,
+            leaveTypeId,
+            from_date,
+            to_date,
+            totalDays,
+            reason || null,
+            pendingStatusId,
+            reportingTo,
+            requestId
+        ]
+    );
 
             await client.query(
                 `
@@ -1453,7 +1475,7 @@ exports.applyLeave = async (req, res) => {
                         employee.email || "-",
 
                     leave_request_id:
-                        request.lr_leave_request_id,
+                        request.request_id,
 
                     leave_type:
                         result.leave_type.lt_leave_type_name,
@@ -1537,12 +1559,12 @@ exports.applyLeave = async (req, res) => {
             );
 
             console.log(
-                `[LEAVE EMAIL SENT] Request=${request.lr_leave_request_id} To=${manager.email}`
+                `[LEAVE EMAIL SENT] Request=${request.request_id} To=${manager.email}`
             );
 
         } catch (emailError) {
             console.error(
-                `[LEAVE EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+                `[LEAVE EMAIL ERROR] Request=${result.request.request_id}`,
                 emailError
             );
         }
@@ -1879,9 +1901,7 @@ exports.cancelLeave = async (req, res) => {
                         leaveRequest.employee_emp_id,
 
                     email:
-                        leaveRequest.employee_personal_email ||
                         leaveRequest.employee_official_email ||
-                        leaveRequest.employee_organization_email ||
                         null
                 },
 
@@ -1896,8 +1916,6 @@ exports.cancelLeave = async (req, res) => {
 
                     email:
                         leaveRequest.manager_official_email ||
-                        leaveRequest.manager_organization_email ||
-                        leaveRequest.manager_personal_email ||
                         null
                 },
 
@@ -2025,17 +2043,17 @@ exports.cancelLeave = async (req, res) => {
             try {
                 await sendEmail(
                     result.employee.email,
-                    `Leave Request Cancelled - ${request.lr_leave_request_id}`,
+                    `Leave Request Cancelled - ${request.request_id}`,
                     "leave_cancelled",
                     emailData
                 );
 
                 console.log(
-                    `[LEAVE CANCELLATION EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.employee.email}`
+                    `[LEAVE CANCELLATION EMAIL SENT] Request=${request.request_id} To=${result.employee.email}`
                 );
             } catch (emailError) {
                 console.error(
-                    `[LEAVE CANCELLATION EMAIL ERROR] Request=${request.lr_leave_request_id} To=${result.employee.email}`,
+                    `[LEAVE CANCELLATION EMAIL ERROR] Request=${request.request_id} To=${result.employee.email}`,
                     emailError
                 );
             }
@@ -2045,17 +2063,17 @@ exports.cancelLeave = async (req, res) => {
             try {
                 await sendEmail(
                     result.manager.email,
-                    `Leave Request Cancelled - ${request.lr_leave_request_id}`,
+                    `Leave Request Cancelled - ${request.request_id}`,
                     "leave_cancelled",
                     emailData
                 );
 
                 console.log(
-                    `[LEAVE CANCELLATION MANAGER EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.manager.email}`
+                    `[LEAVE CANCELLATION MANAGER EMAIL SENT] Request=${request.request_id} To=${result.manager.email}`
                 );
             } catch (emailError) {
                 console.error(
-                    `[LEAVE CANCELLATION MANAGER EMAIL ERROR] Request=${request.lr_leave_request_id} To=${result.manager.email}`,
+                    `[LEAVE CANCELLATION MANAGER EMAIL ERROR] Request=${request.request_id} To=${result.manager.email}`,
                     emailError
                 );
             }
@@ -2423,7 +2441,7 @@ exports.approveLeave = async (req, res) => {
 
                 await sendEmail(
                     result.employee.email,
-                    `Leave Request Approved - ${request.request_id || request.lr_leave_request_id}`,
+                    `Leave Request Approved - ${request.request_id || request.request_id}`,
                     "leave_approved",
                     {
                         employee_name:
@@ -2492,12 +2510,12 @@ exports.approveLeave = async (req, res) => {
                 );
 
                 console.log(
-                    `[LEAVE APPROVAL EMAIL SENT] Request=${request.request_id || request.lr_leave_request_id} To=${result.employee.email}`
+                    `[LEAVE APPROVAL EMAIL SENT] Request=${request.request_id || request.request_id} To=${result.employee.email}`
                 );
             }
         } catch (emailError) {
             console.error(
-                `[LEAVE APPROVAL EMAIL ERROR] Request=${result.request.request_id || result.request.lr_leave_request_id}`,
+                `[LEAVE APPROVAL EMAIL ERROR] Request=${result.request.request_id || result.request.request_id}`,
                 emailError
             );
         }
@@ -2727,6 +2745,18 @@ exports.editLeave = async (req, res) => {
 
             const employee = employeeResult.rows[0];
 
+            const employeeOfficialEmail =
+                employee.or_official_email || null;
+
+            if (!employeeOfficialEmail) {
+                const error = new Error(
+                    "Employee official email is not configured."
+                );
+
+                error.statusCode = 400;
+                throw error;
+            }
+
             if (!employee.or_reporting_to_id) {
                 const error = new Error(
                     "Reporting manager is not assigned to this employee."
@@ -2777,14 +2807,12 @@ exports.editLeave = async (req, res) => {
 
             const manager = managerResult.rows[0];
 
-            const managerEmail =
-                manager.manager_email ||
-                manager.or_official_email ||
-                null;
+            const managerOfficialEmail =
+                manager.or_official_email || null;
 
-            if (!managerEmail) {
+            if (!managerOfficialEmail) {
                 const error = new Error(
-                    "Reporting manager email is not configured."
+                    "Reporting manager official email is not configured."
                 );
 
                 error.statusCode = 400;
@@ -3169,8 +3197,7 @@ exports.editLeave = async (req, res) => {
                 }
             }
 
-           // if (newLeaveType.lt_is_paid === true) 
-                {
+            {
                 if (!newQuota) {
                     const error = new Error(
                         "Leave quota not found for the selected leave type."
@@ -3217,6 +3244,7 @@ exports.editLeave = async (req, res) => {
                     lr_approver_at = NULL,
                     lr_approver_remark = NULL,
                     lr_ismailfromapprover = FALSE,
+                    lr_ismailfromrequester = FALSE,
                     lr_updated_at = CURRENT_TIMESTAMP,
                     lr_updated_by = $8
                 WHERE lr_leave_request_id = $9
@@ -3251,8 +3279,7 @@ exports.editLeave = async (req, res) => {
                     emp_id:
                         employee.or_emp_id,
 
-                    email:
-                        employee.employee_email ||
+                    official_email:
                         employee.or_official_email ||
                         null
                 },
@@ -3269,8 +3296,7 @@ exports.editLeave = async (req, res) => {
                         manager.or_emp_id ||
                         "Manager",
 
-                    email:
-                        manager.manager_email ||
+                    official_email:
                         manager.or_official_email ||
                         null
                 },
@@ -3343,67 +3369,122 @@ exports.editLeave = async (req, res) => {
                 return `${day}-${month}-${year}:${hours}:${minutes}`;
             };
 
-            if (
-                result.manager &&
-                result.manager.email
-            ) {
-                await sendEmail(
-                    result.manager.email,
-                    `Leave Request Updated - ${request.lr_leave_request_id}`,
-                    "leave_request_edit",
-                    {
-                        manager_name:
-                            result.manager.name,
+            const employeeEmail =
+                result.employee?.official_email || null;
 
-                        employee_name:
-                            result.employee.name,
+            const managerEmail =
+                result.manager?.official_email || null;
 
-                        employee_id:
-                            result.employee.emp_id,
+            const requestNumber =
+                request.lr_leave_request_id;
 
-                        employee_email:
-                            result.employee.email || "-",
+            const emailData = {
+                manager_name:
+                    result.manager.name,
 
-                        leave_request_id:
-                            request.lr_leave_request_id,
+                employee_name:
+                    result.employee.name,
 
-                        leave_type:
-                            result.leave_type.name,
+                employee_id:
+                    result.employee.emp_id,
 
-                        leave_type_code:
-                            result.leave_type.code,
+                employee_email:
+                    employeeEmail || "-",
 
-                        from_date:
-                            request.lr_from_date,
+                leave_request_id:
+                    requestNumber,
 
-                        to_date:
-                            request.lr_to_date,
+                leave_type:
+                    result.leave_type.name,
 
-                        total_days:
-                            request.lr_total_days,
+                leave_type_code:
+                    result.leave_type.code,
 
-                        reason:
-                            request.lr_reason ||
-                            "No reason provided",
+                from_date:
+                    request.lr_from_date,
 
-                        previous_status:
-                            result.previous_status,
+                to_date:
+                    request.lr_to_date,
 
-                        status:
-                            "Pending",
+                total_days:
+                    request.lr_total_days,
 
-                        applied_at:
-                            formatDateTime(
-                                request.lr_applied_at
-                            ),
+                reason:
+                    request.lr_reason ||
+                    "No reason provided",
 
-                        updated_at:
-                            formatDateTime(
-                                request.lr_updated_at
-                            )
-                    }
+                previous_status:
+                    result.previous_status,
+
+                status:
+                    "Pending",
+
+                applied_at:
+                    formatDateTime(
+                        request.lr_applied_at
+                    ),
+
+                updated_at:
+                    formatDateTime(
+                        request.lr_updated_at
+                    )
+            };
+
+            const emailPromises = [];
+
+            if (managerEmail) {
+                emailPromises.push(
+                    sendEmail(
+                        managerEmail,
+                        `Leave Request Updated - ${requestNumber}`,
+                        "leave_request_edit",
+                        emailData
+                    ).then(() => ({
+                        type: "manager",
+                        email: managerEmail,
+                        success: true
+                    }))
                 );
+            }
 
+            if (employeeEmail) {
+                emailPromises.push(
+                    sendEmail(
+                        employeeEmail,
+                        `Leave Request Updated - ${requestNumber}`,
+                        "leave_request_edit",
+                        emailData
+                    ).then(() => ({
+                        type: "employee",
+                        email: employeeEmail,
+                        success: true
+                    }))
+                );
+            }
+
+            const emailResults =
+                await Promise.allSettled(emailPromises);
+
+            let mailSent = false;
+
+            for (const emailResult of emailResults) {
+                if (
+                    emailResult.status === "fulfilled"
+                ) {
+                    mailSent = true;
+
+                    console.log(
+                        `[LEAVE EDIT EMAIL SENT] Request=${requestNumber} Type=${emailResult.value.type} To=${emailResult.value.email}`
+                    );
+                } else {
+                    console.error(
+                        `[LEAVE EDIT EMAIL ERROR] Request=${requestNumber}`,
+                        emailResult.reason
+                    );
+                }
+            }
+
+            if (mailSent) {
                 await db.query(
                     `
                     UPDATE public.leave_requests
@@ -3415,12 +3496,8 @@ exports.editLeave = async (req, res) => {
                     `,
                     [
                         prId,
-                        request.lr_leave_request_id
+                        requestNumber
                     ]
-                );
-
-                console.log(
-                    `[LEAVE EDIT EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.manager.email}`
                 );
             }
         } catch (emailError) {
@@ -3811,7 +3888,7 @@ const remark = req.body?.remark || null;
 
             await sendEmail(
                 result.employee.email,
-                `Leave Request Rejected - ${request.lr_leave_request_id}`,
+                `Leave Request Rejected - ${request.request_id}`,
                 "leave_rejected",
                 {
                     employee_name:
@@ -3821,7 +3898,7 @@ const remark = req.body?.remark || null;
                         result.employee.emp_id,
 
                     leave_request_id:
-                        request.lr_leave_request_id,
+                        request.request_id,
 
                     leave_type:
                         result.leave_type.name,
@@ -3883,12 +3960,12 @@ const remark = req.body?.remark || null;
             );
 
             console.log(
-                `[LEAVE REJECTION EMAIL SENT] Request=${request.lr_leave_request_id} To=${result.employee.email}`
+                `[LEAVE REJECTION EMAIL SENT] Request=${request.request_id} To=${result.employee.email}`
             );
         }
     } catch (emailError) {
         console.error(
-            `[LEAVE REJECTION EMAIL ERROR] Request=${result.request.lr_leave_request_id}`,
+            `[LEAVE REJECTION EMAIL ERROR] Request=${result.request.request_id}`,
             emailError
         );
     }
