@@ -1128,7 +1128,7 @@ exports.applyLeave = async (req, res) => {
                     overlapResult.rows[0];
 
                 const error = new Error(
-                    `Leave already exists from ${existing.lr_from_date} to ${existing.lr_to_date}.`
+                    `Leave already exists from ${formatDateTime(existing.lr_from_date)} to ${formatDateTime(existing.lr_to_date)}.`
                 );
 
                 error.statusCode = 409;
