@@ -2694,9 +2694,7 @@ exports.editLeave = async (req, res) => {
                 "cancelled"
             ];
 
-            if (
-                !editableStatuses.includes(currentStatus)
-            ) {
+            if (!editableStatuses.includes(currentStatus)) {
                 const error = new Error(
                     `Leave cannot be edited because current status is ${oldRequest.ls_leave_status_name}.`
                 );
@@ -3197,37 +3195,35 @@ exports.editLeave = async (req, res) => {
                 }
             }
 
-            {
-                if (!newQuota) {
-                    const error = new Error(
-                        "Leave quota not found for the selected leave type."
-                    );
-
-                    error.statusCode = 400;
-                    throw error;
-                }
-
-                await client.query(
-                    `
-                    UPDATE public.leave_quota
-                    SET
-                        lq_pending_days =
-                            COALESCE(
-                                lq_pending_days,
-                                0
-                            ) + $1,
-                        lq_updated_at =
-                            CURRENT_TIMESTAMP,
-                        lq_updated_by = $2
-                    WHERE lq_id = $3
-                    `,
-                    [
-                        requestedDays,
-                        prId,
-                        newQuota.lq_id
-                    ]
+            if (!newQuota) {
+                const error = new Error(
+                    "Leave quota not found for the selected leave type."
                 );
+
+                error.statusCode = 400;
+                throw error;
             }
+
+            await client.query(
+                `
+                UPDATE public.leave_quota
+                SET
+                    lq_pending_days =
+                        COALESCE(
+                            lq_pending_days,
+                            0
+                        ) + $1,
+                    lq_updated_at =
+                        CURRENT_TIMESTAMP,
+                    lq_updated_by = $2
+                WHERE lq_id = $3
+                `,
+                [
+                    requestedDays,
+                    prId,
+                    newQuota.lq_id
+                ]
+            );
 
             const updateResult = await client.query(
                 `
@@ -3264,38 +3260,27 @@ exports.editLeave = async (req, res) => {
             );
 
             return {
-                request:
-                    updateResult.rows[0],
+                request: updateResult.rows[0],
 
                 employee: {
-                    pr_id:
-                        employee.pr_id,
-
+                    pr_id: employee.pr_id,
                     name:
                         employee.employee_name ||
                         employee.or_emp_id ||
                         "Employee",
-
-                    emp_id:
-                        employee.or_emp_id,
-
+                    emp_id: employee.or_emp_id,
                     official_email:
                         employee.or_official_email ||
                         null
                 },
 
                 manager: {
-                    pr_id:
-                        manager.pr_id,
-
-                    emp_id:
-                        manager.or_emp_id,
-
+                    pr_id: manager.pr_id,
+                    emp_id: manager.or_emp_id,
                     name:
                         manager.manager_name ||
                         manager.or_emp_id ||
                         "Manager",
-
                     official_email:
                         manager.or_official_email ||
                         null
@@ -3304,7 +3289,6 @@ exports.editLeave = async (req, res) => {
                 leave_type: {
                     name:
                         newLeaveType.lt_leave_type_name,
-
                     code:
                         newLeaveType.lt_leave_type_code ||
                         "-"
@@ -3313,8 +3297,7 @@ exports.editLeave = async (req, res) => {
                 previous_status:
                     oldRequest.ls_leave_status_name,
 
-                new_status:
-                    "Pending",
+                new_status: "Pending",
 
                 previous_leave_type_id:
                     oldLeaveTypeId,
@@ -3335,6 +3318,29 @@ exports.editLeave = async (req, res) => {
 
         try {
             const request = result.request;
+
+            const formatDate = (value) => {
+                if (!value) {
+                    return "-";
+                }
+
+                const date = new Date(value);
+
+                const day =
+                    String(
+                        date.getDate()
+                    ).padStart(2, "0");
+
+                const month =
+                    String(
+                        date.getMonth() + 1
+                    ).padStart(2, "0");
+
+                const year =
+                    date.getFullYear();
+
+                return `${day}-${month}-${year}`;
+            };
 
             const formatDateTime = (value) => {
                 if (!value) {
@@ -3366,7 +3372,7 @@ exports.editLeave = async (req, res) => {
                         date.getMinutes()
                     ).padStart(2, "0");
 
-                return `${day}-${month}-${year}:${hours}:${minutes}`;
+                return `${day}-${month}-${year} ${hours}:${minutes}`;
             };
 
             const employeeEmail =
@@ -3386,16 +3392,19 @@ exports.editLeave = async (req, res) => {
                     result.employee.name,
 
                 employee_id:
-                    result.employee.emp_id,
+                    result.employee.emp_id || "-",
 
                 employee_email:
                     employeeEmail || "-",
+
+                manager_email:
+                    managerEmail || "-",
 
                 leave_request_id:
                     requestNumber,
 
                 request_id:
-                    request.request_id,
+                    requestNumber,
 
                 leave_type:
                     result.leave_type.name,
@@ -3404,10 +3413,10 @@ exports.editLeave = async (req, res) => {
                     result.leave_type.code,
 
                 from_date:
-                    request.lr_from_date,
+                    formatDate(request.lr_from_date),
 
                 to_date:
-                    request.lr_to_date,
+                    formatDate(request.lr_to_date),
 
                 total_days:
                     request.lr_total_days,
@@ -3417,7 +3426,7 @@ exports.editLeave = async (req, res) => {
                     "No reason provided",
 
                 previous_status:
-                    result.previous_status,
+                    result.previous_status || "-",
 
                 status:
                     "Pending",
@@ -3440,12 +3449,19 @@ exports.editLeave = async (req, res) => {
                     sendEmail(
                         managerEmail,
                         `Leave Request Updated - ${request.request_id}`,
-                        "leave_request_edit",
+                        "leave_request_edit_manager",
                         emailData
-                    ).then(() => ({
+                    )
+                    .then(() => ({
                         type: "manager",
                         email: managerEmail,
                         success: true
+                    }))
+                    .catch((error) => ({
+                        type: "manager",
+                        email: managerEmail,
+                        success: false,
+                        error
                     }))
                 );
             }
@@ -3457,47 +3473,60 @@ exports.editLeave = async (req, res) => {
                         `Leave Request Updated - ${request.request_id}`,
                         "leave_request_edit",
                         emailData
-                    ).then(() => ({
+                    )
+                    .then(() => ({
                         type: "employee",
                         email: employeeEmail,
                         success: true
+                    }))
+                    .catch((error) => ({
+                        type: "employee",
+                        email: employeeEmail,
+                        success: false,
+                        error
                     }))
                 );
             }
 
             const emailResults =
-                await Promise.allSettled(emailPromises);
+                await Promise.all(emailPromises);
 
-            let mailSent = false;
+            let managerMailSent = false;
+            let employeeMailSent = false;
 
             for (const emailResult of emailResults) {
-                if (
-                    emailResult.status === "fulfilled"
-                ) {
-                    mailSent = true;
+                if (emailResult.success) {
+                    if (emailResult.type === "manager") {
+                        managerMailSent = true;
+                    }
+
+                    if (emailResult.type === "employee") {
+                        employeeMailSent = true;
+                    }
 
                     console.log(
-                        `[LEAVE EDIT EMAIL SENT] Request=${requestNumber} Type=${emailResult.value.type} To=${emailResult.value.email}`
+                        `[LEAVE EDIT EMAIL SENT] Request=${requestNumber} Type=${emailResult.type} To=${emailResult.email}`
                     );
                 } else {
                     console.error(
-                        `[LEAVE EDIT EMAIL ERROR] Request=${requestNumber}`,
-                        emailResult.reason
+                        `[LEAVE EDIT EMAIL ERROR] Request=${requestNumber} Type=${emailResult.type} To=${emailResult.email}`,
+                        emailResult.error
                     );
                 }
             }
 
-            if (mailSent) {
+            if (managerMailSent || employeeMailSent) {
                 await db.query(
                     `
                     UPDATE public.leave_requests
                     SET
-                        lr_ismailfromrequester = TRUE,
+                        lr_ismailfromrequester = $1,
                         lr_updated_at = CURRENT_TIMESTAMP,
-                        lr_updated_by = $1
-                    WHERE lr_leave_request_id = $2
+                        lr_updated_by = $2
+                    WHERE lr_leave_request_id = $3
                     `,
                     [
+                        employeeMailSent,
                         prId,
                         requestNumber
                     ]
