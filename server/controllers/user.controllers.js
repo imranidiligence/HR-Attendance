@@ -332,6 +332,45 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     const total = countResult.rows[0]?.total || 0;
 
+    const summaryQuery = `
+  SELECT
+    COUNT(DISTINCT p.pr_id)::int AS total_employees,
+
+    COUNT(DISTINCT p.pr_id)
+      FILTER (
+        WHERE o.or_is_active = true
+      )::int AS active_employees,
+
+    COUNT(DISTINCT p.pr_id)
+      FILTER (
+        WHERE o.or_is_active = false
+      )::int AS inactive_employees,
+
+    COUNT(DISTINCT p.pr_id)
+      FILTER (
+        WHERE o.or_is_active = true
+          AND o.or_joining_date IS NOT NULL
+          AND o.or_joining_date <= CURRENT_DATE
+          AND o.or_joining_date >= CURRENT_DATE - INTERVAL '6 months'
+      )::int AS new_joiners
+
+  FROM public.personal p
+
+  LEFT JOIN public.organizations o
+    ON p.pr_id = o.pr_id
+
+  ${whereClause}
+`;
+
+    const summaryResult = await db.query(summaryQuery, values);
+
+    const summary = summaryResult.rows[0] || {
+      total_employees: 0,
+      active_employees: 0,
+      inactive_employees: 0,
+      new_joiners: 0,
+    };
+
     const dataValues = [...values];
 
     const limitParam = paramIndex;
@@ -532,28 +571,37 @@ const getAllEmployeesPaginated = async (req, res) => {
 
     const totalPages = Math.ceil(total / limit);
 
-    return res.status(200).json({
-      success: true,
+  return res.status(200).json({
+  success: true,
 
-      pagination: {
-        currentPage: page,
-        limit,
-        totalRecords: total,
-        totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
-      },
+  summary: {
+    totalEmployees: summary.total_employees,
+    activeEmployees: summary.active_employees,
+    inactiveEmployees: summary.inactive_employees,
+    newJoiners: summary.new_joiners,
+  },
 
-      filters: {
-        search: searchValue || null,
-        department: department || null,
-        designation: designation || null,
-        status:
-          status === undefined || status === "" ? null : status === "true",
-      },
+  pagination: {
+    currentPage: page,
+    limit,
+    totalRecords: total,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPreviousPage: page > 1,
+  },
 
-      employees: result.rows,
-    });
+  filters: {
+    search: searchValue || null,
+    department: department || null,
+    designation: designation || null,
+    status:
+      status === undefined || status === ""
+        ? null
+        : status === "true",
+  },
+
+  employees: result.rows,
+});
   } catch (error) {
     console.error("Get Employees Error:", error);
 
