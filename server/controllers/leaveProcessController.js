@@ -4368,6 +4368,78 @@ exports.getManagerLeaveRequests = async (req, res) => {
     }
 };
 
+exports.getMyReportingDetails = async (req, res) => {
+    try {
+        const prId = Number(req.query.pr_id);
+
+        if (!Number.isInteger(prId) || prId <= 0) {
+            return errorResponse(
+                res,
+                "Valid pr_id is required.",
+                400
+            );
+        }
+
+        const result = await db.query(
+            `
+            SELECT
+                o.Pr_Id AS employee_pr_id,
+                p.Pr_First_Name AS employee_first_name,
+                p.Pr_Last_Name AS employee_last_name,
+                p.Pr_Email AS employee_email,
+                p.Pr_Contact AS employee_contact,
+                o.Or_Emp_Id AS employee_id,
+                o.Or_Official_Email AS employee_official_email,
+                o.Or_Official_Contact AS employee_official_contact,
+                o.Or_Organization_Name AS employee_organization_name,
+                o.Or_Organization_Location AS employee_organization_location,
+                o.Or_Joining_Date AS employee_joining_date,
+                o.Or_Department_Id AS employee_department_id,
+                o.Or_Designation_Id AS employee_designation_id,
+                o.Or_Employee_Type_Id AS employee_type_id,
+
+                r.Pr_Id AS reporting_pr_id,
+                r.Pr_First_Name AS reporting_first_name,
+                r.Pr_Last_Name AS reporting_last_name,
+                r.Pr_Email AS reporting_email,
+                r.Pr_Contact AS reporting_contact,
+                ro.Or_Emp_Id AS reporting_employee_id,
+                ro.Or_Official_Email AS reporting_official_email,
+                ro.Or_Official_Contact AS reporting_official_contact,
+                ro.Or_Organization_Name AS reporting_organization_name,
+                ro.Or_Organization_Location AS reporting_organization_location,
+                ro.Or_Joining_Date AS reporting_joining_date,
+                ro.Or_Department_Id AS reporting_department_id,
+                ro.Or_Designation_Id AS reporting_designation_id,
+                ro.Or_Employee_Type_Id AS reporting_type_id
+
+            FROM organizations o
+
+            LEFT JOIN personal p
+                ON p.Pr_Id = o.Pr_Id
+
+            LEFT JOIN personal r
+                ON r.Pr_Id = o.Or_Reporting_To_Id
+
+            LEFT JOIN organizations ro
+                ON ro.Pr_Id = o.Or_Reporting_To_Id
+
+            WHERE o.Pr_Id = $1
+            `,
+            [prId]
+        );
+
+        return successResponse(
+            res,
+            200,
+            result.rows[0] || null
+        );
+
+    } catch (error) {
+        return handleDbError(res, error);
+    }
+};
+
 
 module.exports.getLoggedInPrId = getLoggedInPrId;
 module.exports.calculateTotalDays = calculateTotalDays;

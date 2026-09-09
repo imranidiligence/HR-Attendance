@@ -61,6 +61,12 @@ router.get(
 );
 
 router.get(
+    "/my-reporting-details",
+    auth,
+    leaveProcessController.getMyReportingDetails
+);
+
+router.get(
     "/manager/requests",
     auth,
     leaveProcessController.getManagerLeaveRequests
